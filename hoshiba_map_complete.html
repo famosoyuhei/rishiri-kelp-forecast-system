@@ -1,0 +1,4749 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>利尻島昆布干場予報システム</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-providers/leaflet-providers.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #2c5f2d, #4a8a5a);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+    
+    .header p {
+      margin: 5px 0 0 0;
+      opacity: 0.9;
+    }
+    
+    .main-container {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .map-container {
+      flex: 1;
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .sidebar {
+      width: 350px;
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      height: fit-content;
+    }
+    
+    #map { 
+      height: 600px; 
+      border-radius: 8px;
+    }
+    
+    .control-panel {
+      margin-bottom: 20px;
+    }
+    
+    .btn {
+      background: #4a8a5a;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .btn:hover {
+      background: #3d7349;
+    }
+    
+    .btn-danger {
+      background: #dc3545;
+    }
+    
+    .btn-danger:hover {
+      background: #c82333;
+    }
+    
+    .btn-secondary {
+      background: #6c757d;
+    }
+    
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+    
+    .new-spot-info {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 10px 0;
+      display: none;
+    }
+    
+    .forecast-panel {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      display: none;
+    }
+    
+    .forecast-day {
+      border: 1px solid #dee2e6;
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 5px;
+      background: white;
+    }
+    
+    .forecast-header {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .recommendation {
+      font-size: 16px;
+      font-weight: bold;
+      margin: 5px 0;
+    }
+    
+    .recommendation.excellent {
+      color: #28a745;
+    }
+    
+    .recommendation.good {
+      color: #007bff;
+    }
+    
+    .recommendation.caution {
+      color: #ffc107;
+    }
+    
+    .recommendation.poor {
+      color: #dc3545;
+    }
+    
+    .reasons {
+      font-size: 12px;
+      margin: 5px 0;
+    }
+    
+    .reasons .positive {
+      color: #28a745;
+    }
+    
+    .reasons .negative {
+      color: #dc3545;
+    }
+    
+    .record-panel {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 5px;
+      display: none;
+    }
+    
+    .record-buttons {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #6c757d;
+    }
+    
+    .spot-info {
+      background: #e3f2fd;
+      border: 1px solid #bbdefb;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    
+    .weather-summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 12px;
+      margin: 5px 0;
+    }
+    
+    .weather-item {
+      background: #f8f9fa;
+      padding: 5px;
+      border-radius: 3px;
+    }
+    
+    .port-marker {
+      background: none !important;
+      border: none !important;
+      font-size: 16px;
+      text-align: center;
+      color: #0078d4;
+    }
+    
+    .location-navigation {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    
+    .location-navigation h4 {
+      margin: 0 0 10px 0;
+      color: #2c5f2d;
+    }
+    
+    .nav-step {
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .nav-step label {
+      min-width: 80px;
+      font-weight: bold;
+      color: #495057;
+    }
+    
+    .nav-step select {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .nav-step select:focus {
+      outline: none;
+      border-color: #4a8a5a;
+      box-shadow: 0 0 0 2px rgba(74, 138, 90, 0.2);
+    }
+    
+    .current-location {
+      background: #e8f5e8;
+      border: 1px solid #4a8a5a;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-size: 14px;
+      color: #2c5f2d;
+    }
+    
+    .season-status {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    
+    .season-status.in-season {
+      background: #d4edda;
+      border-color: #c3e6cb;
+      color: #155724;
+    }
+    
+    .season-status.pre-season {
+      background: #fff3cd;
+      border-color: #ffeaa7;
+      color: #856404;
+    }
+    
+    .season-status.post-season {
+      background: #f8d7da;
+      border-color: #f5c6cb;
+      color: #721c24;
+    }
+    
+    .schedule-item {
+      background: white;
+      border: 1px solid #dee2e6;
+      padding: 8px;
+      border-radius: 3px;
+      margin: 5px 0;
+      font-size: 12px;
+    }
+    
+    .schedule-item.work-day {
+      border-left: 4px solid #28a745;
+    }
+    
+    .schedule-item.rest-day {
+      border-left: 4px solid #dc3545;
+      background: #f8f9fa;
+    }
+
+    /* モバイル対応メディアクエリ */
+    @media screen and (max-width: 1024px) {
+      .main-container {
+        flex-direction: column;
+        gap: 15px;
+      }
+      
+      .sidebar {
+        width: 100%;
+        order: -1; /* サイドバーを上に移動 */
+      }
+      
+      .map-container {
+        padding: 15px;
+      }
+      
+      #map {
+        height: 400px; /* モバイル用に地図の高さを調整 */
+      }
+    }
+
+    @media screen and (max-width: 768px) {
+      body {
+        padding: 10px;
+      }
+      
+      .header {
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+      
+      .header h1 {
+        font-size: 20px;
+      }
+      
+      .sidebar {
+        padding: 15px;
+      }
+      
+      .map-container {
+        padding: 10px;
+      }
+      
+      #map {
+        height: 350px;
+      }
+      
+      /* ボタンサイズをタッチフレンドリーに */
+      .btn {
+        padding: 12px 16px;
+        font-size: 15px;
+        margin-right: 8px;
+        margin-bottom: 12px;
+        min-height: 44px; /* iOS推奨タッチターゲットサイズ */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      /* コントロールパネルのレイアウト改善 */
+      .control-panel {
+        margin-bottom: 15px;
+      }
+      
+      .record-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      
+      .record-buttons .btn {
+        flex: 1;
+        min-width: calc(50% - 4px);
+        margin: 0;
+      }
+      
+      /* フォームコントロールの改善 */
+      .nav-step select {
+        padding: 12px;
+        font-size: 16px; /* iOS のズーム防止 */
+        border-radius: 8px;
+      }
+      
+      /* パネルのスクロール改善 */
+      .forecast-panel,
+      .record-panel {
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      /* テキストサイズの調整 */
+      .forecast-day {
+        padding: 12px;
+        margin: 8px 0;
+      }
+      
+      .weather-item {
+        padding: 8px;
+        margin: 5px 0;
+      }
+      
+      /* ナビゲーションの改善 */
+      .location-navigation {
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      
+      .nav-step {
+        margin: 8px 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 5px;
+      }
+      
+      .nav-step label {
+        min-width: auto;
+        margin-bottom: 5px;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      .header h1 {
+        font-size: 18px;
+      }
+      
+      #map {
+        height: 300px;
+      }
+      
+      .btn {
+        padding: 14px 12px;
+        font-size: 14px;
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 10px;
+      }
+      
+      .record-buttons .btn {
+        width: 100%;
+        min-width: 100%;
+      }
+      
+      /* 小画面では単列レイアウト */
+      .main-container {
+        gap: 10px;
+      }
+      
+      .sidebar,
+      .map-container {
+        padding: 10px;
+      }
+      
+      /* スクロール領域の高さ調整 */
+      .forecast-panel,
+      .record-panel {
+        max-height: 50vh;
+      }
+      
+      /* フォントサイズの微調整 */
+      .forecast-header {
+        font-size: 16px;
+      }
+      
+      .recommendation {
+        font-size: 15px;
+      }
+      
+      /* 詳細情報の表示改善 */
+      .favoritesDetails,
+      .systemMonitorDetails,
+      .backupDetails {
+        font-size: 11px;
+        line-height: 1.4;
+      }
+    }
+
+    /* タッチデバイス用の追加最適化 */
+    @media (hover: none) and (pointer: coarse) {
+      .btn:hover {
+        background: #4a8a5a; /* ホバー効果を無効化 */
+      }
+      
+      .btn-secondary:hover {
+        background: #6c757d;
+      }
+      
+      .btn-danger:hover {
+        background: #dc3545;
+      }
+      
+      /* タップ時のフィードバック */
+      .btn:active {
+        transform: scale(0.98);
+        transition: transform 0.1s;
+      }
+      
+      /* スクロール改善 */
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    /* 横向き表示の最適化 */
+    @media screen and (max-height: 500px) and (orientation: landscape) {
+      .header {
+        padding: 10px 15px;
+        margin-bottom: 10px;
+      }
+      
+      .header h1 {
+        font-size: 16px;
+      }
+      
+      #map {
+        height: 250px;
+      }
+      
+      .forecast-panel,
+      .record-panel {
+        max-height: 40vh;
+      }
+    }
+
+    /* 追加モバイル最適化 */
+    .mobile-quick-actions {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: none;
+    }
+
+    .mobile-quick-actions.show {
+      display: block;
+    }
+
+    .quick-action-btn {
+      display: block;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #4a8a5a;
+      color: white;
+      border: none;
+      margin-bottom: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.3s ease;
+    }
+
+    .quick-action-btn:active {
+      transform: scale(0.95);
+    }
+
+    .quick-action-btn.primary {
+      background: #007bff;
+      width: 64px;
+      height: 64px;
+      font-size: 24px;
+    }
+
+    /* モバイル専用ヘルプテキスト */
+    .mobile-help {
+      display: none;
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 10px;
+      border-radius: 5px;
+      margin: 10px 0;
+      font-size: 12px;
+      color: #856404;
+    }
+
+    @media screen and (max-width: 768px) {
+      .mobile-help {
+        display: block;
+      }
+      
+      .mobile-quick-actions.show {
+        display: block;
+      }
+    }
+
+    /* スクロールバーのカスタマイズ（webkit系ブラウザ） */
+    .forecast-panel::-webkit-scrollbar,
+    .record-panel::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .forecast-panel::-webkit-scrollbar-track,
+    .record-panel::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    .forecast-panel::-webkit-scrollbar-thumb,
+    .record-panel::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+
+    .forecast-panel::-webkit-scrollbar-thumb:hover,
+    .record-panel::-webkit-scrollbar-thumb:hover {
+      background: #a1a1a1;
+    }
+
+    /* プログレスインジケーター */
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #f3f3f3;
+      border-radius: 50%;
+      border-top: 2px solid #4a8a5a;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* フォーカス時の表示改善 */
+    @media screen and (max-width: 768px) {
+      input:focus,
+      select:focus,
+      textarea:focus {
+        position: relative;
+        z-index: 999;
+        background: white;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🌊 利尻島昆布干場予報システム</h1>
+    <p>昆布漁師のための干場管理・気象予報・記録システム</p>
+  </div>
+
+  <div class="main-container">
+    <div class="map-container">
+      <div class="control-panel">
+        <div class="location-navigation">
+          <h4>📍 地区選択ナビゲーション</h4>
+          <div class="mobile-help">
+            📱 <strong>モバイル操作ガイド:</strong><br>
+            • 地図を長押し（2秒）で詳細メニュー表示<br>
+            • ボタンタップで各機能にアクセス<br>
+            • 画面回転で最適な表示に自動調整
+          </div>
+          <div class="nav-step">
+            <label>町選択:</label>
+            <select id="townSelect" class="btn">
+              <option value="">-- 町を選択 --</option>
+              <option value="rishiri-town">利尻町（西部）</option>
+              <option value="rishiri-fuji-town">利尻富士町（東部）</option>
+            </select>
+          </div>
+          <div class="nav-step" id="districtStep" style="display: none;">
+            <label>地区選択:</label>
+            <select id="districtSelect" class="btn">
+              <option value="">-- 地区を選択 --</option>
+            </select>
+          </div>
+          <div class="nav-step" id="areaStep" style="display: none;">
+            <label>地域選択:</label>
+            <select id="areaSelect" class="btn">
+              <option value="">-- 地域を選択 --</option>
+            </select>
+          </div>
+          <button id="resetNavButton" class="btn btn-secondary" style="display: none;">🔄 全島表示</button>
+        </div>
+        
+        <div id="currentLocation" class="current-location" style="display: none;">
+          <strong>📍 現在表示中:</strong> <span id="currentLocationText"></span>
+        </div>
+        
+        <hr style="margin: 15px 0;">
+        
+        <button id="addModeButton" class="btn">＋ 新規干場を追加</button>
+        <button id="refreshButton" class="btn btn-secondary">🔄 干場を更新</button>
+        
+        <div id="newSpotInfo" class="new-spot-info">
+          <h4>新しい干場を追加</h4>
+          <p>地図上の陸地をクリックして干場を設定してください</p>
+          <div id="newSpotDetails" style="display: none;">
+            <p><strong>干場名:</strong> <span id="newSpotName"></span></p>
+            <p><strong>座標:</strong> <span id="newSpotCoords"></span></p>
+            <button id="saveSpot" class="btn">✓ 保存</button>
+            <button id="cancelSpot" class="btn btn-secondary">✗ キャンセル</button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="map"></div>
+    </div>
+
+    <div class="sidebar">
+      <div id="spotInfo" class="spot-info">
+        <h3 id="selectedSpotName">干場を選択してください</h3>
+        <p id="selectedSpotCoords"></p>
+        
+        <div class="record-buttons">
+          <button id="forecastButton" class="btn">📊 予報を見る</button>
+          <button id="seaFogButton" class="btn">🌫️ 海霧予測</button>
+          <button id="recordButton" class="btn">📝 記録を入力</button>
+          <button id="adaptiveLearningButton" class="btn btn-secondary">🤖 自動学習</button>
+          <button id="seasonButton" class="btn btn-secondary">📅 漁期管理</button>
+          <button id="notificationButton" class="btn btn-secondary">🔔 通知設定</button>
+          <button id="favoritesButton" class="btn btn-secondary">⭐ お気に入り</button>
+          <button id="systemMonitorButton" class="btn btn-secondary">🔍 システム監視</button>
+          <button id="backupButton" class="btn btn-secondary">💾 バックアップ</button>
+          <button id="helpButton" class="btn btn-secondary">📖 ヘルプ</button>
+          <button id="deleteButton" class="btn btn-danger">🗑️ 削除</button>
+        </div>
+      </div>
+
+      <div id="forecastPanel" class="forecast-panel">
+        <h4>📊 1週間の乾燥予報</h4>
+        <div id="forecastContent" class="loading">
+          予報を読み込み中...
+        </div>
+      </div>
+
+      <div id="recordPanel" class="record-panel">
+        <h4>📝 乾燥記録の入力</h4>
+        <p>日付: <input type="date" id="recordDate" /></p>
+        <p>結果:</p>
+        <div class="record-buttons">
+          <button id="recordSuccess" class="btn" data-result="完全乾燥">✓ 完全乾燥</button>
+          <button id="recordPartial" class="btn btn-secondary" data-result="干したが完全には乾かせなかった（泣）">△ 部分乾燥</button>
+          <button id="recordCancel" class="btn btn-danger" data-result="中止">✗ 中止</button>
+        </div>
+        <div id="recordStatus" style="margin-top: 10px;"></div>
+      </div>
+
+      <div id="adaptiveLearningPanel" class="record-panel">
+        <h4>🤖 自動学習システム</h4>
+        <div class="record-buttons">
+          <button id="processLearningButton" class="btn">🔄 学習処理実行</button>
+          <button id="qualityReportButton" class="btn btn-secondary">📊 品質レポート</button>
+          <button id="retrainModelButton" class="btn btn-secondary">🧠 モデル再訓練</button>
+        </div>
+        <div id="adaptiveStatus" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+
+      <div id="seaFogPanel" class="record-panel">
+        <h4>🌫️ 海霧予測・可視化</h4>
+        <div id="seaFogStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+          <div class="loading">海霧予測データを読み込み中...</div>
+        </div>
+        <div class="record-buttons">
+          <button id="fogDashboardButton" class="btn">📊 ダッシュボード</button>
+          <button id="fogTimelineButton" class="btn btn-secondary">📈 時系列チャート</button>
+          <button id="fogHeatmapButton" class="btn btn-secondary">🗺️ リスクマップ</button>
+          <button id="fogMapLayerButton" class="btn">🗺️ 地図レイヤー</button>
+          <button id="fogAlertsButton" class="btn">🚨 アラート</button>
+          <button id="fogFactorsButton" class="btn btn-secondary">🔍 要因分析</button>
+          <button id="fogComparisonButton" class="btn btn-secondary">📊 地点比較</button>
+          <button id="fogObservationButton" class="btn btn-secondary">👁️ 観測記録</button>
+        </div>
+        <div id="seaFogDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+
+      <div id="seasonPanel" class="record-panel">
+        <h4>📅 漁期スケジュール管理</h4>
+        <div id="seasonStatus" class="season-status"></div>
+        <div class="record-buttons">
+          <button id="weeklyScheduleButton" class="btn">📋 週間スケジュール</button>
+          <button id="restDaysButton" class="btn btn-secondary">🚫 休漁日管理</button>
+          <button id="seasonConfigButton" class="btn btn-secondary">⚙️ 漁期設定</button>
+        </div>
+        <div id="seasonDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+
+      <div id="notificationPanel" class="record-panel">
+        <h4>🔔 通知システム設定</h4>
+        <div id="notificationStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
+        <div class="record-buttons">
+          <button id="notificationConfigButton" class="btn">⚙️ 通知設定</button>
+          <button id="subscribersButton" class="btn btn-secondary">👥 通知対象者</button>
+          <button id="testNotificationButton" class="btn btn-secondary">🧪 テスト通知</button>
+          <button id="schedulerButton" class="btn btn-secondary">🎯 スケジューラー</button>
+        </div>
+        <div id="notificationDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+
+      <div id="systemMonitorPanel" class="record-panel">
+        <h4>🔍 システム監視・パフォーマンス</h4>
+        <div id="systemMonitorStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
+        <div class="record-buttons">
+          <button id="healthCheckButton" class="btn">💚 ヘルスチェック</button>
+          <button id="healthHistoryButton" class="btn btn-secondary">📈 履歴表示</button>
+          <button id="alertHistoryButton" class="btn btn-secondary">🚨 アラート履歴</button>
+          <button id="monitorConfigButton" class="btn btn-secondary">⚙️ 監視設定</button>
+          <button id="monitorToggleButton" class="btn btn-secondary">▶️ 監視開始</button>
+        </div>
+        <div id="systemMonitorDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+
+      <div id="backupPanel" class="record-panel">
+        <h4>💾 データバックアップ・復元</h4>
+        <div id="backupStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
+        <div class="record-buttons">
+          <button id="createBackupButton" class="btn">📦 バックアップ作成</button>
+          <button id="backupListButton" class="btn btn-secondary">📋 バックアップ一覧</button>
+          <button id="autoBackupToggleButton" class="btn btn-secondary">⏰ 自動バックアップ</button>
+          <button id="backupConfigButton" class="btn btn-secondary">⚙️ バックアップ設定</button>
+        </div>
+        <div id="backupDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+      <div id="favoritesPanel" class="record-panel">
+        <h4>⭐ お気に入り干場管理</h4>
+        <div id="favoritesStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;"></div>
+        <div class="record-buttons">
+          <button id="addFavoriteButton" class="btn">⭐ お気に入り追加</button>
+          <button id="quickAccessButton" class="btn btn-secondary">🚀 クイックアクセス</button>
+          <button id="favoritesListButton" class="btn btn-secondary">📋 一覧表示</button>
+          <button id="searchFavoritesButton" class="btn btn-secondary">🔍 検索</button>
+          <button id="favoritesImportButton" class="btn btn-secondary">📥 インポート</button>
+          <button id="favoritesExportButton" class="btn btn-secondary">📤 エクスポート</button>
+        </div>
+        <div id="favoritesDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+      <div id="helpPanel" class="record-panel">
+        <h4>📖 ユーザーマニュアル・ヘルプ</h4>
+        <div id="helpStatus" style="margin-bottom: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+          <div><strong>📘 システムガイド:</strong> 利尻島昆布干場予報システムの使い方</div>
+          <div><strong>🎯 対象:</strong> 昆布漁師・干場管理者・関係者</div>
+        </div>
+        <div class="record-buttons">
+          <button id="tutorialButton" class="btn">🎯 チュートリアル</button>
+          <button id="faqButton" class="btn btn-secondary">❓ よくある質問</button>
+          <button id="featuresGuideButton" class="btn btn-secondary">🛠️ 機能ガイド</button>
+          <button id="quickRefButton" class="btn btn-secondary">📋 操作早見表</button>
+          <button id="troubleshootButton" class="btn btn-secondary">🔧 トラブル対応</button>
+          <button id="contactButton" class="btn btn-secondary">📞 お問い合わせ</button>
+        </div>
+        <div id="helpDetails" style="margin-top: 10px; font-size: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // グローバル変数
+    const map = L.map('map').setView([45.178269, 141.228528], 13);
+    const API_BASE = 'http://localhost:8000';
+    
+    let spots = [];
+    let addMode = false;
+    let tempMarker = null;
+    let selectedSpot = null;
+    let currentSelectedSpot = null;
+    let spotMarkers = [];
+    let townBoundaries = {};
+    let seaFogLayer = null;
+    let seaFogLayerControl = null;
+    let seaFogDataCache = null;
+
+    // 利尻島地理データ
+    const rishiriGeography = {
+      'rishiri-town': {
+        name: '利尻町',
+        center: [45.165, 141.200],
+        zoom: 14,
+        districts: {
+          'kutsugata': {
+            name: '沓形',
+            center: [45.210, 141.200],
+            zoom: 15,
+            areas: {
+              'kutsugata-minato': { name: '沓形港周辺', center: [45.215, 141.205], zoom: 16 },
+              'kutsugata-honcho': { name: '沓形本町', center: [45.208, 141.198], zoom: 16 },
+              'kutsugata-nishi': { name: '沓形西', center: [45.205, 141.192], zoom: 16 }
+            }
+          },
+          'senposhi': {
+            name: '仙法志',
+            center: [45.136, 141.211],
+            zoom: 15,
+            areas: {
+              'senposhi-minato': { name: '仙法志港周辺', center: [45.136, 141.211], zoom: 16 },
+              'senposhi-misaki': { name: '仙法志御崎', center: [45.130, 141.215], zoom: 16 },
+              'senposhi-honcho': { name: '仙法志本町', center: [45.138, 141.208], zoom: 16 }
+            }
+          }
+        }
+      },
+      'rishiri-fuji-town': {
+        name: '利尻富士町',
+        center: [45.215, 141.250],
+        zoom: 14,
+        districts: {
+          'oshidomari': {
+            name: '鴛泊',
+            center: [45.242, 141.231],
+            zoom: 15,
+            areas: {
+              'oshidomari-minato': { name: '鴛泊港周辺', center: [45.242, 141.231], zoom: 16 },
+              'oshidomari-onsen': { name: '鴛泊温泉', center: [45.245, 141.228], zoom: 16 },
+              'oshidomari-honcho': { name: '鴛泊本町', center: [45.240, 141.233], zoom: 16 }
+            }
+          },
+          'oniwaki': {
+            name: '鬼脇',
+            center: [45.180, 141.270],
+            zoom: 15,
+            areas: {
+              'oniwaki-minato': { name: '鬼脇港周辺', center: [45.180, 141.270], zoom: 16 },
+              'oniwaki-honcho': { name: '鬼脇本町', center: [45.178, 141.268], zoom: 16 },
+              'oniwaki-higashi': { name: '鬼脇東', center: [45.182, 141.275], zoom: 16 }
+            }
+          }
+        }
+      }
+    };
+
+    // 地図の初期化
+    L.tileLayer.provider('Esri.WorldImagery').addTo(map);
+    
+    // 利尻島の境界を定義（主要港湾と昆布漁場をカバー）
+    const rishiriBounds = [
+      [45.120, 141.180], // 南西角
+      [45.260, 141.280]  // 北東角
+    ];
+    
+    // 利尻島エリアに境界線を追加（参考用）
+    L.rectangle(rishiriBounds, {
+      color: "#0078d4",
+      weight: 2,
+      opacity: 0.3,
+      fillOpacity: 0.05
+    }).addTo(map).bindPopup("🏝️ 利尻島 昆布漁場エリア");
+    
+    // 主要港湾のマーカーを追加（参考用）
+    const oshidomariPort = L.marker([45.241667, 141.230833], {
+      icon: L.divIcon({
+        html: '⚓',
+        iconSize: [20, 20],
+        className: 'port-marker'
+      })
+    }).addTo(map).bindPopup("⚓ 鴛泊港<br><small>利尻島北東岸の主要港湾</small>");
+    
+    const senposhiPort = L.marker([45.136111, 141.211111], {
+      icon: L.divIcon({
+        html: '⚓',
+        iconSize: [20, 20],
+        className: 'port-marker'
+      })
+    }).addTo(map).bindPopup("⚓ 仙法志港<br><small>利尻島南岸の港湾</small>");
+
+    // DOM要素の取得
+    const addModeButton = document.getElementById('addModeButton');
+    const refreshButton = document.getElementById('refreshButton');
+    const newSpotInfo = document.getElementById('newSpotInfo');
+    const newSpotDetails = document.getElementById('newSpotDetails');
+    const newSpotName = document.getElementById('newSpotName');
+    const newSpotCoords = document.getElementById('newSpotCoords');
+    const saveSpot = document.getElementById('saveSpot');
+    const cancelSpot = document.getElementById('cancelSpot');
+    
+    const spotInfo = document.getElementById('spotInfo');
+    const selectedSpotName = document.getElementById('selectedSpotName');
+    const selectedSpotCoords = document.getElementById('selectedSpotCoords');
+    const forecastButton = document.getElementById('forecastButton');
+    const recordButton = document.getElementById('recordButton');
+    const deleteButton = document.getElementById('deleteButton');
+    
+    const forecastPanel = document.getElementById('forecastPanel');
+    const forecastContent = document.getElementById('forecastContent');
+    const recordPanel = document.getElementById('recordPanel');
+    const recordDate = document.getElementById('recordDate');
+    const recordStatus = document.getElementById('recordStatus');
+
+    // 今日の日付を設定
+    recordDate.valueAsDate = new Date();
+
+    // 干場データの読み込み
+    function loadSpots() {
+      fetch(`${API_BASE}/spots`)
+        .then(res => res.json())
+        .then(data => {
+          spots = data;
+          displaySpots();
+        })
+        .catch(err => {
+          console.error('干場データの読み込みエラー:', err);
+          alert('干場データの読み込みに失敗しました');
+        });
+    }
+
+    // 干場をマップに表示
+    function displaySpots() {
+      // 既存のマーカーをクリア
+      spotMarkers.forEach(marker => map.removeLayer(marker));
+      spotMarkers = [];
+
+      spots.forEach(spot => {
+        const marker = L.marker([spot.lat, spot.lon])
+          .bindPopup(`
+            <div style="text-align: center;">
+              <b>${spot.name}</b><br>
+              <small>${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)}</small><br>
+              <button onclick="selectSpot('${spot.name}')" style="margin-top: 5px; padding: 5px 10px; background: #4a8a5a; color: white; border: none; border-radius: 3px; cursor: pointer;">選択</button>
+            </div>
+          `)
+          .addTo(map);
+        
+        spotMarkers.push(marker);
+      });
+    }
+
+    // 干場選択
+    function selectSpot(spotName) {
+      const spot = spots.find(s => s.name === spotName);
+      if (!spot) return;
+
+      selectedSpot = spot;
+      currentSelectedSpot = spotName;
+      selectedSpotName.textContent = spot.name;
+      selectedSpotCoords.textContent = `${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)}`;
+      
+      spotInfo.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      
+      // 記録の有無をチェックして削除ボタンの表示を制御
+      checkSpotRecords(spotName);
+      
+      // お気に入りボタンの状態を更新
+      updateFavoriteButton();
+      
+      // 地図を選択した干場に移動
+      map.setView([spot.lat, spot.lon], 15);
+    }
+
+    // 干場の記録有無チェック
+    function checkSpotRecords(spotName) {
+      fetch(`${API_BASE}/check_spot_records?name=${encodeURIComponent(spotName)}`)
+        .then(res => res.json())
+        .then(data => {
+          const deleteButton = document.getElementById('deleteButton');
+          if (data.has_records) {
+            // 記録がある場合は削除ボタンを非表示
+            deleteButton.style.display = 'none';
+          } else {
+            // 記録がない場合は削除ボタンを表示
+            deleteButton.style.display = 'inline-block';
+          }
+        })
+        .catch(err => {
+          console.error('記録チェックエラー:', err);
+          // エラーの場合は安全のため削除ボタンを非表示
+          document.getElementById('deleteButton').style.display = 'none';
+        });
+    }
+
+    // 新規干場追加モード
+    addModeButton.addEventListener('click', () => {
+      if (!addMode) {
+        addMode = true;
+        addModeButton.textContent = '追加モードを終了';
+        addModeButton.className = 'btn btn-danger';
+        newSpotInfo.style.display = 'block';
+        spotInfo.style.display = 'none';
+        forecastPanel.style.display = 'none';
+        recordPanel.style.display = 'none';
+        document.getElementById('adaptiveLearningPanel').style.display = 'none';
+        document.getElementById('seasonPanel').style.display = 'none';
+        document.getElementById('notificationPanel').style.display = 'none';
+      } else {
+        cancelAddMode();
+      }
+    });
+
+    // 追加モードキャンセル
+    function cancelAddMode() {
+      addMode = false;
+      addModeButton.textContent = '＋ 新規干場を追加';
+      addModeButton.className = 'btn';
+      newSpotInfo.style.display = 'none';
+      newSpotDetails.style.display = 'none';
+      
+      if (tempMarker) {
+        map.removeLayer(tempMarker);
+        tempMarker = null;
+      }
+    }
+
+    // 地図クリックイベント
+    map.on('click', (e) => {
+      if (!addMode) return;
+
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+      
+      // 利尻島エリア内かチェック
+      if (lat < 45.120 || lat > 45.260 || lon < 141.180 || lon > 141.280) {
+        alert('干場は利尻島エリア内（45.120-45.260°N, 141.180-141.280°E）に設定してください。');
+        return;
+      }
+      
+      // 干場名の生成（H_緯度4桁_経度4桁）
+      const latPart = Math.round((lat - Math.floor(lat)) * 10000);
+      const lonPart = Math.round((lon - Math.floor(lon)) * 10000);
+      const spotName = `H_${latPart}_${lonPart}`;
+
+      // 重複チェック
+      if (spots.find(s => s.name === spotName)) {
+        alert('この場所には既に干場が存在します');
+        return;
+      }
+
+      // 仮マーカーを表示
+      if (tempMarker) {
+        map.removeLayer(tempMarker);
+      }
+      tempMarker = L.marker([lat, lon]).addTo(map);
+
+      // 詳細情報を表示
+      newSpotName.textContent = spotName;
+      newSpotCoords.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      newSpotDetails.style.display = 'block';
+      
+      // 保存ボタンにデータを設定
+      saveSpot.onclick = () => saveNewSpot(spotName, lat, lon);
+    });
+
+    // 新規干場保存
+    function saveNewSpot(name, lat, lon) {
+      const spotData = { name, lat, lon };
+      
+      fetch(`${API_BASE}/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(spotData)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert('新しい干場が追加されました');
+          cancelAddMode();
+          loadSpots();
+        } else {
+          alert('干場の追加に失敗しました: ' + data.message);
+        }
+      })
+      .catch(err => {
+        console.error('干場追加エラー:', err);
+        alert('干場の追加に失敗しました');
+      });
+    }
+
+    // 干場削除
+    deleteButton.addEventListener('click', () => {
+      if (!selectedSpot) return;
+      
+      // 再度記録有無を確認（安全のため）
+      fetch(`${API_BASE}/check_spot_records?name=${encodeURIComponent(selectedSpot.name)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.has_records) {
+            alert('この干場には記録があるため削除できません。');
+            return;
+          }
+          
+          if (confirm(`干場「${selectedSpot.name}」を削除しますか？\n※記録がない干場のみ削除可能です。`)) {
+            fetch(`${API_BASE}/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: selectedSpot.name })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.status === 'success') {
+                alert('干場が削除されました');
+                spotInfo.style.display = 'none';
+                forecastPanel.style.display = 'none';
+                recordPanel.style.display = 'none';
+                document.getElementById('adaptiveLearningPanel').style.display = 'none';
+                document.getElementById('seaFogPanel').style.display = 'none';
+                // 海霧パネルが閉じられた場合、レイヤーも非表示にする
+                if (seaFogLayer && map.hasLayer(seaFogLayer)) {
+                  removeSeaFogLayerWithAutoUpdate();
+                }
+                document.getElementById('seasonPanel').style.display = 'none';
+                document.getElementById('notificationPanel').style.display = 'none';
+                selectedSpot = null;
+                loadSpots();
+              } else {
+                alert('干場の削除に失敗しました');
+              }
+            })
+            .catch(err => {
+              console.error('干場削除エラー:', err);
+              alert('干場の削除に失敗しました');
+            });
+          }
+        })
+        .catch(err => {
+          console.error('記録チェックエラー:', err);
+          alert('記録の確認に失敗しました');
+        });
+    });
+
+    // 予報表示
+    forecastButton.addEventListener('click', () => {
+      if (!selectedSpot) return;
+      
+      forecastPanel.style.display = 'block';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      forecastContent.innerHTML = '<div class="loading">予報を読み込み中...</div>';
+      
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const startDate = tomorrow.toISOString().split('T')[0];
+      
+      fetch(`${API_BASE}/forecast?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}&start_date=${startDate}`)
+        .then(res => res.json())
+        .then(data => {
+          displayForecast(data);
+        })
+        .catch(err => {
+          console.error('予報取得エラー:', err);
+          forecastContent.innerHTML = '<div style="color: red;">予報の取得に失敗しました</div>';
+        });
+    });
+
+    // 予報表示
+    function displayForecast(forecastData) {
+      if (!forecastData.result) {
+        forecastContent.innerHTML = '<div style="color: red;">予報データがありません</div>';
+        return;
+      }
+
+      const result = forecastData.result;
+      let html = '';
+      
+      // ML予測の表示
+      if (result.ml_prediction && result.ml_prediction !== "Model not available") {
+        html += `
+          <div class="forecast-day">
+            <div class="forecast-header">🤖 AI予測</div>
+            <div class="recommendation ${getRecommendationClass(result.ml_prediction)}">
+              ${result.ml_prediction}
+            </div>
+            <div style="font-size: 12px; color: #6c757d;">
+              信頼度: ${Math.round(result.ml_confidence * 100)}%
+            </div>
+          </div>
+        `;
+      }
+      
+      // ルールベース予測の表示
+      html += `
+        <div class="forecast-day">
+          <div class="forecast-header">📋 ルールベース予測</div>
+          <div class="recommendation ${getRecommendationClass(result.rule_based)}">
+            ${result.rule_based}
+          </div>
+        </div>
+      `;
+      
+      // 気象条件の詳細
+      if (forecastData.hourly) {
+        html += `
+          <div class="forecast-day">
+            <div class="forecast-header">🌤️ 気象条件詳細</div>
+            <div class="weather-summary">
+              <div class="weather-item">気温: ${Math.round(forecastData.hourly.temperature_2m[12])}°C</div>
+              <div class="weather-item">湿度: ${Math.round(forecastData.hourly.relative_humidity_2m[12])}%</div>
+              <div class="weather-item">風速: ${Math.round(forecastData.hourly.wind_speed_10m[12])}m/s</div>
+              <div class="weather-item">降水確率: ${Math.round(forecastData.hourly.precipitation_probability[12])}%</div>
+            </div>
+          </div>
+        `;
+      }
+      
+      forecastContent.innerHTML = html;
+    }
+
+    // 推奨レベルのCSSクラス取得
+    function getRecommendationClass(recommendation) {
+      if (recommendation.includes('◎')) return 'excellent';
+      if (recommendation.includes('○')) return 'good';
+      if (recommendation.includes('△')) return 'caution';
+      return 'poor';
+    }
+
+    // 記録入力
+    recordButton.addEventListener('click', () => {
+      if (!selectedSpot) return;
+      
+      recordPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      recordStatus.innerHTML = '';
+    });
+
+    // 自動学習パネル
+    const adaptiveLearningButton = document.getElementById('adaptiveLearningButton');
+    adaptiveLearningButton.addEventListener('click', () => {
+      const adaptiveLearningPanel = document.getElementById('adaptiveLearningPanel');
+      adaptiveLearningPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('adaptiveStatus').innerHTML = '';
+    });
+
+    // 漁期管理パネル
+    const seasonButton = document.getElementById('seasonButton');
+    seasonButton.addEventListener('click', () => {
+      const seasonPanel = document.getElementById('seasonPanel');
+      seasonPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      loadSeasonStatus();
+    });
+
+    // 通知設定パネル
+    const notificationButton = document.getElementById('notificationButton');
+    notificationButton.addEventListener('click', () => {
+      const notificationPanel = document.getElementById('notificationPanel');
+      notificationPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      loadNotificationStatus();
+    });
+
+    // 海霧予測パネル
+    const seaFogButton = document.getElementById('seaFogButton');
+    seaFogButton.addEventListener('click', () => {
+      const seaFogPanel = document.getElementById('seaFogPanel');
+      seaFogPanel.style.display = 'block';
+      
+      // 海霧データの自動読み込み
+      if (selectedSpot) {
+        loadSeaFogStatus();
+      }
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      loadSeaFogStatus();
+    });
+
+    // システム監視パネル
+    const systemMonitorButton = document.getElementById('systemMonitorButton');
+    systemMonitorButton.addEventListener('click', () => {
+      const systemMonitorPanel = document.getElementById('systemMonitorPanel');
+      systemMonitorPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      loadSystemMonitorStatus();
+    });
+
+    // お気に入りパネル
+    const favoritesButton = document.getElementById('favoritesButton');
+    favoritesButton.addEventListener('click', () => {
+      const favoritesPanel = document.getElementById('favoritesPanel');
+      favoritesPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      loadFavoritesStatus();
+    });
+    
+    // バックアップパネル
+    const backupButton = document.getElementById('backupButton');
+    backupButton.addEventListener('click', () => {
+      const backupPanel = document.getElementById('backupPanel');
+      backupPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('helpPanel').style.display = 'none';
+      loadBackupStatus();
+    });
+
+    // ヘルプパネル
+    const helpButton = document.getElementById('helpButton');
+    helpButton.addEventListener('click', () => {
+      const helpPanel = document.getElementById('helpPanel');
+      helpPanel.style.display = 'block';
+      forecastPanel.style.display = 'none';
+      recordPanel.style.display = 'none';
+      document.getElementById('adaptiveLearningPanel').style.display = 'none';
+      document.getElementById('seasonPanel').style.display = 'none';
+      document.getElementById('notificationPanel').style.display = 'none';
+      document.getElementById('favoritesPanel').style.display = 'none';
+      document.getElementById('systemMonitorPanel').style.display = 'none';
+      document.getElementById('backupPanel').style.display = 'none';
+      loadHelpContent();
+    });
+
+    // 記録保存
+    document.querySelectorAll('#recordPanel .btn[data-result]').forEach(button => {
+      button.addEventListener('click', () => {
+        if (!selectedSpot) return;
+        
+        const result = button.dataset.result;
+        const date = recordDate.value;
+        
+        if (!date) {
+          alert('日付を選択してください');
+          return;
+        }
+        
+        const recordData = {
+          name: selectedSpot.name,
+          date: date,
+          result: result
+        };
+        
+        fetch(`${API_BASE}/record`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recordData)
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            recordStatus.innerHTML = '<div style="color: green;">✓ 記録が保存されました</div>';
+          } else {
+            recordStatus.innerHTML = '<div style="color: red;">✗ 記録の保存に失敗しました</div>';
+          }
+        })
+        .catch(err => {
+          console.error('記録保存エラー:', err);
+          recordStatus.innerHTML = '<div style="color: red;">✗ 記録の保存に失敗しました</div>';
+        });
+      });
+    });
+
+    // 自動学習システム
+    document.getElementById('processLearningButton').addEventListener('click', () => {
+      const adaptiveStatus = document.getElementById('adaptiveStatus');
+      adaptiveStatus.innerHTML = '<div style="color: blue;">🔄 学習処理中...</div>';
+      
+      fetch(`${API_BASE}/adaptive_learning/process`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            adaptiveStatus.innerHTML = `
+              <div style="color: green;">✓ 学習処理完了</div>
+              <div>新データ追加: ${data.new_data_added ? 'あり' : 'なし'}</div>
+              ${data.model_retrained ? '<div>モデル再訓練: 完了</div>' : ''}
+            `;
+          } else {
+            adaptiveStatus.innerHTML = `<div style="color: red;">✗ エラー: ${data.message}</div>`;
+          }
+        })
+        .catch(err => {
+          adaptiveStatus.innerHTML = '<div style="color: red;">✗ 通信エラー</div>';
+        });
+    });
+
+    document.getElementById('qualityReportButton').addEventListener('click', () => {
+      const adaptiveStatus = document.getElementById('adaptiveStatus');
+      adaptiveStatus.innerHTML = '<div style="color: blue;">📊 品質レポート取得中...</div>';
+      
+      fetch(`${API_BASE}/adaptive_learning/quality`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            adaptiveStatus.innerHTML = `<div style="color: red;">✗ ${data.error}</div>`;
+          } else {
+            let html = '<div style="color: green;">📊 データ品質レポート</div>';
+            html += `<div>総記録数: ${data.total_records}</div>`;
+            if (data.quality_distribution) {
+              html += '<div>品質分布:</div>';
+              Object.entries(data.quality_distribution).forEach(([key, value]) => {
+                html += `<div style="margin-left: 10px;">${key}: ${value}</div>`;
+              });
+            }
+            if (data.result_statistics) {
+              html += '<div>結果統計:</div>';
+              Object.entries(data.result_statistics).forEach(([result, stats]) => {
+                html += `<div style="margin-left: 10px;">${result}: ${stats.count}件 (品質: ${stats.avg_quality.toFixed(1)})</div>`;
+              });
+            }
+            adaptiveStatus.innerHTML = html;
+          }
+        })
+        .catch(err => {
+          adaptiveStatus.innerHTML = '<div style="color: red;">✗ 通信エラー</div>';
+        });
+    });
+
+    document.getElementById('retrainModelButton').addEventListener('click', () => {
+      const adaptiveStatus = document.getElementById('adaptiveStatus');
+      adaptiveStatus.innerHTML = '<div style="color: blue;">🧠 モデル再訓練中...</div>';
+      
+      fetch(`${API_BASE}/adaptive_learning/retrain`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            adaptiveStatus.innerHTML = `
+              <div style="color: green;">✓ モデル再訓練完了</div>
+              <div>特徴量: ${data.features ? data.features.join(', ') : '不明'}</div>
+              <div>訓練サイズ: ${data.training_size}</div>
+            `;
+          } else {
+            adaptiveStatus.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+          }
+        })
+        .catch(err => {
+          adaptiveStatus.innerHTML = '<div style="color: red;">✗ 通信エラー</div>';
+        });
+    });
+
+    // キャンセルボタン
+    cancelSpot.addEventListener('click', cancelAddMode);
+    
+    // 更新ボタン
+    refreshButton.addEventListener('click', loadSpots);
+
+    // ナビゲーション機能
+    const townSelect = document.getElementById('townSelect');
+    const districtSelect = document.getElementById('districtSelect');
+    const areaSelect = document.getElementById('areaSelect');
+    const districtStep = document.getElementById('districtStep');
+    const areaStep = document.getElementById('areaStep');
+    const resetNavButton = document.getElementById('resetNavButton');
+    const currentLocation = document.getElementById('currentLocation');
+    const currentLocationText = document.getElementById('currentLocationText');
+
+    // 町選択
+    townSelect.addEventListener('change', (e) => {
+      const townId = e.target.value;
+      
+      if (!townId) {
+        districtStep.style.display = 'none';
+        areaStep.style.display = 'none';
+        resetNavButton.style.display = 'none';
+        return;
+      }
+
+      const town = rishiriGeography[townId];
+      
+      // 地図を町にズーム
+      map.setView(town.center, town.zoom);
+      
+      // 町の境界を表示
+      clearTownBoundaries();
+      showTownBoundary(townId, town);
+      
+      // 地区選択肢を更新
+      districtSelect.innerHTML = '<option value="">-- 地区を選択 --</option>';
+      Object.entries(town.districts).forEach(([districtId, district]) => {
+        const option = document.createElement('option');
+        option.value = districtId;
+        option.textContent = district.name;
+        districtSelect.appendChild(option);
+      });
+      
+      districtStep.style.display = 'block';
+      areaStep.style.display = 'none';
+      resetNavButton.style.display = 'inline-block';
+      
+      // 現在地表示を更新
+      currentLocationText.textContent = town.name;
+      currentLocation.style.display = 'block';
+    });
+
+    // 地区選択
+    districtSelect.addEventListener('change', (e) => {
+      const districtId = e.target.value;
+      const townId = townSelect.value;
+      
+      if (!districtId || !townId) {
+        areaStep.style.display = 'none';
+        return;
+      }
+
+      const district = rishiriGeography[townId].districts[districtId];
+      
+      // 地図を地区にズーム
+      map.setView(district.center, district.zoom);
+      
+      // 地域選択肢を更新
+      areaSelect.innerHTML = '<option value="">-- 地域を選択 --</option>';
+      Object.entries(district.areas).forEach(([areaId, area]) => {
+        const option = document.createElement('option');
+        option.value = areaId;
+        option.textContent = area.name;
+        areaSelect.appendChild(option);
+      });
+      
+      areaStep.style.display = 'block';
+      
+      // 現在地表示を更新
+      const townName = rishiriGeography[townId].name;
+      currentLocationText.textContent = `${townName} > ${district.name}`;
+      currentLocation.style.display = 'block';
+    });
+
+    // 地域選択
+    areaSelect.addEventListener('change', (e) => {
+      const areaId = e.target.value;
+      const districtId = districtSelect.value;
+      const townId = townSelect.value;
+      
+      if (!areaId || !districtId || !townId) return;
+
+      const area = rishiriGeography[townId].districts[districtId].areas[areaId];
+      
+      // 地図を地域にズーム
+      map.setView(area.center, area.zoom);
+      
+      // 現在地表示を更新
+      const townName = rishiriGeography[townId].name;
+      const districtName = rishiriGeography[townId].districts[districtId].name;
+      currentLocationText.textContent = `${townName} > ${districtName} > ${area.name}`;
+      currentLocation.style.display = 'block';
+    });
+
+    // 境界表示機能
+    function showTownBoundary(townId, town) {
+      const boundaries = {
+        'rishiri-town': [
+          [45.120, 141.180], [45.178, 141.180], [45.178, 141.225], 
+          [45.165, 141.240], [45.145, 141.235], [45.130, 141.220], [45.120, 141.200]
+        ],
+        'rishiri-fuji-town': [
+          [45.178, 141.225], [45.260, 141.225], [45.260, 141.280], 
+          [45.200, 141.280], [45.165, 141.240], [45.178, 141.225]
+        ]
+      };
+
+      if (boundaries[townId]) {
+        const polygon = L.polygon(boundaries[townId], {
+          color: townId === 'rishiri-town' ? '#28a745' : '#007bff',
+          weight: 2,
+          opacity: 0.8,
+          fillOpacity: 0.1
+        }).addTo(map);
+        
+        polygon.bindPopup(`📍 ${town.name}エリア`);
+        townBoundaries[townId] = polygon;
+      }
+    }
+
+    function clearTownBoundaries() {
+      Object.values(townBoundaries).forEach(boundary => {
+        if (boundary) map.removeLayer(boundary);
+      });
+      townBoundaries = {};
+    }
+
+    // 全島表示リセット
+    resetNavButton.addEventListener('click', () => {
+      map.setView([45.178269, 141.228528], 13);
+      
+      townSelect.value = '';
+      districtSelect.value = '';
+      areaSelect.value = '';
+      
+      districtStep.style.display = 'none';
+      areaStep.style.display = 'none';
+      resetNavButton.style.display = 'none';
+      currentLocation.style.display = 'none';
+      
+      clearTownBoundaries();
+    });
+
+    // 漁期管理機能
+    function loadSeasonStatus() {
+      const seasonStatus = document.getElementById('seasonStatus');
+      const seasonDetails = document.getElementById('seasonDetails');
+      
+      seasonStatus.innerHTML = '<div style="color: blue;">📅 漁期情報を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/fishing_season/status`)
+        .then(res => res.json())
+        .then(data => {
+          seasonStatus.className = `season-status ${data.status}`;
+          
+          let html = `<strong>${data.message}</strong><br>`;
+          
+          if (data.status === 'in_season') {
+            html += `進捗: ${data.progress}% (残り${data.days_remaining}日)`;
+          } else if (data.status === 'pre_season') {
+            html += `開始まで: ${data.days_until_start}日`;
+          } else if (data.status === 'post_season') {
+            html += `次期開始まで: ${data.days_until_next}日`;
+          }
+          
+          seasonStatus.innerHTML = html;
+          seasonDetails.innerHTML = '';
+        })
+        .catch(err => {
+          seasonStatus.innerHTML = '<div style="color: red;">✗ 漁期情報の取得に失敗しました</div>';
+        });
+    }
+
+    // 週間スケジュール表示
+    document.getElementById('weeklyScheduleButton').addEventListener('click', () => {
+      const seasonDetails = document.getElementById('seasonDetails');
+      seasonDetails.innerHTML = '<div style="color: blue;">📋 週間スケジュールを読み込み中...</div>';
+      
+      fetch(`${API_BASE}/fishing_season/schedule?type=weekly`)
+        .then(res => res.json())
+        .then(data => {
+          let html = '<div><strong>📋 今週のスケジュール</strong></div>';
+          
+          data.forEach(day => {
+            const workStatus = day.work_permitted ? '作業可能' : '作業不可';
+            const cssClass = day.work_permitted ? 'work-day' : 'rest-day';
+            const icon = day.work_permitted ? '✓' : '×';
+            
+            html += `
+              <div class="schedule-item ${cssClass}">
+                <strong>${day.date} (${day.day_of_week.substring(0,3)})</strong>
+                <span style="float: right;">${icon} ${workStatus}</span>
+                <br>
+                <small>${day.note || '4:00-16:00 昆布干し作業'}</small>
+              </div>
+            `;
+          });
+          
+          seasonDetails.innerHTML = html;
+        })
+        .catch(err => {
+          seasonDetails.innerHTML = '<div style="color: red;">✗ スケジュールの取得に失敗しました</div>';
+        });
+    });
+
+    // 休漁日管理
+    document.getElementById('restDaysButton').addEventListener('click', () => {
+      const seasonDetails = document.getElementById('seasonDetails');
+      seasonDetails.innerHTML = '<div style="color: blue;">🚫 休漁日情報を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/fishing_season/rest_days`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>🚫 休漁日管理</strong></div>
+            <div style="margin: 10px 0;">
+              <input type="date" id="newRestDate" style="padding: 5px; margin-right: 10px;">
+              <button onclick="addRestDay()" class="btn" style="padding: 5px 10px;">休漁日追加</button>
+            </div>
+            <div><strong>現在の休漁日 (${data.count}日):</strong></div>
+          `;
+          
+          if (data.rest_days.length === 0) {
+            html += '<div style="color: #666; font-style: italic;">休漁日は設定されていません</div>';
+          } else {
+            data.rest_days.forEach(restDay => {
+              html += `
+                <div class="schedule-item rest-day">
+                  <span>${restDay}</span>
+                  <button onclick="removeRestDay('${restDay}')" style="float: right; background: #dc3545; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer;">削除</button>
+                </div>
+              `;
+            });
+          }
+          
+          seasonDetails.innerHTML = html;
+        })
+        .catch(err => {
+          seasonDetails.innerHTML = '<div style="color: red;">✗ 休漁日情報の取得に失敗しました</div>';
+        });
+    });
+
+    // 漁期設定
+    document.getElementById('seasonConfigButton').addEventListener('click', () => {
+      const seasonDetails = document.getElementById('seasonDetails');
+      seasonDetails.innerHTML = '<div style="color: blue;">⚙️ 漁期設定を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/fishing_season/config`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>⚙️ 漁期設定</strong></div>
+            <div class="schedule-item">
+              <strong>漁期期間:</strong> ${data.season_period}<br>
+              <strong>作業時間:</strong> ${data.work_hours}<br>
+              <strong>休漁日数:</strong> ${data.rest_days_count}日<br>
+              <strong>通知設定:</strong> ${data.notifications_enabled.daily_forecast_time ? '有効' : '無効'}
+            </div>
+          `;
+          
+          seasonDetails.innerHTML = html;
+        })
+        .catch(err => {
+          seasonDetails.innerHTML = '<div style="color: red;">✗ 設定情報の取得に失敗しました</div>';
+        });
+    });
+
+    // 休漁日追加関数
+    function addRestDay() {
+      const dateInput = document.getElementById('newRestDate');
+      const date = dateInput.value;
+      
+      if (!date) {
+        alert('日付を選択してください');
+        return;
+      }
+      
+      fetch(`${API_BASE}/fishing_season/rest_days`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: date })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert('休漁日を追加しました');
+          document.getElementById('restDaysButton').click(); // 再読み込み
+          dateInput.value = '';
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(err => {
+        alert('休漁日の追加に失敗しました');
+      });
+    }
+
+    // 休漁日削除関数
+    function removeRestDay(dateStr) {
+      if (!confirm(`${dateStr}の休漁日を削除しますか？`)) return;
+      
+      fetch(`${API_BASE}/fishing_season/rest_days`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: `2024-${dateStr}` })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert('休漁日を削除しました');
+          document.getElementById('restDaysButton').click(); // 再読み込み
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(err => {
+        alert('休漁日の削除に失敗しました');
+      });
+    }
+
+    // 通知システム機能
+    function loadNotificationStatus() {
+      const notificationStatus = document.getElementById('notificationStatus');
+      const notificationDetails = document.getElementById('notificationDetails');
+      
+      notificationStatus.innerHTML = '<div style="color: blue;">🔔 通知システム状況を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/notifications/scheduler`)
+        .then(res => res.json())
+        .then(data => {
+          const status = data.running ? '🟢 稼働中' : '🔴 停止中';
+          const config = data.config;
+          
+          let html = `
+            <div><strong>システム状況:</strong> ${status}</div>
+            <div><strong>通知対象者:</strong> ${config.subscriber_count}名</div>
+            <div><strong>通知時刻:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li>翌日予報: ${config.notification_times.daily_forecast}</li>
+              <li>朝の警報: ${config.notification_times.morning_alert}</li>
+              <li>夕方まとめ: ${config.notification_times.evening_summary}</li>
+            </ul>
+          `;
+          
+          notificationStatus.innerHTML = html;
+          notificationDetails.innerHTML = '';
+        })
+        .catch(err => {
+          notificationStatus.innerHTML = '<div style="color: red;">✗ 通知システム状況の取得に失敗しました</div>';
+        });
+    }
+
+    document.getElementById('notificationConfigButton').addEventListener('click', () => {
+      const notificationDetails = document.getElementById('notificationDetails');
+      notificationDetails.innerHTML = '<div style="color: blue;">⚙️ 通知設定を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/notifications/config`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>⚙️ 通知時刻設定</strong></div>
+            <div style="margin: 10px 0;">
+              <div>翌日予報通知: 
+                <input type="time" id="dailyForecastTime" value="${data.notification_times.daily_forecast}">
+                <button onclick="updateNotificationTime('daily_forecast', document.getElementById('dailyForecastTime').value)" class="btn" style="padding: 2px 8px; margin-left: 5px;">更新</button>
+              </div>
+              <div style="margin-top: 5px;">朝の警報通知: 
+                <input type="time" id="morningAlertTime" value="${data.notification_times.morning_alert}">
+                <button onclick="updateNotificationTime('morning_alert', document.getElementById('morningAlertTime').value)" class="btn" style="padding: 2px 8px; margin-left: 5px;">更新</button>
+              </div>
+              <div style="margin-top: 5px;">夕方まとめ通知: 
+                <input type="time" id="eveningSummaryTime" value="${data.notification_times.evening_summary}">
+                <button onclick="updateNotificationTime('evening_summary', document.getElementById('eveningSummaryTime').value)" class="btn" style="padding: 2px 8px; margin-left: 5px;">更新</button>
+              </div>
+            </div>
+            <div style="margin-top: 15px;"><strong>📊 配信方法:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li>コンソール出力: ${data.delivery_methods.console ? '✓' : '✗'}</li>
+              <li>ファイル出力: ${data.delivery_methods.file ? '✓' : '✗'}</li>
+              <li>メール送信: ${data.delivery_methods.email ? '✓' : '✗'}</li>
+              <li>Webhook送信: ${data.delivery_methods.webhook ? '✓' : '✗'}</li>
+            </ul>
+          `;
+          
+          notificationDetails.innerHTML = html;
+        })
+        .catch(err => {
+          notificationDetails.innerHTML = '<div style="color: red;">✗ 設定情報の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('subscribersButton').addEventListener('click', () => {
+      const notificationDetails = document.getElementById('notificationDetails');
+      notificationDetails.innerHTML = '<div style="color: blue;">👥 通知対象者を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/notifications/subscribers`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>👥 通知対象者管理</strong></div>
+            <div style="margin: 10px 0;">
+              <input type="text" id="newSubscriberName" placeholder="名前" style="padding: 5px; margin-right: 5px;">
+              <input type="email" id="newSubscriberEmail" placeholder="メールアドレス（任意）" style="padding: 5px; margin-right: 5px;">
+              <button onclick="addSubscriber()" class="btn" style="padding: 5px 10px;">追加</button>
+            </div>
+            <div><strong>現在の通知対象者 (${data.subscribers.length}名):</strong></div>
+          `;
+          
+          if (data.subscribers.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">まだ通知対象者が登録されていません</div>';
+          } else {
+            html += '<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            data.subscribers.forEach(subscriber => {
+              const activeStatus = subscriber.active ? '🟢' : '🔴';
+              html += `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #eee;">
+                  <span>${activeStatus} ${subscriber.name} ${subscriber.email ? `(${subscriber.email})` : ''}</span>
+                  <button onclick="removeSubscriber(${subscriber.id})" class="btn btn-danger" style="padding: 2px 6px; font-size: 11px;">削除</button>
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+          
+          notificationDetails.innerHTML = html;
+        })
+        .catch(err => {
+          notificationDetails.innerHTML = '<div style="color: red;">✗ 通知対象者の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('testNotificationButton').addEventListener('click', () => {
+      const notificationDetails = document.getElementById('notificationDetails');
+      notificationDetails.innerHTML = '<div style="color: blue;">🧪 テスト通知を送信中...</div>';
+      
+      fetch(`${API_BASE}/notifications/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          notificationDetails.innerHTML = '<div style="color: green;">✓ テスト通知を送信しました</div>';
+        } else {
+          notificationDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+        }
+      })
+      .catch(err => {
+        notificationDetails.innerHTML = '<div style="color: red;">✗ テスト通知の送信に失敗しました</div>';
+      });
+    });
+
+    document.getElementById('schedulerButton').addEventListener('click', () => {
+      const notificationDetails = document.getElementById('notificationDetails');
+      
+      fetch(`${API_BASE}/notifications/scheduler`)
+        .then(res => res.json())
+        .then(data => {
+          const isRunning = data.running;
+          const action = isRunning ? 'DELETE' : 'POST';
+          const actionText = isRunning ? '停止' : '開始';
+          
+          if (confirm(`通知スケジューラーを${actionText}しますか？`)) {
+            notificationDetails.innerHTML = `<div style="color: blue;">🎯 スケジューラーを${actionText}中...</div>`;
+            
+            fetch(`${API_BASE}/notifications/scheduler`, { method: action })
+              .then(res => res.json())
+              .then(result => {
+                if (result.status === 'success') {
+                  notificationDetails.innerHTML = `<div style="color: green;">✓ ${result.message}</div>`;
+                  loadNotificationStatus(); // 状態更新
+                } else {
+                  notificationDetails.innerHTML = `<div style="color: red;">✗ ${result.message}</div>`;
+                }
+              })
+              .catch(err => {
+                notificationDetails.innerHTML = `<div style="color: red;">✗ スケジューラー${actionText}に失敗しました</div>`;
+              });
+          }
+        })
+        .catch(err => {
+          notificationDetails.innerHTML = '<div style="color: red;">✗ スケジューラー状態の取得に失敗しました</div>';
+        });
+    });
+
+    // 通知時刻更新関数
+    function updateNotificationTime(notificationType, newTime) {
+      if (!newTime) {
+        alert('時刻を選択してください');
+        return;
+      }
+      
+      fetch(`${API_BASE}/notifications/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          notification_type: notificationType, 
+          new_time: newTime 
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          loadNotificationStatus(); // 状態更新
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(err => {
+        alert('通知時刻の更新に失敗しました');
+      });
+    }
+
+    // 通知対象者追加関数
+    function addSubscriber() {
+      const nameInput = document.getElementById('newSubscriberName');
+      const emailInput = document.getElementById('newSubscriberEmail');
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      
+      if (!name) {
+        alert('名前を入力してください');
+        return;
+      }
+      
+      fetch(`${API_BASE}/notifications/subscribers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email: email || null })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          nameInput.value = '';
+          emailInput.value = '';
+          document.getElementById('subscribersButton').click(); // リロード
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(err => {
+        alert('通知対象者の追加に失敗しました');
+      });
+    }
+
+    // 通知対象者削除関数
+    function removeSubscriber(subscriberId) {
+      if (!confirm('この通知対象者を削除しますか？')) return;
+      
+      fetch(`${API_BASE}/notifications/subscribers`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriber_id: subscriberId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          document.getElementById('subscribersButton').click(); // リロード
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(err => {
+        alert('通知対象者の削除に失敗しました');
+      });
+    }
+
+    // システム監視機能
+    function loadSystemMonitorStatus() {
+      const systemMonitorStatus = document.getElementById('systemMonitorStatus');
+      const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+      
+      systemMonitorStatus.innerHTML = '<div style="color: blue;">🔍 システム監視状況を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/system/monitor`)
+        .then(res => res.json())
+        .then(data => {
+          const monitor = data.monitor_status;
+          const health = data.latest_health;
+          
+          const statusIcon = monitor.running ? '🟢' : '🔴';
+          const statusText = monitor.running ? '稼働中' : '停止中';
+          
+          let healthIcon = '❓';
+          let healthColor = 'gray';
+          if (health.overall_status === 'healthy') {
+            healthIcon = '💚';
+            healthColor = 'green';
+          } else if (health.overall_status === 'warning') {
+            healthIcon = '⚠️';
+            healthColor = 'orange';
+          } else if (health.overall_status === 'error') {
+            healthIcon = '🔴';
+            healthColor = 'red';
+          }
+          
+          let html = `
+            <div><strong>監視状況:</strong> ${statusIcon} ${statusText}</div>
+            <div><strong>システムヘルス:</strong> <span style="color: ${healthColor};">${healthIcon} ${health.overall_status}</span></div>
+            <div><strong>最終チェック:</strong> ${monitor.last_check ? new Date(monitor.last_check).toLocaleString() : 'なし'}</div>
+            <div><strong>監視間隔:</strong> ${monitor.config.interval}秒</div>
+          `;
+          
+          if (health.issues && health.issues.length > 0) {
+            html += `<div style="margin-top: 5px;"><strong>⚠️ 問題:</strong></div>`;
+            html += `<ul style="margin: 2px 0; padding-left: 15px; font-size: 11px;">`;
+            health.issues.forEach(issue => {
+              html += `<li style="color: red;">${issue}</li>`;
+            });
+            html += `</ul>`;
+          }
+          
+          systemMonitorStatus.innerHTML = html;
+          systemMonitorDetails.innerHTML = '';
+          
+          // ボタンテキストを更新
+          const toggleButton = document.getElementById('monitorToggleButton');
+          if (monitor.running) {
+            toggleButton.textContent = '⏸️ 監視停止';
+            toggleButton.className = 'btn btn-danger';
+          } else {
+            toggleButton.textContent = '▶️ 監視開始';
+            toggleButton.className = 'btn btn-secondary';
+          }
+        })
+        .catch(err => {
+          systemMonitorStatus.innerHTML = '<div style="color: red;">✗ システム監視状況の取得に失敗しました</div>';
+        });
+    }
+
+    document.getElementById('healthCheckButton').addEventListener('click', () => {
+      const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+      systemMonitorDetails.innerHTML = '<div style="color: blue;">💚 ヘルスチェック実行中...</div>';
+      
+      fetch(`${API_BASE}/system/health`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>💚 システムヘルスチェック結果</strong></div>
+            <div style="margin: 10px 0;">
+              <div><strong>総合ステータス:</strong> <span style="color: ${data.overall_status === 'healthy' ? 'green' : data.overall_status === 'warning' ? 'orange' : 'red'};">${data.overall_status}</span></div>
+              <div><strong>チェック時刻:</strong> ${new Date(data.timestamp).toLocaleString()}</div>
+            </div>
+          `;
+          
+          // メトリクス表示
+          if (data.metrics) {
+            html += `<div><strong>📊 システムメトリクス:</strong></div>`;
+            html += `<ul style="margin: 5px 0; padding-left: 15px; font-size: 11px;">`;
+            html += `<li>CPU使用率: ${data.metrics.cpu_usage?.toFixed(1)}%</li>`;
+            html += `<li>メモリ使用率: ${data.metrics.memory_usage?.toFixed(1)}% (空き: ${data.metrics.memory_available_gb?.toFixed(1)}GB)</li>`;
+            html += `<li>ディスク使用率: ${data.metrics.disk_usage?.toFixed(1)}% (空き: ${data.metrics.disk_free_gb?.toFixed(1)}GB)</li>`;
+            if (data.metrics.process_memory_mb) {
+              html += `<li>アプリメモリ: ${data.metrics.process_memory_mb?.toFixed(1)}MB</li>`;
+            }
+            html += `</ul>`;
+          }
+          
+          // エンドポイント状況
+          if (data.endpoints) {
+            html += `<div style="margin-top: 10px;"><strong>🌐 エンドポイント状況:</strong></div>`;
+            data.endpoints.forEach(endpoint => {
+              const statusIcon = endpoint.status === 'healthy' ? '✅' : endpoint.status === 'slow' ? '⚠️' : '❌';
+              const responseTime = endpoint.response_time ? ` (${(endpoint.response_time * 1000).toFixed(0)}ms)` : '';
+              html += `<div style="font-size: 11px;">${statusIcon} ${endpoint.endpoint.replace('http://localhost:8000', '')}${responseTime}</div>`;
+            });
+          }
+          
+          // ファイル状況
+          if (data.files) {
+            html += `<div style="margin-top: 10px;"><strong>📁 重要ファイル状況:</strong></div>`;
+            data.files.forEach(file => {
+              const statusIcon = file.status === 'ok' ? '✅' : '❌';
+              const sizeInfo = file.size_mb ? ` (${file.size_mb.toFixed(1)}MB)` : '';
+              html += `<div style="font-size: 11px;">${statusIcon} ${file.file}${sizeInfo}</div>`;
+            });
+          }
+          
+          // 問題がある場合
+          if (data.issues && data.issues.length > 0) {
+            html += `<div style="margin-top: 10px;"><strong>⚠️ 検出された問題:</strong></div>`;
+            html += `<ul style="margin: 5px 0; padding-left: 15px; font-size: 11px;">`;
+            data.issues.forEach(issue => {
+              html += `<li style="color: red;">${issue}</li>`;
+            });
+            html += `</ul>`;
+          }
+          
+          systemMonitorDetails.innerHTML = html;
+        })
+        .catch(err => {
+          systemMonitorDetails.innerHTML = '<div style="color: red;">✗ ヘルスチェックに失敗しました</div>';
+        });
+    });
+
+    document.getElementById('healthHistoryButton').addEventListener('click', () => {
+      const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+      systemMonitorDetails.innerHTML = '<div style="color: blue;">📈 ヘルス履歴を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/system/health/history?hours=24`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `<div><strong>📈 24時間ヘルス履歴 (${data.history.length}件)</strong></div>`;
+          
+          if (data.history.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">履歴データがありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            // 最新の10件を表示
+            const recentHistory = data.history.slice(-10).reverse();
+            recentHistory.forEach(record => {
+              const time = new Date(record.timestamp).toLocaleString();
+              const statusColor = record.overall_status === 'healthy' ? 'green' : record.overall_status === 'warning' ? 'orange' : 'red';
+              const statusIcon = record.overall_status === 'healthy' ? '💚' : record.overall_status === 'warning' ? '⚠️' : '🔴';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 5px 0; font-size: 11px;">
+                  <div><strong>${time}</strong> <span style="color: ${statusColor};">${statusIcon} ${record.overall_status}</span></div>
+              `;
+              
+              if (record.metrics) {
+                html += `<div style="margin-left: 10px; color: #666;">CPU: ${record.metrics.cpu_usage?.toFixed(1)}%, メモリ: ${record.metrics.memory_usage?.toFixed(1)}%, ディスク: ${record.metrics.disk_usage?.toFixed(1)}%</div>`;
+              }
+              
+              if (record.issues && record.issues.length > 0) {
+                html += `<div style="margin-left: 10px; color: red;">問題: ${record.issues.length}件</div>`;
+              }
+              
+              html += `</div>`;
+            });
+            
+            html += '</div>';
+            
+            if (data.history.length > 10) {
+              html += `<div style="font-size: 11px; color: #666; margin-top: 5px;">最新10件を表示中 (全${data.history.length}件)</div>`;
+            }
+          }
+          
+          systemMonitorDetails.innerHTML = html;
+        })
+        .catch(err => {
+          systemMonitorDetails.innerHTML = '<div style="color: red;">✗ ヘルス履歴の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('alertHistoryButton').addEventListener('click', () => {
+      const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+      systemMonitorDetails.innerHTML = '<div style="color: blue;">🚨 アラート履歴を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/system/alerts?hours=24`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `<div><strong>🚨 24時間アラート履歴 (${data.alerts.length}件)</strong></div>`;
+          
+          if (data.alerts.length === 0) {
+            html += '<div style="color: green; font-style: italic;">アラートはありません 👍</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            data.alerts.reverse().forEach(alert => {
+              const time = new Date(alert.timestamp).toLocaleString();
+              const severityColor = alert.severity === 'critical' ? 'red' : alert.severity === 'warning' ? 'orange' : 'blue';
+              const severityIcon = alert.severity === 'critical' ? '🔴' : alert.severity === 'warning' ? '⚠️' : 'ℹ️';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 5px 0; font-size: 11px;">
+                  <div><strong>${time}</strong> <span style="color: ${severityColor};">${severityIcon} ${alert.severity}</span></div>
+                  <div style="margin-left: 10px;">${alert.message}</div>
+                </div>
+              `;
+            });
+            
+            html += '</div>';
+          }
+          
+          systemMonitorDetails.innerHTML = html;
+        })
+        .catch(err => {
+          systemMonitorDetails.innerHTML = '<div style="color: red;">✗ アラート履歴の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('monitorConfigButton').addEventListener('click', () => {
+      const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+      systemMonitorDetails.innerHTML = '<div style="color: blue;">⚙️ 監視設定を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/system/config`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>⚙️ 監視設定</strong></div>
+            <div style="margin: 10px 0;">
+              <div><strong>監視間隔:</strong> ${data.monitoring_interval}秒</div>
+              <div><strong>監視エンドポイント数:</strong> ${data.endpoints_to_monitor.length}個</div>
+              <div><strong>監視ファイル数:</strong> ${data.files_to_monitor.length}個</div>
+            </div>
+            <div><strong>📊 警告しきい値:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li>CPU使用率: ${data.alert_thresholds.cpu_usage_max}%以上</li>
+              <li>メモリ使用率: ${data.alert_thresholds.memory_usage_max}%以上</li>
+              <li>ディスク使用率: ${data.alert_thresholds.disk_usage_max}%以上</li>
+              <li>レスポンス時間: ${data.alert_thresholds.response_time_max}秒以上</li>
+              <li>エラー回数: ${data.alert_thresholds.error_count_max}回/時間以上</li>
+            </ul>
+            <div style="margin-top: 10px;"><strong>🔔 アラート方法:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li>コンソール出力: ${data.alert_methods.console ? '✓' : '✗'}</li>
+              <li>ファイル出力: ${data.alert_methods.file ? '✓' : '✗'}</li>
+              <li>メール送信: ${data.alert_methods.email ? '✓' : '✗'}</li>
+              <li>Webhook送信: ${data.alert_methods.webhook ? '✓' : '✗'}</li>
+            </ul>
+          `;
+          
+          systemMonitorDetails.innerHTML = html;
+        })
+        .catch(err => {
+          systemMonitorDetails.innerHTML = '<div style="color: red;">✗ 監視設定の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('monitorToggleButton').addEventListener('click', () => {
+      const button = document.getElementById('monitorToggleButton');
+      const isStarting = button.textContent.includes('開始');
+      const method = isStarting ? 'POST' : 'DELETE';
+      const action = isStarting ? '開始' : '停止';
+      
+      if (confirm(`システム監視を${action}しますか？`)) {
+        const systemMonitorDetails = document.getElementById('systemMonitorDetails');
+        systemMonitorDetails.innerHTML = `<div style="color: blue;">🔍 監視を${action}中...</div>`;
+        
+        fetch(`${API_BASE}/system/monitor`, { method: method })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              systemMonitorDetails.innerHTML = `<div style="color: green;">✓ ${data.message}</div>`;
+              loadSystemMonitorStatus(); // 状態更新
+            } else {
+              systemMonitorDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+            }
+          })
+          .catch(err => {
+            systemMonitorDetails.innerHTML = `<div style="color: red;">✗ 監視${action}に失敗しました</div>`;
+          });
+      }
+    });
+
+    // バックアップシステム機能
+    function loadBackupStatus() {
+      const backupStatus = document.getElementById('backupStatus');
+      const backupDetails = document.getElementById('backupDetails');
+      
+      backupStatus.innerHTML = '<div style="color: blue;">💾 バックアップ状況を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/backup`)
+        .then(res => res.json())
+        .then(data => {
+          const status = data.status;
+          
+          const autoStatus = status.auto_backup_running ? '🟢 稼働中' : '🔴 停止中';
+          const lastBackup = status.last_backup ? new Date(status.last_backup).toLocaleString() : 'なし';
+          
+          let html = `
+            <div><strong>自動バックアップ:</strong> ${autoStatus}</div>
+            <div><strong>バックアップ数:</strong> ${status.backup_count}個</div>
+            <div><strong>総サイズ:</strong> ${status.total_size_mb.toFixed(1)}MB</div>
+            <div><strong>最終バックアップ:</strong> ${lastBackup}</div>
+          `;
+          
+          backupStatus.innerHTML = html;
+          backupDetails.innerHTML = '';
+          
+          // 自動バックアップボタンの更新
+          const autoToggleButton = document.getElementById('autoBackupToggleButton');
+          if (status.auto_backup_running) {
+            autoToggleButton.textContent = '⏸️ 自動停止';
+            autoToggleButton.className = 'btn btn-danger';
+          } else {
+            autoToggleButton.textContent = '▶️ 自動開始';
+            autoToggleButton.className = 'btn btn-secondary';
+          }
+        })
+        .catch(err => {
+          backupStatus.innerHTML = '<div style="color: red;">✗ バックアップ状況の取得に失敗しました</div>';
+        });
+    }
+
+    document.getElementById('createBackupButton').addEventListener('click', () => {
+      const backupDetails = document.getElementById('backupDetails');
+      
+      if (confirm('新しいバックアップを作成しますか？')) {
+        backupDetails.innerHTML = '<div style="color: blue;">📦 バックアップを作成中...</div>';
+        
+        fetch(`${API_BASE}/backup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ include_logs: true })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            const info = data.backup_info;
+            let html = `
+              <div style="color: green;"><strong>✓ バックアップ作成完了</strong></div>
+              <div style="margin: 10px 0;">
+                <div><strong>バックアップ名:</strong> ${info.backup_name}</div>
+                <div><strong>作成時刻:</strong> ${new Date(info.created_at).toLocaleString()}</div>
+                <div><strong>サイズ:</strong> ${info.size_mb}MB</div>
+                <div><strong>ファイル数:</strong> ${info.files.length}個</div>
+              </div>
+            `;
+            
+            // ファイル別詳細
+            const categories = ['critical', 'config', 'logs'];
+            categories.forEach(category => {
+              const categoryFiles = info.files.filter(f => f.category === category);
+              if (categoryFiles.length > 0) {
+                html += `<div style="margin-top: 5px;"><strong>${category}:</strong> ${categoryFiles.filter(f => f.backed_up).length}/${categoryFiles.length}ファイル</div>`;
+              }
+            });
+            
+            backupDetails.innerHTML = html;
+            loadBackupStatus(); // 状態更新
+          } else {
+            backupDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+          }
+        })
+        .catch(err => {
+          backupDetails.innerHTML = '<div style="color: red;">✗ バックアップ作成に失敗しました</div>';
+        });
+      }
+    });
+
+    document.getElementById('backupListButton').addEventListener('click', () => {
+      const backupDetails = document.getElementById('backupDetails');
+      backupDetails.innerHTML = '<div style="color: blue;">📋 バックアップ一覧を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/backup`)
+        .then(res => res.json())
+        .then(data => {
+          const backups = data.backups;
+          
+          let html = `<div><strong>📋 バックアップ一覧 (${backups.length}個)</strong></div>`;
+          
+          if (backups.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">バックアップがありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            backups.forEach(backup => {
+              const createdAt = new Date(backup.created_at).toLocaleString();
+              const compressionIcon = backup.is_compressed ? '📦' : '📁';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 5px 0; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <strong>${compressionIcon} ${backup.name}</strong><br>
+                      <span style="color: #666;">${createdAt} (${backup.size_mb}MB)</span>
+                    </div>
+                    <div>
+                      <button onclick="restoreBackup('${backup.name}')" class="btn" style="padding: 2px 6px; font-size: 10px; margin-right: 5px;">復元</button>
+                      <button onclick="deleteBackup('${backup.name}')" class="btn btn-danger" style="padding: 2px 6px; font-size: 10px;">削除</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            });
+            
+            html += '</div>';
+          }
+          
+          backupDetails.innerHTML = html;
+        })
+        .catch(err => {
+          backupDetails.innerHTML = '<div style="color: red;">✗ バックアップ一覧の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('autoBackupToggleButton').addEventListener('click', () => {
+      const button = document.getElementById('autoBackupToggleButton');
+      const isStarting = button.textContent.includes('開始');
+      const method = isStarting ? 'POST' : 'DELETE';
+      const action = isStarting ? '開始' : '停止';
+      
+      if (confirm(`自動バックアップを${action}しますか？`)) {
+        const backupDetails = document.getElementById('backupDetails');
+        backupDetails.innerHTML = `<div style="color: blue;">⏰ 自動バックアップを${action}中...</div>`;
+        
+        fetch(`${API_BASE}/backup/auto`, { method: method })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'success') {
+              backupDetails.innerHTML = `<div style="color: green;">✓ ${data.message}</div>`;
+              loadBackupStatus(); // 状態更新
+            } else {
+              backupDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+            }
+          })
+          .catch(err => {
+            backupDetails.innerHTML = `<div style="color: red;">✗ 自動バックアップ${action}に失敗しました</div>`;
+          });
+      }
+    });
+
+    document.getElementById('backupConfigButton').addEventListener('click', () => {
+      const backupDetails = document.getElementById('backupDetails');
+      backupDetails.innerHTML = '<div style="color: blue;">⚙️ バックアップ設定を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/backup/config`)
+        .then(res => res.json())
+        .then(data => {
+          let html = `
+            <div><strong>⚙️ バックアップ設定</strong></div>
+            <div style="margin: 10px 0;">
+              <div><strong>自動バックアップ:</strong> ${data.auto_backup_enabled ? '有効' : '無効'}</div>
+              <div><strong>バックアップ時刻:</strong> ${data.backup_time}</div>
+              <div><strong>最大保持数:</strong> ${data.max_backups}個</div>
+              <div><strong>圧縮:</strong> ${data.compress_backups ? '有効' : '無効'}</div>
+            </div>
+            <div><strong>📁 バックアップ対象:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li>重要ファイル: ${data.backup_targets.critical_files.length}個</li>
+              <li>設定ファイル: ${data.backup_targets.config_files.length}個</li>
+              <li>ログファイル: ${data.backup_targets.log_files.length}個</li>
+            </ul>
+            <div style="margin-top: 10px;"><strong>🔔 通知設定:</strong></div>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li>バックアップ完了通知: ${data.notification_on_backup ? '✓' : '✗'}</li>
+              <li>エラー通知: ${data.notification_on_error ? '✓' : '✗'}</li>
+            </ul>
+          `;
+          
+          backupDetails.innerHTML = html;
+        })
+        .catch(err => {
+          backupDetails.innerHTML = '<div style="color: red;">✗ バックアップ設定の取得に失敗しました</div>';
+        });
+    });
+
+    // バックアップ復元関数
+    function restoreBackup(backupName) {
+      if (!confirm(`バックアップ「${backupName}」から復元しますか？\n\n⚠️ 現在のファイルは上書きされます。\n既存ファイルは .backup 拡張子付きでバックアップされます。`)) {
+        return;
+      }
+      
+      const backupDetails = document.getElementById('backupDetails');
+      backupDetails.innerHTML = '<div style="color: blue;">🔄 バックアップを復元中...</div>';
+      
+      fetch(`${API_BASE}/backup/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          backup_name: backupName,
+          target_files: ['critical', 'config'] // ログは復元しない
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          const info = data.restore_info;
+          let html = `
+            <div style="color: green;"><strong>✓ 復元完了</strong></div>
+            <div style="margin: 10px 0;">
+              <div><strong>復元ファイル数:</strong> ${info.restored_files.length}個</div>
+              <div><strong>エラー数:</strong> ${info.errors.length}個</div>
+            </div>
+          `;
+          
+          if (info.restored_files.length > 0) {
+            html += '<div style="margin-top: 5px;"><strong>復元されたファイル:</strong></div>';
+            html += '<ul style="margin: 2px 0; padding-left: 15px; font-size: 11px;">';
+            info.restored_files.forEach(file => {
+              const actionText = file.action === 'replaced' ? '置換' : '作成';
+              html += `<li>${file.file} (${actionText})</li>`;
+            });
+            html += '</ul>';
+          }
+          
+          if (info.errors.length > 0) {
+            html += '<div style="margin-top: 5px;"><strong style="color: red;">エラー:</strong></div>';
+            html += '<ul style="margin: 2px 0; padding-left: 15px; font-size: 11px; color: red;">';
+            info.errors.forEach(error => {
+              html += `<li>${error.file}: ${error.error}</li>`;
+            });
+            html += '</ul>';
+          }
+          
+          html += '<div style="margin-top: 10px; color: orange;"><strong>⚠️ システムの再起動を推奨します</strong></div>';
+          
+          backupDetails.innerHTML = html;
+        } else {
+          backupDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+        }
+      })
+      .catch(err => {
+        backupDetails.innerHTML = '<div style="color: red;">✗ 復元に失敗しました</div>';
+      });
+    }
+
+    // バックアップ削除関数
+    function deleteBackup(backupName) {
+      if (!confirm(`バックアップ「${backupName}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+        return;
+      }
+      
+      fetch(`${API_BASE}/backup/${encodeURIComponent(backupName)}`, {
+        method: 'DELETE'
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert('バックアップを削除しました');
+          document.getElementById('backupListButton').click(); // リロード
+          loadBackupStatus(); // 状態更新
+        } else {
+          alert(`削除に失敗しました: ${data.message}`);
+        }
+      })
+      .catch(err => {
+        alert('削除に失敗しました');
+      });
+    }
+
+    // お気に入り管理機能
+    function loadFavoritesStatus() {
+      const favoritesStatus = document.getElementById('favoritesStatus');
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      
+      favoritesStatus.innerHTML = '<div style="color: blue;">⭐ お気に入り状況を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/favorites`)
+        .then(res => res.json())
+        .then(data => {
+          const summary = data.summary;
+          
+          let html = `
+            <div><strong>お気に入り干場:</strong> ${summary.total_count}/${summary.max_favorites}個</div>
+            <div><strong>クイックアクセス:</strong> ${summary.quick_access_count}/${summary.max_quick_access}個</div>
+            <div><strong>総アクセス数:</strong> ${summary.total_access_count}回</div>
+            <div><strong>平均アクセス数:</strong> ${summary.average_access_count}回/場所</div>
+          `;
+          
+          favoritesStatus.innerHTML = html;
+          favoritesDetails.innerHTML = '';
+          
+          // 現在選択中の干場がお気に入りかチェック
+          updateFavoriteButton();
+        })
+        .catch(err => {
+          favoritesStatus.innerHTML = '<div style="color: red;">✗ お気に入り状況の取得に失敗しました</div>';
+        });
+    }
+
+    function updateFavoriteButton() {
+      const addButton = document.getElementById('addFavoriteButton');
+      if (!currentSelectedSpot) {
+        addButton.textContent = '⭐ 干場を選択してください';
+        addButton.disabled = true;
+        return;
+      }
+
+      // お気に入り状態をチェック
+      fetch(`${API_BASE}/favorites`)
+        .then(res => res.json())
+        .then(data => {
+          const isFavorite = data.favorites.some(fav => fav.name === currentSelectedSpot);
+          if (isFavorite) {
+            addButton.textContent = '❌ お気に入りから削除';
+            addButton.className = 'btn btn-danger';
+          } else {
+            addButton.textContent = '⭐ お気に入りに追加';
+            addButton.className = 'btn';
+          }
+          addButton.disabled = false;
+        })
+        .catch(err => {
+          console.error('Favorites check error:', err);
+        });
+    }
+
+    document.getElementById('addFavoriteButton').addEventListener('click', () => {
+      if (!currentSelectedSpot) {
+        alert('干場を選択してください');
+        return;
+      }
+
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      
+      // 現在のお気に入り状態をチェック
+      fetch(`${API_BASE}/favorites`)
+        .then(res => res.json())
+        .then(data => {
+          const isFavorite = data.favorites.some(fav => fav.name === currentSelectedSpot);
+          
+          if (isFavorite) {
+            // 削除
+            if (confirm(`「${currentSelectedSpot}」をお気に入りから削除しますか？`)) {
+              favoritesDetails.innerHTML = '<div style="color: blue;">❌ お気に入りから削除中...</div>';
+              
+              fetch(`${API_BASE}/favorites`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spot_name: currentSelectedSpot })
+              })
+              .then(res => res.json())
+              .then(data => {
+                if (data.status === 'success') {
+                  favoritesDetails.innerHTML = `<div style="color: green;">✓ ${data.message}</div>`;
+                  loadFavoritesStatus();
+                  updateFavoriteButton();
+                } else {
+                  favoritesDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+                }
+              })
+              .catch(err => {
+                favoritesDetails.innerHTML = '<div style="color: red;">✗ 削除に失敗しました</div>';
+              });
+            }
+          } else {
+            // 追加
+            favoritesDetails.innerHTML = '<div style="color: blue;">⭐ お気に入りに追加中...</div>';
+            
+            const spotData = {
+              lat: map.getCenter().lat,
+              lon: map.getCenter().lng
+            };
+            
+            fetch(`${API_BASE}/favorites`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                spot_name: currentSelectedSpot,
+                spot_data: spotData
+              })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.status === 'success') {
+                favoritesDetails.innerHTML = `<div style="color: green;">✓ ${data.message}</div>`;
+                loadFavoritesStatus();
+                updateFavoriteButton();
+              } else {
+                favoritesDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+              }
+            })
+            .catch(err => {
+              favoritesDetails.innerHTML = '<div style="color: red;">✗ 追加に失敗しました</div>';
+            });
+          }
+        });
+    });
+
+    document.getElementById('quickAccessButton').addEventListener('click', () => {
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      favoritesDetails.innerHTML = '<div style="color: blue;">🚀 クイックアクセス一覧を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/favorites/quick`)
+        .then(res => res.json())
+        .then(data => {
+          const quickFavorites = data.quick_favorites;
+          
+          let html = `<div><strong>🚀 クイックアクセス (${quickFavorites.length}個)</strong></div>`;
+          
+          if (quickFavorites.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">クイックアクセス登録がありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            quickFavorites.forEach(fav => {
+              const lastAccessed = fav.last_accessed ? new Date(fav.last_accessed).toLocaleString() : 'なし';
+              const colorTag = fav.color_tag !== 'default' ? `🏷️${fav.color_tag}` : '';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 8px 0; font-size: 12px;">
+                  <div style="display: flex; justify-content: between; align-items: center;">
+                    <div style="flex: 1;">
+                      <strong>${colorTag} ${fav.name}</strong><br>
+                      <span style="color: #666;">アクセス数: ${fav.access_count}回 | 最終: ${lastAccessed}</span>
+                      ${fav.custom_note ? `<br><span style="color: #888; font-style: italic;">"${fav.custom_note}"</span>` : ''}
+                    </div>
+                    <div>
+                      <button onclick="jumpToFavorite('${fav.name}', ${fav.lat}, ${fav.lon})" class="btn" style="padding: 4px 8px; font-size: 11px;">移動</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            });
+            
+            html += '</div>';
+          }
+          
+          favoritesDetails.innerHTML = html;
+        })
+        .catch(err => {
+          favoritesDetails.innerHTML = '<div style="color: red;">✗ クイックアクセス一覧の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('favoritesListButton').addEventListener('click', () => {
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      favoritesDetails.innerHTML = '<div style="color: blue;">📋 お気に入り一覧を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/favorites`)
+        .then(res => res.json())
+        .then(data => {
+          const favorites = data.favorites;
+          
+          let html = `<div><strong>📋 お気に入り一覧 (${favorites.length}個)</strong></div>`;
+          
+          if (favorites.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">お気に入りがありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            favorites.forEach(fav => {
+              const addedAt = new Date(fav.added_at).toLocaleString();
+              const lastAccessed = fav.last_accessed ? new Date(fav.last_accessed).toLocaleString() : 'なし';
+              const colorTag = fav.color_tag !== 'default' ? `🏷️${fav.color_tag}` : '';
+              const quickIcon = fav.quick_access ? '🚀' : '';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 8px 0; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="flex: 1;">
+                      <strong>${quickIcon}${colorTag} ${fav.name}</strong><br>
+                      <span style="color: #666;">追加: ${addedAt}</span><br>
+                      <span style="color: #666;">アクセス: ${fav.access_count}回 | 最終: ${lastAccessed}</span>
+                      ${fav.custom_note ? `<br><span style="color: #888; font-style: italic;">"${fav.custom_note}"</span>` : ''}
+                    </div>
+                    <div>
+                      <button onclick="jumpToFavorite('${fav.name}', ${fav.lat}, ${fav.lon})" class="btn" style="padding: 2px 6px; font-size: 10px; margin-right: 3px;">移動</button>
+                      <button onclick="toggleQuickAccess('${fav.name}')" class="btn btn-secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 3px;">${fav.quick_access ? 'QA解除' : 'QA設定'}</button>
+                      <button onclick="removeFavorite('${fav.name}')" class="btn btn-danger" style="padding: 2px 6px; font-size: 10px;">削除</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            });
+            
+            html += '</div>';
+          }
+          
+          favoritesDetails.innerHTML = html;
+        })
+        .catch(err => {
+          favoritesDetails.innerHTML = '<div style="color: red;">✗ お気に入り一覧の取得に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('searchFavoritesButton').addEventListener('click', () => {
+      const query = prompt('検索キーワードを入力してください:');
+      if (!query || query.trim() === '') {
+        return;
+      }
+
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      favoritesDetails.innerHTML = '<div style="color: blue;">🔍 検索中...</div>';
+      
+      fetch(`${API_BASE}/favorites/search?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => {
+          const results = data.results;
+          
+          let html = `<div><strong>🔍 検索結果 "${query}" (${results.length}件)</strong></div>`;
+          
+          if (results.length === 0) {
+            html += '<div style="color: gray; font-style: italic;">該当するお気に入りが見つかりませんでした</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 5px;">';
+            
+            results.forEach(fav => {
+              const colorTag = fav.color_tag !== 'default' ? `🏷️${fav.color_tag}` : '';
+              const quickIcon = fav.quick_access ? '🚀' : '';
+              
+              html += `
+                <div style="border-bottom: 1px solid #eee; padding: 8px 0; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="flex: 1;">
+                      <strong>${quickIcon}${colorTag} ${fav.name}</strong><br>
+                      <span style="color: #666;">アクセス数: ${fav.access_count}回</span>
+                      ${fav.custom_note ? `<br><span style="color: #888; font-style: italic;">"${fav.custom_note}"</span>` : ''}
+                    </div>
+                    <div>
+                      <button onclick="jumpToFavorite('${fav.name}', ${fav.lat}, ${fav.lon})" class="btn" style="padding: 4px 8px; font-size: 11px;">移動</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            });
+            
+            html += '</div>';
+          }
+          
+          favoritesDetails.innerHTML = html;
+        })
+        .catch(err => {
+          favoritesDetails.innerHTML = '<div style="color: red;">✗ 検索に失敗しました</div>';
+        });
+    });
+
+    document.getElementById('favoritesExportButton').addEventListener('click', () => {
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      favoritesDetails.innerHTML = '<div style="color: blue;">📤 エクスポート中...</div>';
+      
+      fetch(`${API_BASE}/favorites/export`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            favoritesDetails.innerHTML = `
+              <div style="color: green;"><strong>✓ エクスポート完了</strong></div>
+              <div style="margin: 10px 0;">
+                <div><strong>ファイル名:</strong> ${data.filename}</div>
+                <div><strong>お気に入り数:</strong> ${data.count}個</div>
+              </div>
+              <div style="color: #666; font-size: 11px;">ファイルはアプリケーションディレクトリに保存されました</div>
+            `;
+          } else {
+            favoritesDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+          }
+        })
+        .catch(err => {
+          favoritesDetails.innerHTML = '<div style="color: red;">✗ エクスポートに失敗しました</div>';
+        });
+    });
+
+    document.getElementById('favoritesImportButton').addEventListener('click', () => {
+      const filename = prompt('インポートするファイル名を入力してください\n(例: konbu_favorites_export_20241201_120000.json):');
+      if (!filename || filename.trim() === '') {
+        return;
+      }
+
+      const mergeMode = confirm('既存のお気に入りとマージしますか？\n\n「OK」: マージ（重複は追加しない）\n「キャンセル」: 置換（既存を削除）');
+
+      const favoritesDetails = document.getElementById('favoritesDetails');
+      favoritesDetails.innerHTML = '<div style="color: blue;">📥 インポート中...</div>';
+      
+      fetch(`${API_BASE}/favorites/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          import_file: filename.trim(),
+          merge_mode: mergeMode
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          favoritesDetails.innerHTML = `
+            <div style="color: green;"><strong>✓ インポート完了</strong></div>
+            <div style="margin: 10px 0;">
+              <div>${data.message}</div>
+              <div><strong>インポート数:</strong> ${data.imported_count}個</div>
+              <div><strong>現在の総数:</strong> ${data.current_count}個</div>
+            </div>
+          `;
+          loadFavoritesStatus();
+        } else {
+          favoritesDetails.innerHTML = `<div style="color: red;">✗ ${data.message}</div>`;
+        }
+      })
+      .catch(err => {
+        favoritesDetails.innerHTML = '<div style="color: red;">✗ インポートに失敗しました</div>';
+      });
+    });
+
+    // お気に入り関連のグローバル関数
+    function jumpToFavorite(spotName, lat, lon) {
+      // 地図を移動
+      map.setView([lat, lon], 15);
+      
+      // 干場を選択状態にする
+      currentSelectedSpot = spotName;
+      updateSelectedSpotInfo();
+      updateFavoriteButton();
+      
+      // アクセス数を更新
+      fetch(`${API_BASE}/favorites/${encodeURIComponent(spotName)}/access`, {
+        method: 'POST'
+      })
+      .then(() => {
+        console.log(`Access count updated for ${spotName}`);
+      })
+      .catch(err => {
+        console.error('Access count update failed:', err);
+      });
+    }
+
+    function toggleQuickAccess(spotName) {
+      if (!confirm(`「${spotName}」のクイックアクセス設定を切り替えますか？`)) {
+        return;
+      }
+
+      fetch(`${API_BASE}/favorites/${encodeURIComponent(spotName)}/quick`, {
+        method: 'PUT'
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          document.getElementById('favoritesListButton').click(); // リロード
+          loadFavoritesStatus();
+        } else {
+          alert(`エラー: ${data.message}`);
+        }
+      })
+      .catch(err => {
+        alert('クイックアクセス設定の変更に失敗しました');
+      });
+    }
+
+    function removeFavorite(spotName) {
+      if (!confirm(`「${spotName}」をお気に入りから削除しますか？`)) {
+        return;
+      }
+
+      fetch(`${API_BASE}/favorites`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spot_name: spotName })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          document.getElementById('favoritesListButton').click(); // リロード
+          loadFavoritesStatus();
+          updateFavoriteButton();
+        } else {
+          alert(`エラー: ${data.message}`);
+        }
+      })
+      .catch(err => {
+        alert('お気に入りの削除に失敗しました');
+      });
+    }
+
+    // ヘルプ・マニュアル機能
+    function loadHelpContent() {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+          <h3>📖 利尻島昆布干場予報システム</h3>
+          <p>ようこそ！各機能の詳細については下のボタンからアクセスしてください。</p>
+        </div>
+      `;
+    }
+
+    // チュートリアル機能
+    document.getElementById('tutorialButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>🎯 システム使用チュートリアル</strong></div>
+        <div style="margin: 15px 0;">
+          <h4>📍 ステップ1: 干場の選択</h4>
+          <ol style="margin: 10px 0; padding-left: 20px;">
+            <li>地図上の📍マーカーをクリックして干場を選択</li>
+            <li>または「📍 地区選択ナビゲーション」でエリアを絞り込み</li>
+            <li>選択した干場の情報が右側に表示されます</li>
+          </ol>
+          
+          <h4>📊 ステップ2: 天気予報の確認</h4>
+          <ol style="margin: 10px 0; padding-left: 20px;">
+            <li>干場選択後、「📊 予報を見る」ボタンをクリック</li>
+            <li>5日間の詳細予報と干し適合度が表示されます</li>
+            <li>🟢良好 🟡注意 🟠難しい 🔴不適 で判定されます</li>
+          </ol>
+          
+          <h4>📝 ステップ3: 実績の記録</h4>
+          <ol style="margin: 10px 0; padding-left: 20px;">
+            <li>「📝 記録を入力」ボタンをクリック</li>
+            <li>実際の干し結果を「良好」「普通」「不良」から選択</li>
+            <li>記録データは自動学習に活用されます</li>
+          </ol>
+          
+          <h4>⭐ ステップ4: お気に入り機能の活用</h4>
+          <ol style="margin: 10px 0; padding-left: 20px;">
+            <li>よく使う干場は「⭐ お気に入り」に登録</li>
+            <li>クイックアクセスで素早く移動可能</li>
+            <li>使用頻度に応じて自動ソートされます</li>
+          </ol>
+          
+          <div style="background: #e8f5e8; padding: 10px; border-radius: 5px; margin-top: 15px;">
+            <strong>💡 ヒント:</strong> モバイルでは地図を2秒長押しで詳細メニューが表示されます
+          </div>
+        </div>
+      `;
+    });
+
+    // FAQ機能
+    document.getElementById('faqButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>❓ よくある質問（FAQ）</strong></div>
+        <div style="margin: 15px 0;">
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: 天気予報の精度はどの程度ですか？</h4>
+            <p><strong>A:</strong> Open-Meteo APIを使用し、利尻島の地域特性を考慮したアルゴリズムで判定しています。実際の記録データを学習することで精度が向上します。</p>
+          </div>
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: 新しい干場を追加するには？</h4>
+            <p><strong>A:</strong> モバイルでは地図を長押し（2秒）→「この位置を記録」を選択。PCでは地図をクリック後、座標を確認して手動で追加してください。</p>
+          </div>
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: 漁期以外でも使用できますか？</h4>
+            <p><strong>A:</strong> はい。システムは年中利用可能ですが、昆布漁期（6-9月）の管理機能が最適化されています。漁期設定は「📅 漁期管理」で変更可能です。</p>
+          </div>
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: データのバックアップは必要ですか？</h4>
+            <p><strong>A:</strong> 「💾 バックアップ」機能で定期的なデータ保存を推奨します。自動バックアップも設定可能で、重要なデータ保護に役立ちます。</p>
+          </div>
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: 複数の人で同じデータを共有できますか？</h4>
+            <p><strong>A:</strong> エクスポート・インポート機能を使用してデータ共有が可能です。お気に入りやバックアップファイルを他の利用者と共有できます。</p>
+          </div>
+          
+          <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+            <h4 style="color: #2c5f2d;">Q: 通知機能の設定方法は？</h4>
+            <p><strong>A:</strong> 「🔔 通知設定」から時刻や条件を設定できます。漁師のスケジュールに合わせて柔軟に調整可能です。</p>
+          </div>
+          
+          <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 15px;">
+            <strong>📞 その他のご質問:</strong> 下記の「📞 お問い合わせ」からご連絡ください
+          </div>
+        </div>
+      `;
+    });
+
+    // 機能ガイド
+    document.getElementById('featuresGuideButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>🛠️ 機能詳細ガイド</strong></div>
+        <div style="margin: 15px 0;">
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">📊 天気予報機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>5日間予報:</strong> 気温、湿度、風速、降水量の詳細情報</li>
+              <li><strong>干し適合度判定:</strong> 気象条件から昆布干しの適性を自動判定</li>
+              <li><strong>アルゴリズム:</strong> 気温22-28℃、湿度50-70%、風速1-3m/s、降水量0mmを理想条件として評価</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">📝 記録・学習機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>実績記録:</strong> 良好・普通・不良の3段階評価で記録</li>
+              <li><strong>自動学習:</strong> 記録データから地域特性を学習し予測精度を向上</li>
+              <li><strong>データ品質管理:</strong> 異常値の検出と除外で学習品質を維持</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">📅 漁期管理機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>作業スケジュール:</strong> 6-9月の漁期スケジュール管理</li>
+              <li><strong>休漁日設定:</strong> 定期休日や臨時休業日の登録</li>
+              <li><strong>進捗追跡:</strong> 現在の漁期進捗と残り期間の表示</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">🔔 通知システム</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>カスタム時刻:</strong> 漁師のスケジュールに合わせた通知時刻設定</li>
+              <li><strong>条件通知:</strong> 良好な気象条件時の自動アラート</li>
+              <li><strong>配信方法:</strong> コンソール、ファイル、メール、Webhook対応</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">⭐ お気に入り機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>クイックアクセス:</strong> 最大5つまでの高速アクセス設定</li>
+              <li><strong>使用統計:</strong> アクセス回数と最終利用日の追跡</li>
+              <li><strong>色分けタグ:</strong> 視覚的な分類管理（7色対応）</li>
+              <li><strong>検索・フィルタ:</strong> 名前やメモでの高速検索</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">🔍 システム監視</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>ヘルスチェック:</strong> CPU、メモリ、ディスク使用量の監視</li>
+              <li><strong>エンドポイント監視:</strong> APIの応答時間と可用性チェック</li>
+              <li><strong>アラート機能:</strong> 異常検出時の自動通知</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ddd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">💾 バックアップ機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>自動バックアップ:</strong> 毎日午前2時の定期実行</li>
+              <li><strong>データ圧縮:</strong> ZIP形式での効率的な保存</li>
+              <li><strong>選択復元:</strong> 必要なファイルのみの部分復元対応</li>
+              <li><strong>保持期間管理:</strong> 最大30個までの自動削除</li>
+            </ul>
+          </div>
+        </div>
+      `;
+    });
+
+    // 操作早見表
+    document.getElementById('quickRefButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>📋 操作早見表</strong></div>
+        <div style="margin: 15px 0;">
+          
+          <div style="background: #f8f9fa; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">🖱️ 基本操作</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <tr style="background: #e9ecef;"><th style="border: 1px solid #ddd; padding: 5px;">操作</th><th style="border: 1px solid #ddd; padding: 5px;">PC</th><th style="border: 1px solid #ddd; padding: 5px;">モバイル</th></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">干場選択</td><td style="border: 1px solid #ddd; padding: 5px;">📍マーカークリック</td><td style="border: 1px solid #ddd; padding: 5px;">📍マーカータップ</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">地図移動</td><td style="border: 1px solid #ddd; padding: 5px;">ドラッグ</td><td style="border: 1px solid #ddd; padding: 5px;">スワイプ</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">ズーム</td><td style="border: 1px solid #ddd; padding: 5px;">マウスホイール / +/-ボタン</td><td style="border: 1px solid #ddd; padding: 5px;">ピンチ / +/-ボタン</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">詳細メニュー</td><td style="border: 1px solid #ddd; padding: 5px;">右クリック</td><td style="border: 1px solid #ddd; padding: 5px;">2秒長押し</td></tr>
+            </table>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">⚡ ショートカット</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <tr style="background: #e9ecef;"><th style="border: 1px solid #ddd; padding: 5px;">機能</th><th style="border: 1px solid #ddd; padding: 5px;">ボタン</th><th style="border: 1px solid #ddd; padding: 5px;">説明</th></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">予報確認</td><td style="border: 1px solid #ddd; padding: 5px;">📊</td><td style="border: 1px solid #ddd; padding: 5px;">5日間の天気予報と適合度</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">記録入力</td><td style="border: 1px solid #ddd; padding: 5px;">📝</td><td style="border: 1px solid #ddd; padding: 5px;">実際の干し結果を記録</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">お気に入り</td><td style="border: 1px solid #ddd; padding: 5px;">⭐</td><td style="border: 1px solid #ddd; padding: 5px;">よく使う干場の管理</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">漁期管理</td><td style="border: 1px solid #ddd; padding: 5px;">📅</td><td style="border: 1px solid #ddd; padding: 5px;">作業スケジュール設定</td></tr>
+              <tr><td style="border: 1px solid #ddd; padding: 5px;">通知設定</td><td style="border: 1px solid #ddd; padding: 5px;">🔔</td><td style="border: 1px solid #ddd; padding: 5px;">アラート時刻の設定</td></tr>
+            </table>
+          </div>
+          
+          <div style="background: #f8f9fa; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #2c5f2d;">📱 モバイル専用機能</h4>
+            <ul style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li><strong>フローティングボタン:</strong> 右下の円形ボタンでクイックアクセス</li>
+              <li><strong>長押しメニュー:</strong> 地図を2秒長押しで詳細オプション表示</li>
+              <li><strong>自動レイアウト:</strong> 画面回転時に最適表示に自動調整</li>
+              <li><strong>タッチフレンドリー:</strong> 44px以上のタッチターゲットサイズ</li>
+            </ul>
+          </div>
+          
+          <div style="background: #e8f5e8; padding: 10px; border-radius: 5px; margin-top: 15px;">
+            <strong>💡 効率的な使い方:</strong>
+            <ol style="margin: 5px 0; padding-left: 20px; font-size: 11px;">
+              <li>よく使う干場は最初にお気に入り登録</li>
+              <li>クイックアクセス設定で素早いアクセス</li>
+              <li>記録を残して予測精度を向上</li>
+              <li>通知設定で見逃し防止</li>
+            </ol>
+          </div>
+        </div>
+      `;
+    });
+
+    // トラブルシューティング
+    document.getElementById('troubleshootButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>🔧 トラブル対応ガイド</strong></div>
+        <div style="margin: 15px 0;">
+          
+          <div style="border: 1px solid #ffc107; background: #fff3cd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #856404;">🚨 地図が表示されない場合</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>確認事項:</strong> インターネット接続を確認</li>
+              <li><strong>対処法:</strong> ページをリロード（F5キー）</li>
+              <li><strong>ブラウザ:</strong> Chrome、Firefox、Safari、Edge推奨</li>
+              <li><strong>キャッシュ:</strong> ブラウザキャッシュをクリア</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ffc107; background: #fff3cd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #856404;">📊 天気データが取得できない場合</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>原因:</strong> Open-Meteo APIへの接続問題</li>
+              <li><strong>対処法:</strong> 時間をおいて再試行</li>
+              <li><strong>確認:</strong> システム監視画面でエンドポイント状態を確認</li>
+              <li><strong>代替:</strong> 気象庁などの公式情報も併用推奨</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ffc107; background: #fff3cd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #856404;">📱 モバイルで操作しにくい場合</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>ズーム問題:</strong> ブラウザ設定でズーム100%に設定</li>
+              <li><strong>タッチ操作:</strong> 右下のフローティングボタンを活用</li>
+              <li><strong>表示問題:</strong> 画面を回転させて最適表示に調整</li>
+              <li><strong>動作重い:</strong> 他のアプリを終了してメモリを確保</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ffc107; background: #fff3cd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #856404;">💾 データ保存・読み込み問題</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>記録消失:</strong> バックアップ機能で定期保存を設定</li>
+              <li><strong>インポート失敗:</strong> ファイル形式がJSONか確認</li>
+              <li><strong>同期問題:</strong> エクスポート→インポートで手動同期</li>
+              <li><strong>容量不足:</strong> 古いバックアップを削除</li>
+            </ul>
+          </div>
+          
+          <div style="border: 1px solid #ffc107; background: #fff3cd; padding: 12px; margin: 10px 0; border-radius: 5px;">
+            <h4 style="color: #856404;">🔔 通知が届かない場合</h4>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>設定確認:</strong> 通知時刻と条件を再確認</li>
+              <li><strong>システム時刻:</strong> デバイスの時刻設定を確認</li>
+              <li><strong>権限:</strong> ブラウザの通知許可設定を確認</li>
+              <li><strong>手動確認:</strong> システム監視で動作状況を確認</li>
+            </ul>
+          </div>
+          
+          <div style="background: #dc3545; color: white; padding: 10px; border-radius: 5px; margin-top: 15px;">
+            <strong>🆘 緊急時の対応:</strong>
+            <ol style="margin: 5px 0; padding-left: 20px;">
+              <li>データバックアップの確認・作成</li>
+              <li>気象庁など公式情報源の併用</li>
+              <li>システム監視画面でエラーログ確認</li>
+              <li>必要に応じて管理者への連絡</li>
+            </ol>
+          </div>
+        </div>
+      `;
+    });
+
+    // お問い合わせ情報
+    document.getElementById('contactButton').addEventListener('click', () => {
+      const helpDetails = document.getElementById('helpDetails');
+      helpDetails.innerHTML = `
+        <div><strong>📞 お問い合わせ・サポート</strong></div>
+        <div style="margin: 15px 0;">
+          
+          <div style="background: #e8f5e8; border: 1px solid #4a8a5a; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            <h4 style="color: #2c5f2d;">🌊 利尻島昆布干場予報システム</h4>
+            <p><strong>システム名:</strong> 利尻島昆布干場予報システム</p>
+            <p><strong>対象地域:</strong> 北海道利尻島（利尻町・利尻富士町）</p>
+            <p><strong>対象産業:</strong> 昆布漁業・昆布加工業</p>
+            <p><strong>開発目的:</strong> 昆布干場の効率的な管理と天候予測支援</p>
+          </div>
+          
+          <div style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            <h4 style="color: #495057;">🛠️ 技術サポート</h4>
+            <p><strong>システム監視:</strong> 「🔍 システム監視」画面で状態確認</p>
+            <p><strong>バックアップ:</strong> 「💾 バックアップ」でデータ保護</p>
+            <p><strong>ログ確認:</strong> エラーメッセージをスクリーンショットで記録</p>
+            <p><strong>ブラウザ:</strong> Chrome、Firefox、Safari、Edge推奨</p>
+          </div>
+          
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            <h4 style="color: #856404;">📋 お問い合わせ時の情報</h4>
+            <p>以下の情報をお知らせいただけるとスムーズです：</p>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>発生日時:</strong> 問題が発生した日時</li>
+              <li><strong>操作内容:</strong> 何をしているときに問題が発生したか</li>
+              <li><strong>エラーメッセージ:</strong> 表示されたエラーの内容</li>
+              <li><strong>使用環境:</strong> デバイス（PC/スマートフォン/タブレット）</li>
+              <li><strong>ブラウザ:</strong> 使用しているブラウザの種類</li>
+              <li><strong>再現性:</strong> 同じ問題が再度発生するか</li>
+            </ul>
+          </div>
+          
+          <div style="background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            <h4 style="color: #155724;">💡 改善提案・要望</h4>
+            <p>システムの改善や新機能のご要望も歓迎します：</p>
+            <ul style="margin: 5px 0; padding-left: 20px;">
+              <li><strong>機能追加:</strong> こんな機能があれば便利</li>
+              <li><strong>操作改善:</strong> もっと使いやすくするには</li>
+              <li><strong>表示改善:</strong> 見た目や配置の改善案</li>
+              <li><strong>モバイル対応:</strong> スマートフォンでの使い勝手</li>
+              <li><strong>データ活用:</strong> 記録データの活用方法</li>
+            </ul>
+          </div>
+          
+          <div style="text-align: center; background: #f8f9fa; padding: 20px; border-radius: 5px; margin-top: 20px;">
+            <h4 style="color: #2c5f2d;">🤝 利尻島の昆布漁業発展のために</h4>
+            <p>このシステムは利尻島の昆布漁師の皆様の作業効率向上と<br>
+            品質の高い昆布生産を支援することを目的としています。</p>
+            <p><strong>皆様のご意見・ご要望をお聞かせください</strong></p>
+          </div>
+        </div>
+      `;
+    });
+
+    // グローバル関数（ポップアップから呼び出し用）
+    window.selectSpot = selectSpot;
+    window.addRestDay = addRestDay;
+    window.removeRestDay = removeRestDay;
+    window.updateNotificationTime = updateNotificationTime;
+    window.addSubscriber = addSubscriber;
+    window.removeSubscriber = removeSubscriber;
+    window.restoreBackup = restoreBackup;
+    window.deleteBackup = deleteBackup;
+    window.jumpToFavorite = jumpToFavorite;
+    window.toggleQuickAccess = toggleQuickAccess;
+    window.removeFavorite = removeFavorite;
+
+    // モバイル対応機能
+    function initMobileOptimizations() {
+      // デバイス検出
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isTouch = 'ontouchstart' in window;
+      
+      if (isMobile || isTouch) {
+        // モバイル向けマップ設定の調整
+        map.options.zoomControl = false; // デフォルトズームコントロールを無効化
+        
+        // カスタムズームコントロールを追加（タッチフレンドリー）
+        const customZoomControl = L.control.zoom({
+          position: 'bottomright'
+        });
+        customZoomControl.addTo(map);
+        
+        // タップ時の遅延を削除
+        map.options.tap = true;
+        if (map.tap) {
+          map.tap.enable();
+        }
+        
+        // 地図のダブルタップズームを調整
+        map.options.doubleClickZoom = true;
+        
+        // パンニングの慣性を有効化
+        map.options.inertia = true;
+        map.options.inertiaDeceleration = 2000;
+        
+        console.log('Mobile optimizations enabled');
+      }
+      
+      // 画面サイズ変更時の処理
+      let resizeTimeout;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          map.invalidateSize();
+          adjustMapHeight();
+        }, 250);
+      });
+      
+      // 画面回転時の処理
+      window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+          map.invalidateSize();
+          adjustMapHeight();
+        }, 500);
+      });
+      
+      // 初期マップ高さ調整
+      adjustMapHeight();
+    }
+
+    function adjustMapHeight() {
+      const mapElement = document.getElementById('map');
+      const windowHeight = window.innerHeight;
+      const windowWidth = window.innerWidth;
+      
+      // モバイルデバイスの場合、画面サイズに応じて地図の高さを動的調整
+      if (windowWidth <= 480) {
+        // 小画面（スマートフォン縦向き）
+        const headerHeight = document.querySelector('.header').offsetHeight;
+        const sidebarHeight = document.querySelector('.sidebar').offsetHeight;
+        const availableHeight = windowHeight - headerHeight - sidebarHeight - 60;
+        mapElement.style.height = Math.max(250, Math.min(400, availableHeight)) + 'px';
+      } else if (windowWidth <= 768) {
+        // 中画面（タブレット）
+        mapElement.style.height = '350px';
+      } else if (windowWidth <= 1024) {
+        // 大画面（タブレット横向き）
+        mapElement.style.height = '400px';
+      }
+      
+      // 地図サイズの再計算
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100);
+    }
+
+    // タッチ改善：長押しでコンテキストメニュー風の機能
+    function initTouchGestures() {
+      let touchTimer;
+      let touchStarted = false;
+      
+      map.on('touchstart', (e) => {
+        touchStarted = true;
+        touchTimer = setTimeout(() => {
+          if (touchStarted) {
+            // 長押し時の処理（2秒）
+            showQuickActions(e.latlng);
+          }
+        }, 2000);
+      });
+      
+      map.on('touchend touchcancel', () => {
+        touchStarted = false;
+        clearTimeout(touchTimer);
+      });
+      
+      map.on('touchmove', () => {
+        // ドラッグ開始時は長押しをキャンセル
+        touchStarted = false;
+        clearTimeout(touchTimer);
+      });
+    }
+
+    function showQuickActions(latlng) {
+      // 現在位置を記録
+      const lat = latlng.lat.toFixed(6);
+      const lon = latlng.lng.toFixed(6);
+      
+      // モバイル向けクイックアクションメニュー
+      const actions = [
+        '📍 この位置を記録',
+        '⭐ お気に入りに追加',
+        '🔍 詳細を表示',
+        '❌ キャンセル'
+      ];
+      
+      const choice = prompt(`位置: ${lat}, ${lon}\n\n選択してください：\n1. ${actions[0]}\n2. ${actions[1]}\n3. ${actions[2]}\n4. ${actions[3]}\n\n番号を入力してください (1-4):`);
+      
+      switch(choice) {
+        case '1':
+          // 新しい干場として追加
+          if (confirm(`新しい干場を追加しますか？\n緯度: ${lat}\n経度: ${lon}`)) {
+            addNewSpot(lat, lon);
+          }
+          break;
+        case '2':
+          // お気に入りに追加（近い干場があれば）
+          findNearestSpotAndAddToFavorites(latlng);
+          break;
+        case '3':
+          // 詳細表示
+          showLocationDetails(latlng);
+          break;
+        default:
+          // キャンセルまたは無効な入力
+          break;
+      }
+    }
+
+    function findNearestSpotAndAddToFavorites(latlng) {
+      let nearest = null;
+      let minDistance = Infinity;
+      
+      spots.forEach(spot => {
+        const distance = map.distance(latlng, [spot.lat, spot.lon]);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearest = spot;
+        }
+      });
+      
+      if (nearest && minDistance < 1000) { // 1km以内
+        const distanceText = Math.round(minDistance) + 'm';
+        if (confirm(`最寄りの干場「${nearest.name}」(${distanceText}先) をお気に入りに追加しますか？`)) {
+          currentSelectedSpot = nearest.name;
+          selectSpot(nearest.name);
+          // お気に入りパネルを開く
+          document.getElementById('favoritesButton').click();
+        }
+      } else {
+        alert('近くに登録済みの干場がありません。\n新しい干場として追加を検討してください。');
+      }
+    }
+
+    function showLocationDetails(latlng) {
+      const lat = latlng.lat.toFixed(6);
+      const lon = latlng.lng.toFixed(6);
+      
+      // 天気予報を取得して表示
+      fetch(`${API_BASE}/forecast?lat=${lat}&lon=${lon}&start_date=${new Date().toISOString().split('T')[0]}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.forecast && data.forecast.length > 0) {
+            const today = data.forecast[0];
+            const temp = today.temperature || 'データなし';
+            const humidity = today.humidity || 'データなし';
+            const wind = today.wind_speed || 'データなし';
+            
+            alert(`📍 位置の天気情報\n緯度: ${lat}\n経度: ${lon}\n\n🌡️ 気温: ${temp}°C\n💧 湿度: ${humidity}%\n💨 風速: ${wind}m/s`);
+          } else {
+            alert(`📍 位置情報\n緯度: ${lat}\n経度: ${lon}\n\n天気データを取得できませんでした。`);
+          }
+        })
+        .catch(err => {
+          alert(`📍 位置情報\n緯度: ${lat}\n経度: ${lon}\n\n天気データの取得に失敗しました。`);
+        });
+    }
+
+    function addNewSpot(lat, lon) {
+      const spotName = prompt('新しい干場の名前を入力してください:');
+      if (!spotName || spotName.trim() === '') {
+        return;
+      }
+      
+      // 新しい干場を追加
+      const newSpotData = {
+        name: spotName.trim(),
+        lat: parseFloat(lat),
+        lon: parseFloat(lon)
+      };
+      
+      fetch(`${API_BASE}/spots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSpotData)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.message && data.message.includes('成功')) {
+          alert('✅ 新しい干場を追加しました！');
+          loadSpots(); // 干場リストを再読み込み
+        } else {
+          alert('❌ 干場の追加に失敗しました');
+        }
+      })
+      .catch(err => {
+        alert('❌ 干場の追加に失敗しました');
+      });
+    }
+
+    // プルダウンメニューのモバイル最適化
+    function initMobileNavigation() {
+      // セレクトボックスにタッチフレンドリーなスタイルを追加
+      const selects = document.querySelectorAll('select');
+      selects.forEach(select => {
+        select.addEventListener('focus', function() {
+          this.style.fontSize = '16px'; // iOS Safari のズーム防止
+        });
+      });
+      
+      // フォーカス時のスクロール位置調整
+      const inputs = document.querySelectorAll('input, select, textarea');
+      inputs.forEach(input => {
+        input.addEventListener('focus', function() {
+          setTimeout(() => {
+            this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+        });
+      });
+    }
+
+    // パネル切り替えの改善（モバイル向け）
+    function initMobilePanelSwitching() {
+      // 現在開いているパネルを追跡
+      let currentPanel = null;
+      
+      // パネル切り替え時のスムーズスクロール
+      const panelButtons = document.querySelectorAll('#forecastButton, #recordButton, #adaptiveLearningButton, #seasonButton, #notificationButton, #favoritesButton, #systemMonitorButton, #backupButton');
+      
+      panelButtons.forEach(button => {
+        const originalClick = button.onclick;
+        button.addEventListener('click', function(e) {
+          // 元のクリック処理を実行
+          if (originalClick) {
+            originalClick.call(this, e);
+          }
+          
+          // モバイルではパネルまでスクロール
+          if (window.innerWidth <= 768) {
+            setTimeout(() => {
+              const activePanel = document.querySelector('.forecast-panel[style*="block"], .record-panel[style*="block"]');
+              if (activePanel) {
+                activePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }, 100);
+          }
+        });
+      });
+    }
+
+    // 初期読み込み時にモバイル最適化を有効化
+    function initAllMobileFeatures() {
+      initMobileOptimizations();
+      initTouchGestures();
+      initMobileNavigation();
+      initMobilePanelSwitching();
+      
+      // デバイス情報をコンソールに出力（デバッグ用）
+      console.log('Device info:', {
+        userAgent: navigator.userAgent,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        isTouch: 'ontouchstart' in window
+      });
+    }
+
+    // 初期読み込み
+    loadSpots();
+    
+    // モバイル最適化の初期化
+    initAllMobileFeatures();
+    
+    // ページ離脱時のクリーンアップ
+    window.addEventListener('beforeunload', () => {
+      stopSeaFogAutoUpdate();
+    });
+  </script>
+  
+  <!-- モバイル向けクイックアクションボタン -->
+  <div class="mobile-quick-actions" id="mobileQuickActions">
+    <button class="quick-action-btn" onclick="document.getElementById('helpButton').click()" title="ヘルプ">📖</button>
+    <button class="quick-action-btn" onclick="document.getElementById('favoritesButton').click()" title="お気に入り">⭐</button>
+    <button class="quick-action-btn" onclick="document.getElementById('forecastButton').click()" title="予報">📊</button>
+    <button class="quick-action-btn primary" onclick="toggleQuickActions()" title="メニュー">☰</button>
+  </div>
+  
+  <script>
+    // クイックアクションメニューの制御
+    function toggleQuickActions() {
+      const quickActions = document.getElementById('mobileQuickActions');
+      const isShow = quickActions.classList.contains('show');
+      
+      if (window.innerWidth <= 768) {
+        if (isShow) {
+          quickActions.classList.remove('show');
+        } else {
+          quickActions.classList.add('show');
+          // 5秒後に自動で隠す
+          setTimeout(() => {
+            quickActions.classList.remove('show');
+          }, 5000);
+        }
+      }
+    }
+    
+    // モバイルデバイスでは自動でクイックアクションを表示
+    if (window.innerWidth <= 768) {
+      setTimeout(() => {
+        document.getElementById('mobileQuickActions').classList.add('show');
+      }, 2000);
+    }
+
+    // 海霧予測関連機能
+    function loadSeaFogStatus() {
+      if (!selectedSpot) return;
+      
+      const seaFogStatus = document.getElementById('seaFogStatus');
+      seaFogStatus.innerHTML = '<div class="loading">海霧予測データを読み込み中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/dashboard?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}&hours=24`)
+        .then(res => res.json())
+        .then(data => {
+          displaySeaFogStatus(data);
+        })
+        .catch(err => {
+          console.error('海霧予測エラー:', err);
+          seaFogStatus.innerHTML = '<div style="color: red;">海霧予測データの取得に失敗しました</div>';
+        });
+    }
+
+    function displaySeaFogStatus(data) {
+      const seaFogStatus = document.getElementById('seaFogStatus');
+      
+      if (data.error) {
+        seaFogStatus.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+        return;
+      }
+      
+      const summary = data.summary || {};
+      const maxRisk = summary.max_probability || 0;
+      const workRisk = summary.work_hours_average || 0;
+      const recommendation = summary.work_recommendation || '不明';
+      const trend = summary.trend || '不明';
+      
+      // リスク色の決定
+      let riskColor = '#28a745'; // 緑
+      if (maxRisk >= 0.8) riskColor = '#dc3545'; // 赤
+      else if (maxRisk >= 0.6) riskColor = '#fd7e14'; // オレンジ
+      else if (maxRisk >= 0.3) riskColor = '#ffc107'; // 黄
+      
+      seaFogStatus.innerHTML = `
+        <div><strong>🌫️ 海霧リスク状況</strong></div>
+        <div style="margin: 8px 0;">
+          <strong>最大確率:</strong> 
+          <span style="color: ${riskColor}; font-weight: bold;">${(maxRisk * 100).toFixed(1)}%</span>
+        </div>
+        <div style="margin: 8px 0;">
+          <strong>作業時間平均:</strong> ${(workRisk * 100).toFixed(1)}%
+        </div>
+        <div style="margin: 8px 0;">
+          <strong>推奨:</strong> ${recommendation}
+        </div>
+        <div style="margin: 8px 0;">
+          <strong>傾向:</strong> ${trend}
+        </div>
+        <div style="font-size: 11px; color: #6c757d;">
+          ${data.generated_at ? `更新: ${new Date(data.generated_at).toLocaleString()}` : ''}
+        </div>
+      `;
+    }
+
+    // 各ボタンのイベントリスナー追加
+    document.addEventListener('DOMContentLoaded', () => {
+      // ダッシュボードボタン
+      const fogDashboardButton = document.getElementById('fogDashboardButton');
+      if (fogDashboardButton) {
+        fogDashboardButton.addEventListener('click', () => {
+          loadSeaFogDashboard();
+        });
+      }
+
+      // 時系列チャートボタン
+      const fogTimelineButton = document.getElementById('fogTimelineButton');
+      if (fogTimelineButton) {
+        fogTimelineButton.addEventListener('click', () => {
+          generateSeaFogTimeline();
+        });
+      }
+
+      // リスクマップボタン
+      const fogHeatmapButton = document.getElementById('fogHeatmapButton');
+      if (fogHeatmapButton) {
+        fogHeatmapButton.addEventListener('click', () => {
+          generateSeaFogHeatmap();
+        });
+      }
+
+      // 要因分析ボタン
+      const fogFactorsButton = document.getElementById('fogFactorsButton');
+      if (fogFactorsButton) {
+        fogFactorsButton.addEventListener('click', () => {
+          generateSeaFogFactors();
+        });
+      }
+
+      // 地点比較ボタン
+      const fogComparisonButton = document.getElementById('fogComparisonButton');
+      if (fogComparisonButton) {
+        fogComparisonButton.addEventListener('click', () => {
+          generateSeaFogComparison();
+        });
+      }
+
+      // 地図レイヤーボタン
+      const fogMapLayerButton = document.getElementById('fogMapLayerButton');
+      if (fogMapLayerButton) {
+        fogMapLayerButton.addEventListener('click', () => {
+          toggleSeaFogMapLayer();
+        });
+      }
+
+      // アラートボタン
+      const fogAlertsButton = document.getElementById('fogAlertsButton');
+      if (fogAlertsButton) {
+        fogAlertsButton.addEventListener('click', () => {
+          showSeaFogAlerts();
+        });
+      }
+
+      // 観測記録ボタン
+      const fogObservationButton = document.getElementById('fogObservationButton');
+      if (fogObservationButton) {
+        fogObservationButton.addEventListener('click', () => {
+          showSeaFogObservation();
+        });
+      }
+    });
+
+    function loadSeaFogDashboard() {
+      if (!selectedSpot) {
+        alert('干場を選択してください');
+        return;
+      }
+      
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">ダッシュボードデータを読み込み中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/dashboard?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}&hours=24`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          displaySeaFogDashboard(data);
+        })
+        .catch(err => {
+          console.error('ダッシュボードエラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">ダッシュボードの読み込みに失敗しました</div>';
+        });
+    }
+
+    function displaySeaFogDashboard(data) {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      const timeline = data.timeline_data || [];
+      const riskDistribution = data.risk_distribution || {};
+      
+      let html = '<div><strong>📊 海霧予測ダッシュボード</strong></div>';
+      
+      // リスク分布
+      html += '<div style="margin: 10px 0;"><strong>リスク分布 (24時間):</strong></div>';
+      html += '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; font-size: 11px;">';
+      Object.entries(riskDistribution).forEach(([level, count]) => {
+        html += `<div>• ${level}: ${count}時間</div>`;
+      });
+      html += '</div>';
+      
+      // 作業時間帯のデータ
+      const workHours = data.work_hours_data || [];
+      if (workHours.length > 0) {
+        html += '<div style="margin: 10px 0;"><strong>作業時間帯 (4-16時):</strong></div>';
+        html += '<div style="max-height: 150px; overflow-y: auto; font-size: 11px;">';
+        workHours.forEach(hour => {
+          const riskColor = hour.probability >= 0.6 ? '#dc3545' : 
+                           hour.probability >= 0.3 ? '#ffc107' : '#28a745';
+          html += `<div style="margin: 2px 0;">
+            ${hour.hour}時: <span style="color: ${riskColor}">${(hour.probability * 100).toFixed(1)}%</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+      
+      seaFogDetails.innerHTML = html;
+    }
+
+    function generateSeaFogTimeline() {
+      if (!selectedSpot) {
+        alert('干場を選択してください');
+        return;
+      }
+      
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">時系列チャートを生成中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/predict?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}&hours=24`)
+        .then(res => res.json())
+        .then(predictionData => {
+          if (predictionData.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${predictionData.error}</div>`;
+            return;
+          }
+          
+          return fetch(`${API_BASE}/sea_fog/charts/timeline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prediction_data: predictionData })
+          });
+        })
+        .then(res => res.json())
+        .then(chartResult => {
+          if (chartResult.status === 'success') {
+            seaFogDetails.innerHTML = `
+              <div><strong>📈 時系列チャート生成完了</strong></div>
+              <div style="margin: 10px 0;">
+                <a href="${API_BASE}/sea_fog/charts/${chartResult.chart_path.split('/').pop()}" target="_blank" class="btn btn-secondary">
+                  📊 チャートを表示
+                </a>
+              </div>
+              <div style="font-size: 11px; color: #6c757d;">
+                データポイント: ${chartResult.data_points}個
+              </div>
+            `;
+          } else {
+            seaFogDetails.innerHTML = `<div style="color: red;">チャート生成エラー: ${chartResult.error}</div>`;
+          }
+        })
+        .catch(err => {
+          console.error('チャート生成エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">チャートの生成に失敗しました</div>';
+        });
+    }
+
+    function generateSeaFogHeatmap() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">リスクマップを生成中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/spots?hours=12`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          return fetch(`${API_BASE}/sea_fog/charts/heatmap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ spot_predictions: data.spot_predictions })
+          });
+        })
+        .then(res => res.json())
+        .then(chartResult => {
+          if (chartResult.status === 'success') {
+            seaFogDetails.innerHTML = `
+              <div><strong>🗺️ リスクマップ生成完了</strong></div>
+              <div style="margin: 10px 0;">
+                <a href="${API_BASE}/sea_fog/charts/${chartResult.chart_path.split('/').pop()}" target="_blank" class="btn btn-secondary">
+                  🗺️ マップを表示
+                </a>
+              </div>
+              <div style="font-size: 11px; color: #6c757d;">
+                分析地点: ${chartResult.spots_analyzed}箇所
+              </div>
+            `;
+          } else {
+            seaFogDetails.innerHTML = `<div style="color: red;">マップ生成エラー: ${chartResult.error}</div>`;
+          }
+        })
+        .catch(err => {
+          console.error('マップ生成エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">リスクマップの生成に失敗しました</div>';
+        });
+    }
+
+    // 海霧地図レイヤー機能
+    function toggleSeaFogMapLayer() {
+      const button = document.getElementById('fogMapLayerButton');
+      
+      if (seaFogLayer && map.hasLayer(seaFogLayer)) {
+        // レイヤーを削除
+        map.removeLayer(seaFogLayer);
+        if (seaFogLayerControl) {
+          map.removeControl(seaFogLayerControl);
+          seaFogLayerControl = null;
+        }
+        seaFogLayer = null;
+        button.textContent = '🗺️ 地図レイヤー';
+        button.style.backgroundColor = '';
+      } else {
+        // レイヤーを追加
+        loadSeaFogMapLayer();
+      }
+    }
+
+    function loadSeaFogMapLayer() {
+      const button = document.getElementById('fogMapLayerButton');
+      button.textContent = '⏳ 読み込み中...';
+      button.disabled = true;
+      
+      // 利尻島周辺の主要地点の海霧データを取得
+      const keyPoints = [
+        { name: '鴛泊港', lat: 45.242, lon: 141.231 },
+        { name: '仙法志港', lat: 45.136, lon: 141.211 },
+        { name: '沓形', lat: 45.210, lon: 141.200 },
+        { name: '鬼脇', lat: 45.180, lon: 141.270 },
+        { name: '利尻山麓', lat: 45.178, lon: 141.228 }
+      ];
+      
+      Promise.all(
+        keyPoints.map(point => 
+          fetch(`${API_BASE}/sea_fog/dashboard?lat=${point.lat}&lon=${point.lon}&hours=12`)
+            .then(res => res.json())
+            .then(data => ({ ...point, fogData: data }))
+            .catch(err => ({ ...point, fogData: { error: err.message } }))
+        )
+      )
+      .then(results => {
+        createSeaFogOverlay(results);
+        button.textContent = '🌫️ レイヤーON';
+        button.style.backgroundColor = '#007bff';
+        button.style.color = 'white';
+        button.disabled = false;
+      })
+      .catch(err => {
+        console.error('海霧データ取得エラー:', err);
+        alert('海霧データの取得に失敗しました');
+        button.textContent = '🗺️ 地図レイヤー';
+        button.disabled = false;
+      });
+    }
+
+    function createSeaFogOverlay(fogPoints) {
+      seaFogLayer = L.layerGroup();
+      
+      fogPoints.forEach(point => {
+        if (point.fogData && !point.fogData.error) {
+          const summary = point.fogData.summary || {};
+          const maxRisk = summary.max_probability || 0;
+          const workRisk = summary.work_hours_average || 0;
+          
+          // リスクレベルに応じた色とサイズ
+          let color, opacity, radius;
+          if (maxRisk >= 0.8) {
+            color = '#dc3545'; // 赤
+            opacity = 0.8;
+            radius = 2000;
+          } else if (maxRisk >= 0.6) {
+            color = '#fd7e14'; // オレンジ
+            opacity = 0.7;
+            radius = 1500;
+          } else if (maxRisk >= 0.3) {
+            color = '#ffc107'; // 黄
+            opacity = 0.6;
+            radius = 1000;
+          } else {
+            color = '#28a745'; // 緑
+            opacity = 0.4;
+            radius = 800;
+          }
+          
+          // 円形オーバーレイを作成
+          const circle = L.circle([point.lat, point.lon], {
+            color: color,
+            fillColor: color,
+            fillOpacity: opacity * 0.3,
+            opacity: opacity,
+            radius: radius,
+            weight: 2
+          });
+          
+          // ポップアップ情報
+          const popupContent = `
+            <div style="font-size: 12px;">
+              <strong>🌫️ ${point.name} 海霧予測</strong><br>
+              <strong>最大確率:</strong> <span style="color: ${color}">${(maxRisk * 100).toFixed(1)}%</span><br>
+              <strong>作業時間平均:</strong> ${(workRisk * 100).toFixed(1)}%<br>
+              <strong>推奨:</strong> ${summary.work_recommendation || '不明'}<br>
+              <strong>傾向:</strong> ${summary.trend || '不明'}
+            </div>
+          `;
+          
+          circle.bindPopup(popupContent);
+          
+          // 中心にマーカーを配置
+          const fogIcon = L.divIcon({
+            html: `<div style="
+              background: ${color};
+              border: 2px solid white;
+              border-radius: 50%;
+              width: 16px;
+              height: 16px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-size: 10px;
+              font-weight: bold;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            ">${Math.round(maxRisk * 100)}</div>`,
+            iconSize: [16, 16],
+            className: 'fog-risk-marker'
+          });
+          
+          const marker = L.marker([point.lat, point.lon], { icon: fogIcon });
+          marker.bindPopup(popupContent);
+          
+          seaFogLayer.addLayer(circle);
+          seaFogLayer.addLayer(marker);
+        }
+      });
+      
+      // 地図にレイヤーを追加
+      seaFogLayer.addTo(map);
+      
+      // レイヤーコントロールを追加
+      createSeaFogLayerControl();
+      
+      // データをキャッシュ
+      seaFogDataCache = fogPoints;
+    }
+
+    function createSeaFogLayerControl() {
+      seaFogLayerControl = L.control({ position: 'topright' });
+      
+      seaFogLayerControl.onAdd = function() {
+        const div = L.DomUtil.create('div', 'sea-fog-control');
+        div.style.cssText = `
+          background: white;
+          padding: 8px;
+          border-radius: 4px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          font-size: 11px;
+          min-width: 140px;
+        `;
+        
+        div.innerHTML = `
+          <div style="font-weight: bold; margin-bottom: 4px;">🌫️ 海霧リスク</div>
+          <div style="display: flex; align-items: center; margin: 2px 0;">
+            <div style="width: 12px; height: 12px; background: #dc3545; border-radius: 50%; margin-right: 4px;"></div>
+            <span>危険 (80%+)</span>
+          </div>
+          <div style="display: flex; align-items: center; margin: 2px 0;">
+            <div style="width: 12px; height: 12px; background: #fd7e14; border-radius: 50%; margin-right: 4px;"></div>
+            <span>警戒 (60%+)</span>
+          </div>
+          <div style="display: flex; align-items: center; margin: 2px 0;">
+            <div style="width: 12px; height: 12px; background: #ffc107; border-radius: 50%; margin-right: 4px;"></div>
+            <span>注意 (30%+)</span>
+          </div>
+          <div style="display: flex; align-items: center; margin: 2px 0;">
+            <div style="width: 12px; height: 12px; background: #28a745; border-radius: 50%; margin-right: 4px;"></div>
+            <span>正常 (30%未満)</span>
+          </div>
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid #ddd; font-size: 10px; color: #666;">
+            更新: ${new Date().toLocaleTimeString()}
+          </div>
+          <button onclick="refreshSeaFogLayer()" style="
+            width: 100%;
+            margin-top: 4px;
+            padding: 2px 4px;
+            font-size: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+          ">🔄 更新</button>
+        `;
+        
+        // クリックイベントの伝播を停止
+        L.DomEvent.disableClickPropagation(div);
+        
+        return div;
+      };
+      
+      seaFogLayerControl.addTo(map);
+    }
+
+    function refreshSeaFogLayer() {
+      if (seaFogLayer) {
+        map.removeLayer(seaFogLayer);
+        if (seaFogLayerControl) {
+          map.removeControl(seaFogLayerControl);
+          seaFogLayerControl = null;
+        }
+        seaFogLayer = null;
+      }
+      loadSeaFogMapLayer();
+    }
+
+    // グローバル関数として追加
+    window.refreshSeaFogLayer = refreshSeaFogLayer;
+
+    // 海霧アラートシステム関数
+    function showSeaFogAlerts() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">アラートシステムを読み込み中...</div>';
+      
+      loadAlertSystemStatus();
+    }
+
+    function loadAlertSystemStatus() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      
+      fetch(`${API_BASE}/sea_fog/alerts/status`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          displayAlertSystemStatus(data);
+        })
+        .catch(err => {
+          console.error('アラートシステム状態エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">アラートシステム状態の取得に失敗しました</div>';
+        });
+    }
+
+    function displayAlertSystemStatus(status) {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      
+      const monitoringStatus = status.monitoring_active ? '🟢 稼働中' : '🔴 停止中';
+      const lastCheck = status.last_check ? new Date(status.last_check).toLocaleString() : '未実行';
+      
+      let html = `
+        <div><strong>🚨 海霧アラートシステム</strong></div>
+        <div style="margin: 10px 0;">
+          <div><strong>監視状況:</strong> ${monitoringStatus}</div>
+          <div><strong>最終チェック:</strong> ${lastCheck}</div>
+          <div><strong>アクティブアラート:</strong> ${status.active_alerts_count}件</div>
+          <div><strong>購読者:</strong> ${status.subscribers_count}名</div>
+          <div><strong>監視ゾーン:</strong> ${status.zones_monitored}箇所</div>
+          <div><strong>チェック間隔:</strong> ${status.check_interval}分</div>
+        </div>
+        
+        <div style="margin: 15px 0;">
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px;">
+            <button onclick="toggleAlertMonitoring()" class="btn" style="font-size: 11px; padding: 5px;">
+              ${status.monitoring_active ? '⏹️ 監視停止' : '▶️ 監視開始'}
+            </button>
+            <button onclick="runManualAlertCheck()" class="btn btn-secondary" style="font-size: 11px; padding: 5px;">
+              🔍 手動チェック
+            </button>
+            <button onclick="showActiveAlerts()" class="btn btn-secondary" style="font-size: 11px; padding: 5px;">
+              🚨 現在のアラート
+            </button>
+            <button onclick="showAlertHistory()" class="btn btn-secondary" style="font-size: 11px; padding: 5px;">
+              📋 履歴
+            </button>
+            <button onclick="showAlertSubscribers()" class="btn btn-secondary" style="font-size: 11px; padding: 5px;">
+              👥 購読者管理
+            </button>
+            <button onclick="testAlertSystem()" class="btn btn-secondary" style="font-size: 11px; padding: 5px;">
+              🧪 テスト
+            </button>
+          </div>
+        </div>
+      `;
+      
+      seaFogDetails.innerHTML = html;
+    }
+
+    function toggleAlertMonitoring() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">監視状態を変更中...</div>';
+      
+      // 現在の状態を取得して切り替え
+      fetch(`${API_BASE}/sea_fog/alerts/monitoring`)
+        .then(res => res.json())
+        .then(status => {
+          const method = status.monitoring_active ? 'DELETE' : 'POST';
+          
+          return fetch(`${API_BASE}/sea_fog/alerts/monitoring`, { method: method });
+        })
+        .then(res => res.json())
+        .then(result => {
+          if (result.status) {
+            seaFogDetails.innerHTML = `<div style="color: green;">✓ ${result.message}</div>`;
+            setTimeout(loadAlertSystemStatus, 2000);
+          } else {
+            seaFogDetails.innerHTML = `<div style="color: red;">✗ ${result.error || '操作に失敗しました'}</div>`;
+          }
+        })
+        .catch(err => {
+          console.error('監視状態変更エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">監視状態の変更に失敗しました</div>';
+        });
+    }
+
+    function runManualAlertCheck() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">手動チェックを実行中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/alerts/check`, { method: 'POST' })
+        .then(res => res.json())
+        .then(result => {
+          if (result.status === 'completed') {
+            let html = `
+              <div style="color: green;"><strong>✓ チェック完了</strong></div>
+              <div style="margin: 10px 0;">
+                <div><strong>チェック済みゾーン:</strong> ${result.zones_checked}箇所</div>
+                <div><strong>生成されたアラート:</strong> ${result.alerts_generated}件</div>
+                <div><strong>チェック時刻:</strong> ${new Date(result.check_time).toLocaleString()}</div>
+              </div>
+            `;
+            
+            if (result.alerts && result.alerts.length > 0) {
+              html += '<div><strong>生成されたアラート:</strong></div>';
+              result.alerts.forEach(alert => {
+                html += `<div style="margin: 5px 0; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
+                  <strong>${alert.zone}</strong>: ${alert.summary.message}
+                </div>`;
+              });
+            }
+            
+            seaFogDetails.innerHTML = html;
+            setTimeout(loadAlertSystemStatus, 3000);
+          } else {
+            seaFogDetails.innerHTML = `<div style="color: red;">✗ ${result.error || 'チェックに失敗しました'}</div>`;
+          }
+        })
+        .catch(err => {
+          console.error('手動チェックエラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">手動チェックに失敗しました</div>';
+        });
+    }
+
+    function showActiveAlerts() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">アクティブアラートを読み込み中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/alerts/active`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          let html = `<div><strong>🚨 アクティブアラート (${data.count}件)</strong></div>`;
+          
+          if (data.count === 0) {
+            html += '<div style="color: green; margin: 10px 0;">現在アクティブなアラートはありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; margin: 10px 0;">';
+            data.alerts.forEach(alert => {
+              const alertTime = new Date(alert.timestamp).toLocaleString();
+              const riskLevel = alert.alert_level === 'danger' ? '🔴' : 
+                              alert.alert_level === 'watch' ? '🟠' : '🟡';
+              
+              html += `
+                <div style="margin: 5px 0; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 11px;">
+                  <div><strong>${riskLevel} ${alert.zone}</strong></div>
+                  <div>${alert.summary.message}</div>
+                  <div style="color: #666; margin-top: 3px;">
+                    ${alertTime} | 最大リスク: ${(alert.risk_assessment.max_probability * 100).toFixed(1)}%
+                  </div>
+                  <div style="margin-top: 5px;">
+                    <strong>推奨事項:</strong><br>
+                    ${alert.recommendations.slice(0, 2).join('<br>')}
+                  </div>
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+          
+          html += '<button onclick="loadAlertSystemStatus()" class="btn" style="margin-top: 10px; font-size: 11px;">戻る</button>';
+          seaFogDetails.innerHTML = html;
+        })
+        .catch(err => {
+          console.error('アクティブアラート取得エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">アクティブアラートの取得に失敗しました</div>';
+        });
+    }
+
+    function showAlertHistory() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">アラート履歴を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/alerts/history?days=7`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          let html = `<div><strong>📋 アラート履歴 (${data.period_days}日間・${data.count}件)</strong></div>`;
+          
+          if (data.count === 0) {
+            html += '<div style="color: gray; margin: 10px 0;">アラート履歴がありません</div>';
+          } else {
+            html += '<div style="max-height: 300px; overflow-y: auto; margin: 10px 0;">';
+            data.alerts.reverse().forEach(alert => {
+              const alertTime = new Date(alert.timestamp).toLocaleString();
+              const riskLevel = alert.alert_level === 'danger' ? '🔴' : 
+                              alert.alert_level === 'watch' ? '🟠' : '🟡';
+              
+              html += `
+                <div style="margin: 3px 0; padding: 5px; border-bottom: 1px solid #eee; font-size: 10px;">
+                  <strong>${riskLevel} ${alert.zone}</strong> - ${alertTime}<br>
+                  ${alert.summary.message} (${(alert.risk_assessment.max_probability * 100).toFixed(1)}%)
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+          
+          html += '<button onclick="loadAlertSystemStatus()" class="btn" style="margin-top: 10px; font-size: 11px;">戻る</button>';
+          seaFogDetails.innerHTML = html;
+        })
+        .catch(err => {
+          console.error('アラート履歴取得エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">アラート履歴の取得に失敗しました</div>';
+        });
+    }
+
+    function showAlertSubscribers() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">購読者情報を読み込み中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/alerts/subscribers`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            seaFogDetails.innerHTML = `<div style="color: red;">エラー: ${data.error}</div>`;
+            return;
+          }
+          
+          let html = `
+            <div><strong>👥 アラート購読者管理 (${data.count}名)</strong></div>
+            <div style="margin: 10px 0;">
+              <input type="text" id="newSubscriberName" placeholder="名前" style="padding: 3px; font-size: 11px; margin-right: 5px;">
+              <button onclick="addAlertSubscriber()" class="btn" style="font-size: 10px; padding: 3px 6px;">追加</button>
+            </div>
+          `;
+          
+          if (data.count === 0) {
+            html += '<div style="color: gray; margin: 10px 0;">購読者がいません</div>';
+          } else {
+            html += '<div style="max-height: 200px; overflow-y: auto; margin: 10px 0;">';
+            data.subscribers.forEach(subscriber => {
+              const activeStatus = subscriber.alert_preferences?.active ? '🟢' : '🔴';
+              const minLevel = subscriber.alert_preferences?.minimum_level || 'warning';
+              
+              html += `
+                <div style="margin: 3px 0; padding: 5px; border: 1px solid #ddd; border-radius: 3px; font-size: 11px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>${activeStatus} ${subscriber.name} (${minLevel})</span>
+                    <button onclick="removeAlertSubscriber(${subscriber.id})" class="btn btn-danger" style="font-size: 9px; padding: 2px 4px;">削除</button>
+                  </div>
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+          
+          html += '<button onclick="loadAlertSystemStatus()" class="btn" style="margin-top: 10px; font-size: 11px;">戻る</button>';
+          seaFogDetails.innerHTML = html;
+        })
+        .catch(err => {
+          console.error('購読者取得エラー:', err);
+          seaFogDetails.innerHTML = '<div style="color: red;">購読者情報の取得に失敗しました</div>';
+        });
+    }
+
+    function addAlertSubscriber() {
+      const name = document.getElementById('newSubscriberName').value.trim();
+      if (!name) {
+        alert('名前を入力してください');
+        return;
+      }
+      
+      const subscriberData = {
+        name: name,
+        contact_info: { type: 'manual' },
+        alert_preferences: {
+          minimum_level: 'warning',
+          zones: ['oshidomari', 'senposhi'],
+          notification_methods: ['console', 'file'],
+          active: true
+        }
+      };
+      
+      fetch(`${API_BASE}/sea_fog/alerts/subscribers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscriberData)
+      })
+      .then(res => res.json())
+      .then(result => {
+        if (result.status === 'success') {
+          alert('購読者を追加しました');
+          showAlertSubscribers();
+        } else {
+          alert(result.error || '購読者の追加に失敗しました');
+        }
+      })
+      .catch(err => {
+        console.error('購読者追加エラー:', err);
+        alert('購読者の追加に失敗しました');
+      });
+    }
+
+    function removeAlertSubscriber(subscriberId) {
+      if (!confirm('この購読者を削除しますか？')) return;
+      
+      fetch(`${API_BASE}/sea_fog/alerts/subscribers`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriber_id: subscriberId })
+      })
+      .then(res => res.json())
+      .then(result => {
+        if (result.status === 'success') {
+          alert('購読者を削除しました');
+          showAlertSubscribers();
+        } else {
+          alert(result.error || '購読者の削除に失敗しました');
+        }
+      })
+      .catch(err => {
+        console.error('購読者削除エラー:', err);
+        alert('購読者の削除に失敗しました');
+      });
+    }
+
+    function testAlertSystem() {
+      const seaFogDetails = document.getElementById('seaFogDetails');
+      seaFogDetails.innerHTML = '<div class="loading">テストアラートを生成中...</div>';
+      
+      fetch(`${API_BASE}/sea_fog/alerts/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zone: 'oshidomari' })
+      })
+      .then(res => res.json())
+      .then(result => {
+        if (result.status === 'success') {
+          seaFogDetails.innerHTML = `
+            <div style="color: green;"><strong>✓ テストアラート生成完了</strong></div>
+            <div style="margin: 10px 0;">
+              <div><strong>アラートID:</strong> ${result.alert.id}</div>
+              <div><strong>メッセージ:</strong> ${result.alert.summary.message}</div>
+              <div><strong>リスクレベル:</strong> ${result.alert.alert_level}</div>
+            </div>
+            <button onclick="loadAlertSystemStatus()" class="btn" style="margin-top: 10px; font-size: 11px;">戻る</button>
+          `;
+        } else {
+          seaFogDetails.innerHTML = `<div style="color: red;">✗ ${result.error || 'テストに失敗しました'}</div>`;
+        }
+      })
+      .catch(err => {
+        console.error('テストアラートエラー:', err);
+        seaFogDetails.innerHTML = '<div style="color: red;">テストアラートの生成に失敗しました</div>';
+      });
+    }
+
+    // グローバル関数として追加
+    window.toggleAlertMonitoring = toggleAlertMonitoring;
+    window.runManualAlertCheck = runManualAlertCheck;
+    window.showActiveAlerts = showActiveAlerts;
+    window.showAlertHistory = showAlertHistory;
+    window.showAlertSubscribers = showAlertSubscribers;
+    window.addAlertSubscriber = addAlertSubscriber;
+    window.removeAlertSubscriber = removeAlertSubscriber;
+    window.testAlertSystem = testAlertSystem;
+    window.loadAlertSystemStatus = loadAlertSystemStatus;
+
+    function submitFogObservation() {
+      if (!selectedSpot) return;
+      
+      const datetime = document.getElementById('fogObsDateTime').value;
+      const fogRadios = document.getElementsByName('fogObserved');
+      let fogObserved = null;
+      
+      for (let radio of fogRadios) {
+        if (radio.checked) {
+          fogObserved = radio.value === 'true';
+          break;
+        }
+      }
+      
+      if (!datetime) {
+        alert('観測日時を入力してください');
+        return;
+      }
+      
+      if (fogObserved === null) {
+        alert('海霧の有無を選択してください');
+        return;
+      }
+      
+      const observationData = {
+        lat: selectedSpot.lat,
+        lon: selectedSpot.lon,
+        datetime: datetime,
+        fog_observed: fogObserved,
+        conditions: {
+          spot_name: selectedSpot.name,
+          observer: 'manual_entry'
+        }
+      };
+      
+      fetch(`${API_BASE}/sea_fog/observation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(observationData)
+      })
+      .then(res => res.json())
+      .then(data => {
+        const result = document.getElementById('fogObsResult');
+        if (data.status === 'success') {
+          result.innerHTML = '<div style="color: green;">✓ 観測記録を保存しました</div>';
+          document.getElementById('fogObsDateTime').value = '';
+          document.getElementsByName('fogObserved').forEach(r => r.checked = false);
+        } else {
+          result.innerHTML = `<div style="color: red;">✗ 保存に失敗しました: ${data.message}</div>`;
+        }
+      })
+      .catch(err => {
+        console.error('観測記録エラー:', err);
+        document.getElementById('fogObsResult').innerHTML = '<div style="color: red;">✗ 保存に失敗しました</div>';
+      });
+    }
+  </script>
+</body>
+</html>

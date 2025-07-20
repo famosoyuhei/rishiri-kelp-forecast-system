@@ -1,0 +1,40 @@
+# Core Web Framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+
+# Data Science and Machine Learning
+pandas==2.0.3
+numpy==1.24.3
+scikit-learn==1.3.0
+joblib==1.3.2
+
+# HTTP Requests
+requests==2.31.0
+
+# Scientific Computing
+scipy==1.11.1
+
+# Data Visualization
+matplotlib==3.7.2
+seaborn==0.12.2
+
+# Scheduling and Background Tasks
+schedule==1.2.0
+
+# Environment Management
+python-dotenv==1.0.0
+
+# OpenAI API (optional)
+openai==0.27.8
+
+# Email functionality (optional)
+# smtplib (built-in)
+
+# Additional utilities
+datetime  # built-in
+json      # built-in
+os        # built-in
+threading # built-in
+time      # built-in
+typing    # built-in
+warnings  # built-in

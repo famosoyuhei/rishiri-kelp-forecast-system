@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>干場マップ with 予報＆記録</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-providers/leaflet-providers.js"></script>
+  <style>
+    #map { height: 600px; }
+    #controlPanel {
+      margin: 10px 0;
+    }
+    #saveCancelButtons {
+      margin-top: 5px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>利尻島 干場マップ</h2>
+  <div id="controlPanel">
+    <button id="addModeButton">＋ 新規干場を追加</button>
+    <div id="saveCancelButtons">
+      <span id="newSpotName"></span>
+      <button id="saveSpot">保存</button>
+      <button id="cancelSpot">キャンセル</button>
+      <iframe id="windyFrame" width="650" height="450" frameborder="0"></iframe>
+
+    </div>
+  </div>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map').setView([45.170, 141.150], 12);  // 利尻島全体をカバー
+    L.tileLayer.provider('Esri.WorldImagery').addTo(map);
+
+    let spots = [];
+    let addMode = false;
+    let tempMarker = null;
+    let tempName = '';
+
+    fetch('http://localhost:8000/spots')
+      .then(res => res.json())
+      .then(data => {
+        spots = data;
+        spots.forEach(spot => {
+          const popup = `
+            <b>${spot.name}</b><br>
+            <button onclick="checkForecast('${spot.name}')">干せる予報</button>
+            <button onclick="recordDrying('${spot.name}')">記録をつける</button><br>
+            <button onclick="deleteSpot('${spot.name}')">削除</button>
+          `;
+          L.marker([spot.lat, spot.lon]).addTo(map).bindPopup(popup);
+        });
+      });
+
+    document.getElementById("addModeButton").onclick = () => {
+      addMode = true;
+      alert("地図上の場所をクリックして干場を仮登録してください。");
+    };
+
+    document.getElementById("saveSpot").onclick = () => {
+      if (!tempName || !tempMarker) return;
+      fetch('http://localhost:8000/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: tempName, lat: tempMarker.getLatLng().lat, lon: tempMarker.getLatLng().lng })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert('干場を登録しました');
+
+          const csvLink = document.createElement('a');
+          csvLink.href = 'http://localhost:8000/download/csv';
+          csvLink.download = 'hoshiba_spots.csv';
+          csvLink.click();
+
+          const kmlLink = document.createElement('a');
+          kmlLink.href = 'http://localhost:8000/download/kml';
+          kmlLink.download = 'hoshiba_spots_named.kml';
+          kmlLink.click();
+
+          location.reload();
+        } else {
+          alert('登録に失敗しました');
+        }
+      });
+    };
+
+    document.getElementById("cancelSpot").onclick = () => {
+      if (tempMarker) map.removeLayer(tempMarker);
+      document.getElementById("saveCancelButtons").style.display = 'none';
+      tempMarker = null;
+      tempName = '';
+      addMode = false;
+    };
+
+    map.on('click', function(e) {
+      if (!addMode) return;
+      if (tempMarker) map.removeLayer(tempMarker);
+      const lat = e.latlng.lat.toFixed(6);
+      const lon = e.latlng.lng.toFixed(6);
+      const latPart = lat.split('.')[1].substring(0, 4);
+      const lonPart = lon.split('.')[1].substring(0, 4);
+      tempName = `H_${latPart}_${lonPart}`;
+      tempMarker = L.marker([lat, lon]).addTo(map);
+      tempMarker.bindPopup(`${tempName}<br>(${lat}, ${lon})`).openPopup();
+      document.getElementById("newSpotName").textContent = tempName;
+      document.getElementById("saveCancelButtons").style.display = 'inline-block';
+    });
+
+    function checkForecast(name) {
+      const spot = spots.find(s => s.name === name);
+      if (!spot) return alert("干場情報が見つかりません");
+      const url = `http://localhost:8000/forecast?name=${name}&lat=${spot.lat}&lon=${spot.lon}`;
+      fetch(url)
+        .then(res => res.json())
+        .then(data => alert(`${name} の予報結果: ${data.result}`));
+    }
+
+    function recordDrying(name) {
+      const date = prompt("記録日を入力してください (例: 2025-06-22)");
+      if (!date) return;
+
+      fetch(`http://localhost:8000/get_record?name=${name}&date=${date}`)
+        .then(res => res.json())
+        .then(data => {
+          let initial = data.result || "";
+          let choice = prompt(`記録（空欄可）\n1. 完全乾燥\n2. 中止\n3. 干したが完全には乾かせなかった（泣）`, initial);
+          if (!choice) return;
+
+          const result =
+            choice === "1" ? "完全乾燥" :
+            choice === "2" ? "中止" :
+            choice === "3" ? "干したが完全には乾かせなかった（泣）" :
+            choice;
+
+          const confirm1 = confirm(`記録内容：${name} / ${date} / ${result}\nこの記録を提出しますか？`);
+          if (!confirm1) return;
+
+          fetch("http://localhost:8000/record", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, date, result })
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.status === "success") {
+                alert("記録を保存しました");
+              } else {
+                alert("記録の保存に失敗しました");
+              }
+            });
+        });
+    }
+
+    function deleteSpot(name) {
+      if (!confirm(`${name} を削除してもよろしいですか？`)) return;
+
+      fetch('http://localhost:8000/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      })
+      .then(res => res.json())
+      .then(data => {
+        alert(data.status === 'success' ? '削除しました' : '削除に失敗しました');
+        if (data.status === 'success') location.reload();
+      });
+    }
+    function showWindyMap(lat, lon) {
+      const windyUrl = `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&width=650&height=450&zoom=10&level=surface&overlay=wind&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+      document.getElementById("windyFrame").src = windyUrl;
+    }
+  </script>
+  <!-- 🔵 Chatbot UI -->
+<div id="chat-container" style="position: fixed; bottom: 20px; right: 20px; width: 300px; z-index: 9999; font-family: sans-serif;">
+  <div style="background-color: #444; color: white; padding: 10px; border-radius: 8px 8px 0 0;">🤖 コンブAIチャット</div>
+  <div id="chat-log" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: white;"></div>
+  <div style="display: flex;">
+    <input id="chat-input" type="text" placeholder="質問を入力…" style="flex: 1; padding: 5px;">
+    <button onclick="sendChat()" style="padding: 5px 10px;">送信</button>
+  </div>
+</div>
+
+<script>
+function sendChat() {
+  const input = document.getElementById("chat-input");
+  const log = document.getElementById("chat-log");
+  const message = input.value.trim();
+  if (!message) return;
+
+  log.innerHTML += `<div><strong>あなた:</strong> ${message}</div>`;
+  input.value = "";
+
+  fetch("http://localhost:8000/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message })
+  })
+  .then(res => res.json())
+  .then(data => {
+    log.innerHTML += `<div><strong>コンブAI:</strong> ${data.reply}</div>`;
+    log.scrollTop = log.scrollHeight;
+  })
+  .catch(err => {
+    log.innerHTML += `<div><strong>エラー:</strong> 応答が得られませんでした</div>`;
+  });
+}
+
+</script>
+</body>
+</html>

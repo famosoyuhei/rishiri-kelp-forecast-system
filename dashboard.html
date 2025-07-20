@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場予報システム - 統合ダッシュボード</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            color: white;
+        }
+
+        .card-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-healthy { background-color: #27ae60; }
+        .status-warning { background-color: #f39c12; }
+        .status-critical { background-color: #e74c3c; }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .action-button {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .action-button.urgent {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+
+        .action-button.urgent:hover {
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #fee;
+            color: #c0392b;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 8px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+
+        .alert-item.danger {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+
+        .alert-item.watch {
+            background: #d1ecf1;
+            border-left-color: #17a2b8;
+        }
+
+        .refresh-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 50px;
+            font-size: 1em;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .refresh-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .quick-actions {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>🌊 利尻島昆布干場予報システム</h1>
+            <p>統合ダッシュボード - リアルタイム監視・分析</p>
+            <p id="lastUpdate">最終更新: 読み込み中...</p>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- システム概要カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #3498db;">⚙️</div>
+                    <div class="card-title">システム概要</div>
+                </div>
+                <div id="systemOverview" class="loading">データを読み込み中...</div>
+            </div>
+
+            <!-- 天気概要カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #f39c12;">🌤️</div>
+                    <div class="card-title">天気概要</div>
+                </div>
+                <div id="weatherSummary" class="loading">データを読み込み中...</div>
+            </div>
+
+            <!-- 海霧状況カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #9b59b6;">🌫️</div>
+                    <div class="card-title">海霧状況</div>
+                </div>
+                <div id="seaFogStatus" class="loading">データを読み込み中...</div>
+            </div>
+
+            <!-- 漁期状況カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #27ae60;">🎣</div>
+                    <div class="card-title">漁期状況</div>
+                </div>
+                <div id="fishingSeasonStatus" class="loading">データを読み込み中...</div>
+            </div>
+
+            <!-- 通知概要カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #e74c3c;">📢</div>
+                    <div class="card-title">通知概要</div>
+                </div>
+                <div id="notificationSummary" class="loading">データを読み込み中...</div>
+            </div>
+
+            <!-- パフォーマンス指標カード -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #34495e;">📊</div>
+                    <div class="card-title">パフォーマンス指標</div>
+                </div>
+                <div id="performanceMetrics" class="loading">データを読み込み中...</div>
+            </div>
+        </div>
+
+        <!-- 最近のアラート -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-icon" style="background: #e67e22;">⚠️</div>
+                <div class="card-title">最近のアラート</div>
+            </div>
+            <div id="recentAlerts" class="loading">データを読み込み中...</div>
+        </div>
+
+        <!-- クイックアクション -->
+        <div class="quick-actions">
+            <button class="action-button" onclick="window.open('/', '_blank')">🗺️ 地図表示</button>
+            <button class="action-button" onclick="refreshDashboard()">🔄 データ更新</button>
+            <button class="action-button" onclick="viewHistoricalData()">📈 履歴分析</button>
+            <button class="action-button urgent" onclick="viewAlerts()">🚨 アラート確認</button>
+            <button class="action-button" onclick="exportData()">💾 データ出力</button>
+            <button class="action-button" onclick="systemSettings()">⚙️ システム設定</button>
+        </div>
+    </div>
+
+    <button class="refresh-button" onclick="refreshDashboard()">🔄 更新</button>
+
+    <script>
+        let dashboardData = null;
+        let autoRefreshInterval = null;
+
+        // ダッシュボード初期化
+        function initDashboard() {
+            loadDashboardData();
+            startAutoRefresh();
+        }
+
+        // ダッシュボードデータの読み込み
+        async function loadDashboardData() {
+            try {
+                const response = await fetch('/visualization/dashboard');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                dashboardData = await response.json();
+                
+                if (dashboardData.error) {
+                    throw new Error(dashboardData.error);
+                }
+                
+                updateDashboard();
+                updateLastUpdateTime();
+                
+            } catch (error) {
+                console.error('Dashboard data load error:', error);
+                showError('ダッシュボードデータの読み込みに失敗しました: ' + error.message);
+            }
+        }
+
+        // ダッシュボード表示更新
+        function updateDashboard() {
+            if (!dashboardData) return;
+
+            updateSystemOverview();
+            updateWeatherSummary();
+            updateSeaFogStatus();
+            updateFishingSeasonStatus();
+            updateNotificationSummary();
+            updatePerformanceMetrics();
+            updateRecentAlerts();
+        }
+
+        // システム概要更新
+        function updateSystemOverview() {
+            const overview = dashboardData.system_overview;
+            const container = document.getElementById('systemOverview');
+            
+            if (overview.error) {
+                container.innerHTML = `<div class="error">${overview.error}</div>`;
+                return;
+            }
+
+            const healthStatus = overview.system_health;
+            const statusClass = healthStatus === 'healthy' ? 'status-healthy' : 
+                              healthStatus === 'warning' ? 'status-warning' : 'status-critical';
+
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator ${statusClass}"></span>
+                        システム健全性
+                    </span>
+                    <span class="metric-value">${healthStatus}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">アクティブアラート</span>
+                    <span class="metric-value">${overview.active_alerts}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">総ユーザー数</span>
+                    <span class="metric-value">${overview.total_users}</span>
+                </div>
+            `;
+
+            // サービス状態
+            html += '<div style="margin-top: 15px; font-weight: 600; color: #555;">サービス状態:</div>';
+            for (const [service, status] of Object.entries(overview.services_status)) {
+                const serviceStatus = status === 'active' || status === 'available' ? 'status-healthy' : 'status-critical';
+                html += `
+                    <div style="margin: 5px 0; padding: 5px; font-size: 0.9em;">
+                        <span class="status-indicator ${serviceStatus}"></span>
+                        ${service}: ${status}
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        // 天気概要更新
+        function updateWeatherSummary() {
+            const weather = dashboardData.weather_summary;
+            const container = document.getElementById('weatherSummary');
+            
+            if (weather.error) {
+                container.innerHTML = `<div class="error">${weather.error}</div>`;
+                return;
+            }
+
+            const current = weather.current_conditions;
+            
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">現在の天気</span>
+                    <span class="metric-value">${current.condition}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">気温</span>
+                    <span class="metric-value">${current.temperature}°C</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">風速</span>
+                    <span class="metric-value">${current.wind_speed}m/s (${current.wind_direction})</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">湿度</span>
+                    <span class="metric-value">${current.humidity}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">視程</span>
+                    <span class="metric-value">${(current.visibility / 1000).toFixed(1)}km</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 海霧状況更新
+        function updateSeaFogStatus() {
+            const seaFog = dashboardData.sea_fog_status;
+            const container = document.getElementById('seaFogStatus');
+            
+            if (seaFog.error) {
+                container.innerHTML = `<div class="error">${seaFog.error}</div>`;
+                return;
+            }
+
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">アクティブ警報</span>
+                    <span class="metric-value">${seaFog.active_alerts || 0}</span>
+                </div>
+            `;
+
+            // 地点別リスク
+            if (seaFog.current_risk) {
+                html += '<div style="margin-top: 15px; font-weight: 600; color: #555;">地点別リスク:</div>';
+                for (const [location, risk] of Object.entries(seaFog.current_risk)) {
+                    const riskLevel = risk.max_probability;
+                    const riskColor = riskLevel >= 0.8 ? '#e74c3c' : riskLevel >= 0.6 ? '#f39c12' : '#27ae60';
+                    
+                    html += `
+                        <div style="margin: 8px 0; padding: 8px; background: #f8f9fa; border-radius: 5px;">
+                            <div style="font-weight: 600;">${location}</div>
+                            <div style="color: ${riskColor}; font-weight: 600;">
+                                最大確率: ${(riskLevel * 100).toFixed(1)}%
+                            </div>
+                            <div style="font-size: 0.9em; color: #666;">
+                                推奨: ${risk.recommendation}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            container.innerHTML = html;
+        }
+
+        // 漁期状況更新
+        function updateFishingSeasonStatus() {
+            const season = dashboardData.fishing_season_status;
+            const container = document.getElementById('fishingSeasonStatus');
+            
+            if (season.error) {
+                container.innerHTML = `<div class="error">${season.error}</div>`;
+                return;
+            }
+
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">現在の状況</span>
+                    <span class="metric-value">${season.current_status}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">進捗</span>
+                    <span class="metric-value">${season.progress_percentage.toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">残り日数</span>
+                    <span class="metric-value">${season.days_remaining}日</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">今週の作業日数</span>
+                    <span class="metric-value">${season.work_days_this_week}日</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 通知概要更新
+        function updateNotificationSummary() {
+            const notifications = dashboardData.notification_summary;
+            const container = document.getElementById('notificationSummary');
+            
+            if (notifications.error) {
+                container.innerHTML = `<div class="error">${notifications.error}</div>`;
+                return;
+            }
+
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">今日の通知数</span>
+                    <span class="metric-value">${notifications.daily_notifications}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">成功率</span>
+                    <span class="metric-value">${(notifications.success_rate * 100).toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">アクティブ購読</span>
+                    <span class="metric-value">${notifications.active_subscriptions}</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // パフォーマンス指標更新
+        function updatePerformanceMetrics() {
+            const performance = dashboardData.performance_metrics;
+            const container = document.getElementById('performanceMetrics');
+            
+            if (performance.error) {
+                container.innerHTML = `<div class="error">${performance.error}</div>`;
+                return;
+            }
+
+            let html = `
+                <div class="metric-row">
+                    <span class="metric-label">システム稼働率</span>
+                    <span class="metric-value">${performance.system_uptime}</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">予測精度</span>
+                    <span class="metric-value">${(performance.prediction_accuracy * 100).toFixed(1)}%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">応答時間</span>
+                    <span class="metric-value">${performance.response_time_ms}ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">キャッシュ命中率</span>
+                    <span class="metric-value">${(performance.cache_hit_rate * 100).toFixed(1)}%</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 最近のアラート更新
+        function updateRecentAlerts() {
+            const alerts = dashboardData.recent_alerts;
+            const container = document.getElementById('recentAlerts');
+            
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #27ae60; padding: 20px;">✅ アクティブなアラートはありません</div>';
+                return;
+            }
+
+            let html = '';
+            for (const alert of alerts.slice(0, 5)) {
+                const alertClass = alert.level === 'danger' ? 'danger' : 
+                                 alert.level === 'watch' ? 'watch' : '';
+                
+                html += `
+                    <div class="alert-item ${alertClass}">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600;">${alert.message}</div>
+                            <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                ${alert.zone} - ${new Date(alert.timestamp).toLocaleString('ja-JP')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html;
+        }
+
+        // エラー表示
+        function showError(message) {
+            const containers = [
+                'systemOverview', 'weatherSummary', 'seaFogStatus', 
+                'fishingSeasonStatus', 'notificationSummary', 'performanceMetrics'
+            ];
+            
+            containers.forEach(id => {
+                document.getElementById(id).innerHTML = `<div class="error">${message}</div>`;
+            });
+        }
+
+        // 最終更新時刻更新
+        function updateLastUpdateTime() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = 
+                `最終更新: ${now.toLocaleString('ja-JP')}`;
+        }
+
+        // 自動更新開始
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            autoRefreshInterval = setInterval(refreshDashboard, 300000); // 5分間隔
+        }
+
+        // 自動更新停止
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+
+        // ダッシュボード更新
+        function refreshDashboard() {
+            loadDashboardData();
+        }
+
+        // 履歴データ表示
+        function viewHistoricalData() {
+            const days = prompt('分析対象の日数を入力してください (デフォルト: 30日)', '30');
+            if (days) {
+                window.open(`/visualization/historical?days=${days}`, '_blank');
+            }
+        }
+
+        // アラート確認
+        function viewAlerts() {
+            alert('アラート機能は開発中です');
+        }
+
+        // データエクスポート
+        async function exportData() {
+            try {
+                const response = await fetch('/visualization/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ format: 'json' })
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    alert(`データをエクスポートしました: ${result.export_path}`);
+                } else {
+                    alert(`エクスポートに失敗しました: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`エクスポートエラー: ${error.message}`);
+            }
+        }
+
+        // システム設定
+        function systemSettings() {
+            alert('システム設定機能は開発中です');
+        }
+
+        // ページロード時の初期化
+        document.addEventListener('DOMContentLoaded', initDashboard);
+
+        // ページを離れる前の自動更新停止
+        window.addEventListener('beforeunload', stopAutoRefresh);
+    </script>
+</body>
+</html>
