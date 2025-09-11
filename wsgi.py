@@ -5,6 +5,7 @@ WSGI entry point for production deployment
 
 import os
 import logging
+from flask import request
 from konbu_flask_final import app
 from config import get_config
 
