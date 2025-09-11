@@ -23,9 +23,20 @@ def test():
 
 # Simple startup function
 def main():
-    port = int(os.environ.get('PORT', 8000))
+    # Multiple fallback strategies for PORT
+    port_env = os.environ.get('PORT')
+    if port_env is None or port_env == '' or port_env == '$PORT':
+        port = 8000
+        print("WARNING: PORT not properly set, using default 8000", file=sys.stdout)
+    else:
+        try:
+            port = int(port_env)
+        except (ValueError, TypeError):
+            port = 8000
+            print(f"WARNING: Invalid PORT '{port_env}', using default 8000", file=sys.stdout)
+    
     print(f"Starting Rishiri Kelp Forecast System on port {port}", file=sys.stdout)
-    print(f"Environment PORT: {os.environ.get('PORT', 'NOT SET')}", file=sys.stdout)
+    print(f"Environment PORT variable: '{os.environ.get('PORT', 'NOT SET')}'", file=sys.stdout)
     
     app.run(
         host='0.0.0.0', 
