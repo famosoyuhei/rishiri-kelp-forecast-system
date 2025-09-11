@@ -31,11 +31,4 @@ openai==0.27.8
 # Email functionality (optional)
 # smtplib (built-in)
 
-# Additional utilities
-datetime  # built-in
-json      # built-in
-os        # built-in
-threading # built-in
-time      # built-in
-typing    # built-in
-warnings  # built-in
+# Additional utilities (built-in modules removed)
