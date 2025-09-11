@@ -210,9 +210,19 @@ class NotificationSystem:
         try:
             tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
             
-            # 昆布専用予報システムから取得
+            # Open-Meteo APIから直接取得
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "start_date": tomorrow,
+                "end_date": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d"),
+                "hourly": "temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,weather_code",
+                "timezone": "Asia/Tokyo"
+            }
+            
             response = requests.get(
-                f"http://localhost:8000/forecast?lat={lat}&lon={lon}&start_date={tomorrow}",
+                "https://api.open-meteo.com/v1/forecast",
+                params=params,
                 timeout=10
             )
             

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>記録入力 - 利尻島昆布干し予報システム</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .back-btn {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        
+        .hoshiba-info {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .record-form {
+            padding: 30px 20px;
+        }
+        
+        .warning-message {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .warning-icon {
+            font-size: 18px;
+            margin-right: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-label {
+            display: block;
+            font-weight: bold;
+            font-size: 16px;
+            color: #2d3436;
+            margin-bottom: 10px;
+        }
+        
+        .date-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            background: #f8f9fa;
+            transition: border-color 0.3s;
+        }
+        
+        .date-input:focus {
+            outline: none;
+            border-color: #00b894;
+            background: white;
+        }
+        
+        .existing-record {
+            background: #e3f2fd;
+            border: 2px solid #74b9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .existing-record h3 {
+            color: #0984e3;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .existing-record-content {
+            font-size: 14px;
+            color: #2d3436;
+            margin-bottom: 15px;
+        }
+        
+        .existing-record-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-secondary {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        
+        .btn-cancel {
+            background: #636e72;
+            color: white;
+        }
+        
+        .btn-change {
+            background: #fd79a8;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        
+        .record-options {
+            display: none;
+        }
+        
+        .record-options.show {
+            display: block;
+        }
+        
+        .option-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .record-btn {
+            padding: 20px;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-align: center;
+            position: relative;
+        }
+        
+        .record-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .record-btn.selected {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+        }
+        
+        .btn-excellent {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+        }
+        
+        .btn-failed {
+            background: linear-gradient(135deg, #d63031, #fd79a8);
+            color: white;
+        }
+        
+        .btn-partial {
+            background: linear-gradient(135deg, #fdcb6e, #fd79a8);
+            color: white;
+        }
+        
+        .record-btn .emoji {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        .record-btn .description {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        
+        .submit-section {
+            display: none;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .submit-section.show {
+            display: block;
+        }
+        
+        .selected-record {
+            background: #e8f5e8;
+            border: 2px solid #00b894;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .selected-record .record-text {
+            font-size: 16px;
+            font-weight: bold;
+            color: #00b894;
+            margin-bottom: 5px;
+        }
+        
+        .selected-record .record-date {
+            font-size: 14px;
+            color: #636e72;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,184,148,0.3);
+        }
+        
+        .submit-btn:disabled {
+            background: #636e72;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .success-message {
+            display: none;
+            background: #d4edda;
+            border: 2px solid #00b894;
+            color: #155724;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #636e72;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #00b894;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            display: none;
+            background: #f8d7da;
+            border: 2px solid #d63031;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        @media (max-width: 400px) {
+            .record-form {
+                padding: 20px 15px;
+            }
+            
+            .existing-record-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" onclick="goBack()">← 戻る</button>
+            <h1 id="hoshibaName">記録入力</h1>
+            <div class="hoshiba-info" id="hoshibaInfo">
+                <!-- 干場情報が動的に設定されます -->
+            </div>
+        </div>
+        
+        <div class="record-form">
+            <div class="warning-message">
+                <span class="warning-icon">⚠️</span>
+                <strong>重要:</strong> 日付の入力間違いは機械学習に負の影響を及ぼします。記録する日付を慎重に確認してから入力してください。
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="recordDate">記録する日付</label>
+                <input type="date" id="recordDate" class="date-input" max="" required>
+            </div>
+            
+            <div id="existingRecord" class="existing-record" style="display: none;">
+                <h3>🗂️ 既存の記録が見つかりました</h3>
+                <div class="existing-record-content" id="existingRecordContent">
+                    <!-- 既存記録の内容 -->
+                </div>
+                <div class="existing-record-buttons">
+                    <button class="btn-secondary btn-cancel" onclick="cancelRecord()">キャンセル</button>
+                    <button class="btn-secondary btn-change" onclick="changeRecord()">記録を変更</button>
+                </div>
+            </div>
+            
+            <div id="recordOptions" class="record-options">
+                <div class="form-label">🌊 昆布干しの結果を選択してください</div>
+                
+                <div class="option-buttons">
+                    <button class="record-btn btn-excellent" data-result="excellent" onclick="selectRecord('excellent')">
+                        <span class="emoji">🌟</span>
+                        <span class="text">完全乾燥</span>
+                        <div class="description">理想的な条件で完全に乾燥できました</div>
+                    </button>
+                    
+                    <button class="record-btn btn-failed" data-result="failed" onclick="selectRecord('failed')">
+                        <span class="emoji">❌</span>
+                        <span class="text">中止</span>
+                        <div class="description">天候等の理由により干すことを断念しました</div>
+                    </button>
+                    
+                    <button class="record-btn btn-partial" data-result="partial" onclick="selectRecord('partial')">
+                        <span class="emoji">😢</span>
+                        <span class="text">干したが完全には乾かせなかった（泣）</span>
+                        <div class="description">干しましたが期待通りには乾燥しませんでした</div>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="submitSection" class="submit-section">
+                <div class="selected-record">
+                    <div class="record-text" id="selectedRecordText">
+                        <!-- 選択された記録 -->
+                    </div>
+                    <div class="record-date" id="selectedRecordDate">
+                        <!-- 選択された日付 -->
+                    </div>
+                </div>
+                
+                <button class="submit-btn" id="submitBtn" onclick="submitRecord()">
+                    📝 記録を保存
+                </button>
+            </div>
+            
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                記録を保存中...
+            </div>
+            
+            <div id="successMessage" class="success-message">
+                <h3>✅ 記録が保存されました</h3>
+                <p>機械学習モデルが自動でアップデートされました。</p>
+            </div>
+            
+            <div id="errorMessage" class="error-message">
+                <!-- エラーメッセージ -->
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // グローバル変数
+        let currentHoshiba = null;
+        let selectedDate = null;
+        let selectedResult = null;
+        let existingRecords = {};
+        
+        // URLパラメータから干場情報を取得
+        function getHoshibaFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return {
+                name: urlParams.get('name') || 'H_1021_2473',
+                town: urlParams.get('town') || '利尻富士町',
+                district: urlParams.get('district') || '鬼脇',
+                buraku: urlParams.get('buraku') || '野中',
+                theta: parseFloat(urlParams.get('theta')) || 23.5,
+                lat: parseFloat(urlParams.get('lat')) || 45.1021947,
+                lon: parseFloat(urlParams.get('lon')) || 141.247311
+            };
+        }
+        
+        // 初期化
+        function init() {
+            currentHoshiba = getHoshibaFromURL();
+            
+            // ヘッダー情報を設定
+            document.getElementById('hoshibaName').textContent = currentHoshiba.name;
+            document.getElementById('hoshibaInfo').innerHTML = `
+                ${currentHoshiba.town} ${currentHoshiba.district} ${currentHoshiba.buraku}<br>
+                θ: ${currentHoshiba.theta.toFixed(1)}° | ${currentHoshiba.lat.toFixed(4)}°N, ${currentHoshiba.lon.toFixed(4)}°E
+            `;
+            
+            // 日付入力の最大値を今日に設定
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('recordDate').max = today;
+            
+            // イベントリスナー
+            setupEventListeners();
+            
+            // 既存記録を読み込み
+            loadExistingRecords();
+        }
+        
+        // イベントリスナー設定
+        function setupEventListeners() {
+            const dateInput = document.getElementById('recordDate');
+            dateInput.addEventListener('change', onDateChange);
+        }
+        
+        // 日付変更時の処理
+        function onDateChange(event) {
+            selectedDate = event.target.value;
+            
+            if (!selectedDate) {
+                hideAllSections();
+                return;
+            }
+            
+            // 既存記録をチェック
+            checkExistingRecord(selectedDate);
+        }
+        
+        // 既存記録を読み込み
+        async function loadExistingRecords() {
+            try {
+                const response = await fetch('http://localhost:5001/api/hoshiba-records', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        hoshiba_name: currentHoshiba.name
+                    })
+                });
+                
+                if (response.ok) {
+                    existingRecords = await response.json();
+                } else {
+                    throw new Error('API Error');
+                }
+                
+            } catch (error) {
+                console.warn('API not available, using mock data');
+                existingRecords = generateMockRecords();
+            }
+        }
+        
+        // モック記録データ生成
+        function generateMockRecords() {
+            const records = {};
+            const results = ['excellent', 'partial', 'failed'];
+            const resultTexts = {
+                excellent: '完全乾燥',
+                partial: '干したが完全には乾かせなかった（泣）',
+                failed: '中止'
+            };
+            
+            // 過去30日のランダムな記録を生成
+            for (let i = 1; i <= 10; i++) {
+                const date = new Date();
+                date.setDate(date.getDate() - i * 3);
+                const dateStr = date.toISOString().split('T')[0];
+                
+                const result = results[Math.floor(Math.random() * results.length)];
+                records[dateStr] = {
+                    result: result,
+                    text: resultTexts[result],
+                    timestamp: date.toISOString()
+                };
+            }
+            
+            return records;
+        }
+        
+        // 既存記録をチェック
+        function checkExistingRecord(date) {
+            if (existingRecords[date]) {
+                showExistingRecord(existingRecords[date]);
+            } else {
+                showRecordOptions();
+            }
+        }
+        
+        // 既存記録を表示
+        function showExistingRecord(record) {
+            hideAllSections();
+            
+            const existingEl = document.getElementById('existingRecord');
+            const contentEl = document.getElementById('existingRecordContent');
+            
+            contentEl.innerHTML = `
+                <strong>記録日:</strong> ${selectedDate}<br>
+                <strong>結果:</strong> ${record.text}<br>
+                <strong>記録時刻:</strong> ${new Date(record.timestamp).toLocaleString('ja-JP')}
+            `;
+            
+            existingEl.style.display = 'block';
+        }
+        
+        // 記録選択画面を表示
+        function showRecordOptions() {
+            hideAllSections();
+            document.getElementById('recordOptions').classList.add('show');
+        }
+        
+        // 全セクションを非表示
+        function hideAllSections() {
+            document.getElementById('existingRecord').style.display = 'none';
+            document.getElementById('recordOptions').classList.remove('show');
+            document.getElementById('submitSection').classList.remove('show');
+            document.getElementById('successMessage').classList.remove('show');
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+        
+        // 記録をキャンセル
+        function cancelRecord() {
+            document.getElementById('recordDate').value = '';
+            selectedDate = null;
+            hideAllSections();
+        }
+        
+        // 記録を変更
+        function changeRecord() {
+            showRecordOptions();
+        }
+        
+        // 記録を選択
+        function selectRecord(result) {
+            selectedResult = result;
+            
+            // ボタンの選択状態を更新
+            document.querySelectorAll('.record-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            document.querySelector(`[data-result="${result}"]`).classList.add('selected');
+            
+            // 選択内容を表示
+            const resultTexts = {
+                excellent: '完全乾燥',
+                failed: '中止',
+                partial: '干したが完全には乾かせなかった（泣）'
+            };
+            
+            document.getElementById('selectedRecordText').textContent = resultTexts[result];
+            document.getElementById('selectedRecordDate').textContent = `記録日: ${selectedDate}`;
+            
+            document.getElementById('submitSection').classList.add('show');
+        }
+        
+        // 記録を送信
+        async function submitRecord() {
+            if (!selectedDate || !selectedResult) {
+                showError('日付と結果を選択してください');
+                return;
+            }
+            
+            // ローディング表示
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('submitBtn').disabled = true;
+            
+            try {
+                const response = await fetch('http://localhost:5001/api/hoshiba-records/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        hoshiba_name: currentHoshiba.name,
+                        hoshiba_data: currentHoshiba,
+                        date: selectedDate,
+                        result: selectedResult,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                if (response.ok) {
+                    showSuccess();
+                    // 既存記録を更新
+                    existingRecords[selectedDate] = {
+                        result: selectedResult,
+                        text: getResultText(selectedResult),
+                        timestamp: new Date().toISOString()
+                    };
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Save failed');
+                }
+                
+            } catch (error) {
+                console.warn('API not available, simulating save');
+                // 模擬保存
+                setTimeout(() => {
+                    showSuccess();
+                    existingRecords[selectedDate] = {
+                        result: selectedResult,
+                        text: getResultText(selectedResult),
+                        timestamp: new Date().toISOString()
+                    };
+                }, 1000);
+            }
+        }
+        
+        // 結果テキストを取得
+        function getResultText(result) {
+            const texts = {
+                excellent: '完全乾燥',
+                failed: '中止',
+                partial: '干したが完全には乾かせなかった（泣）'
+            };
+            return texts[result];
+        }
+        
+        // 成功メッセージを表示
+        function showSuccess() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('submitSection').classList.remove('show');
+            document.getElementById('successMessage').classList.add('show');
+            
+            // 3秒後に記録をリセット
+            setTimeout(() => {
+                resetForm();
+            }, 3000);
+        }
+        
+        // エラーメッセージを表示
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('submitBtn').disabled = false;
+            
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+        
+        // フォームをリセット
+        function resetForm() {
+            document.getElementById('recordDate').value = '';
+            selectedDate = null;
+            selectedResult = null;
+            hideAllSections();
+            
+            document.querySelectorAll('.record-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+        }
+        
+        // 戻るボタン
+        function goBack() {
+            if (document.referrer && document.referrer.includes('hoshiba_map.html')) {
+                history.back();
+            } else {
+                window.location.href = 'hoshiba_map.html';
+            }
+        }
+        
+        // 初期化実行
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

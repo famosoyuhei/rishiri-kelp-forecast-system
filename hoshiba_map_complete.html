@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <title>利尻島昆布干場予報システム</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- PWA Manifest -->
+  <meta name="theme-color" content="#667eea">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="利尻昆布予報">
+  
+  <!-- Icons for PWA -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/icon-16x16.png">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+  
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-providers/leaflet-providers.js"></script>
@@ -204,13 +216,6 @@
       border-radius: 3px;
     }
     
-    .port-marker {
-      background: none !important;
-      border: none !important;
-      font-size: 16px;
-      text-align: center;
-      color: #0078d4;
-    }
     
     .location-navigation {
       background: #f8f9fa;
@@ -222,6 +227,65 @@
     .location-navigation h4 {
       margin: 0 0 10px 0;
       color: #2c5f2d;
+    }
+
+    /* 地図上ナビゲーションボタン */
+    .map-location-button {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.95);
+      color: #2c5f2d;
+      border: 2px solid #2c5f2d;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .map-location-button:hover {
+      background: #2c5f2d;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    }
+
+    .map-location-button.active {
+      background: #2c5f2d;
+      color: white;
+    }
+
+    /* モバイル対応 */
+    @media (max-width: 768px) {
+      .map-location-button {
+        padding: 10px 14px;
+        font-size: 13px;
+        border-radius: 16px;
+      }
+    }
+
+    .map-navigation-info {
+      background: #e8f5e8;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 4px solid #2c5f2d;
+    }
+
+    .map-navigation-info h4 {
+      margin: 0 0 8px 0;
+      color: #2c5f2d;
+      font-size: 14px;
+    }
+
+    .map-navigation-info p {
+      margin: 0;
+      font-size: 12px;
+      color: #555;
     }
     
     .nav-step {
@@ -261,6 +325,62 @@
       font-size: 14px;
       color: #2c5f2d;
     }
+    
+    .forecast-reliability {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 15px 0;
+      font-size: 13px;
+    }
+    
+    .reliability-header {
+      font-weight: bold;
+      color: #495057;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+    }
+    
+    .reliability-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      background: #17a2b8;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 10px;
+      font-weight: bold;
+    }
+    
+    .reliability-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    
+    .reliability-table th,
+    .reliability-table td {
+      padding: 4px 8px;
+      text-align: center;
+      border-bottom: 1px solid #e9ecef;
+      font-size: 12px;
+    }
+    
+    .reliability-table th {
+      background: #f1f3f4;
+      font-weight: bold;
+      color: #495057;
+    }
+    
+    .accuracy-excellent { color: #28a745; font-weight: bold; }
+    .accuracy-good { color: #ffc107; font-weight: bold; }
+    .accuracy-fair { color: #fd7e14; font-weight: bold; }
+    .accuracy-poor { color: #dc3545; font-weight: bold; }
     
     .season-status {
       background: #f8f9fa;
@@ -653,7 +773,7 @@
   <div class="main-container">
     <div class="map-container">
       <div class="control-panel">
-        <div class="location-navigation">
+        <div class="location-navigation" style="display: none;">
           <h4>📍 地区選択ナビゲーション</h4>
           <div class="mobile-help">
             📱 <strong>モバイル操作ガイド:</strong><br>
@@ -686,6 +806,13 @@
         
         <div id="currentLocation" class="current-location" style="display: none;">
           <strong>📍 現在表示中:</strong> <span id="currentLocationText"></span>
+        </div>
+        
+        <!-- 地図上ナビゲーション説明 -->
+        <div class="map-navigation-info">
+          <h4>📍 地図ナビゲーション</h4>
+          <p>地図上の地名ボタンをタップして詳細な地域を表示できます</p>
+          <button id="resetMapViewButton" class="btn btn-secondary">🔄 全島表示</button>
         </div>
         
         <hr style="margin: 15px 0;">
@@ -856,8 +983,9 @@
 
   <script>
     // グローバル変数
-    const map = L.map('map').setView([45.178269, 141.228528], 13);
-    const API_BASE = 'http://localhost:8000';
+    const map = L.map('map').setView([45.178269, 141.228528], 11);
+    // 動的にAPIベースURLを設定（スマホアクセス対応）
+    const API_BASE = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '8001');
     
     let spots = [];
     let addMode = false;
@@ -870,6 +998,12 @@
     let seaFogLayerControl = null;
     let seaFogDataCache = null;
 
+    // 地図上ナビゲーションシステム
+    let currentNavigationLevel = 0; // 0: 町レベル, 1: 地区レベル, 2: 地域レベル
+    let currentTown = null;
+    let currentDistrict = null;
+    let mapLocationButtons = []; // 現在表示中のボタンを記録
+
     // 利尻島地理データ
     const rishiriGeography = {
       'rishiri-town': {
@@ -881,6 +1015,11 @@
             name: '沓形',
             center: [45.210, 141.200],
             zoom: 15,
+            burakus: {
+              'honcho': { name: '本町', center: [45.210, 141.200] },
+              'motomachi': { name: '元町', center: [45.205, 141.195] },
+              'shinmachi': { name: '新町', center: [45.215, 141.205] }
+            },
             areas: {
               'kutsugata-minato': { name: '沓形港周辺', center: [45.215, 141.205], zoom: 16 },
               'kutsugata-honcho': { name: '沓形本町', center: [45.208, 141.198], zoom: 16 },
@@ -931,36 +1070,470 @@
     // 地図の初期化
     L.tileLayer.provider('Esri.WorldImagery').addTo(map);
     
-    // 利尻島の境界を定義（主要港湾と昆布漁場をカバー）
-    const rishiriBounds = [
-      [45.120, 141.180], // 南西角
-      [45.260, 141.280]  // 北東角
-    ];
+    // 地図上ナビゲーションシステムの初期化
+    initializeMapNavigation();
     
-    // 利尻島エリアに境界線を追加（参考用）
-    L.rectangle(rishiriBounds, {
-      color: "#0078d4",
-      weight: 2,
-      opacity: 0.3,
-      fillOpacity: 0.05
-    }).addTo(map).bindPopup("🏝️ 利尻島 昆布漁場エリア");
+
+    // 地図上ナビゲーション機能
+    function initializeMapNavigation() {
+      showTownButtons();
+    }
+
+    function showTownButtons() {
+      clearMapLocationButtons();
+      currentNavigationLevel = 0;
+      
+      // 利尻町ボタン（沓形・仙法志エリア中心）
+      createMapLocationButton('利尻町', [45.150, 141.210], () => {
+        selectTown('rishiri-town');
+      });
+      
+      // 利尻富士町ボタン（鴛泊・鬼脇エリア中心）
+      createMapLocationButton('利尻富士町', [45.210, 141.270], () => {
+        selectTown('rishiri-fuji-town');
+      });
+    }
+
+
+    // 統一的なマーカー作成関数（お気に入り状態対応）
+    function createMarkersWithFavorites(spotsToShow, callback) {
+      // 既存のマーカーをクリア
+      spotMarkers.forEach(marker => map.removeLayer(marker));
+      spotMarkers = [];
+
+      // お気に入りデータを先に取得
+      fetch(`${API_BASE}/favorites`)
+        .then(response => response.json())
+        .then(favoritesData => {
+          const favoriteNames = favoritesData.status === 'success' 
+            ? new Set(favoritesData.favorites.map(fav => fav.name))
+            : new Set();
+
+          console.log('お気に入り干場:', Array.from(favoriteNames));
+
+          spotsToShow.forEach(spot => {
+            const isFavorite = favoriteNames.has(spot.name);
+            
+            // マーカーアイコンの設定
+            const markerIcon = isFavorite 
+              ? L.divIcon({
+                  className: 'custom-div-icon favorite-marker',
+                  html: `
+                    <div style="
+                      position: relative;
+                      width: 32px;
+                      height: 32px;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                    ">
+                      <div style="
+                        background: linear-gradient(135deg, #ffeb3b 0%, #ffc107 100%);
+                        color: #d84315;
+                        border-radius: 50%;
+                        width: 32px;
+                        height: 32px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-weight: bold;
+                        font-size: 18px;
+                        border: 3px solid #ff6f00;
+                        box-shadow: 0 4px 12px rgba(255, 193, 7, 0.6), 0 0 0 4px rgba(255, 235, 59, 0.3);
+                        animation: pulse-favorite 2s infinite;
+                        transform: scale(1.1);
+                        z-index: 1000;
+                      ">⭐</div>
+                    </div>
+                    <style>
+                      @keyframes pulse-favorite {
+                        0% { transform: scale(1.1); box-shadow: 0 4px 12px rgba(255, 193, 7, 0.6), 0 0 0 4px rgba(255, 235, 59, 0.3); }
+                        50% { transform: scale(1.2); box-shadow: 0 6px 16px rgba(255, 193, 7, 0.8), 0 0 0 6px rgba(255, 235, 59, 0.5); }
+                        100% { transform: scale(1.1); box-shadow: 0 4px 12px rgba(255, 193, 7, 0.6), 0 0 0 4px rgba(255, 235, 59, 0.3); }
+                      }
+                    </style>
+                  `,
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
+                })
+              : L.divIcon({
+                  className: 'custom-div-icon',
+                  html: '<div style="background-color: #2196f3; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold;">●</div>',
+                  iconSize: [20, 20],
+                  iconAnchor: [10, 10]
+                });
+
+            // お気に入りボタンのステータス設定
+            const favoriteButtonText = isFavorite ? 'お気に入りから外す' : 'お気に入りに追加';
+            const favoriteButtonColor = isFavorite ? '#28a745' : '#ffc107';
+
+            const marker = L.marker([spot.lat, spot.lon], { 
+              icon: markerIcon,
+              title: spot.name  // マーカー識別用
+            })
+              .bindPopup(`
+                <div style="text-align: center;">
+                  <b>${spot.name}</b><br>
+                  <small>${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)}</small><br>
+                  <small>町: ${spot.town}</small><br>
+                  <small>地区: ${spot.district}</small><br>
+                  <small>部落: ${spot.buraku}</small><br>
+                  <button onclick="window.getWeatherForecast(${spot.lat}, ${spot.lon})" class="btn btn-sm">天気予報</button><br>
+                  <button onclick="window.openRecordDialog('${spot.name}')" class="btn btn-sm" style="margin-top: 5px; background: #ff9800; color: white;">記録</button><br>
+                  <button onclick="window.toggleFavorite('${spot.name}', ${spot.lat}, ${spot.lon})" class="btn btn-sm" id="favorite-btn-${spot.name.replace(/[^a-zA-Z0-9]/g, '_')}" style="margin-top: 5px; background: ${favoriteButtonColor}; color: white;">${favoriteButtonText}</button><br>
+                  <button onclick="window.confirmDeleteSpot('${spot.name}', ${spot.lat}, ${spot.lon})" class="btn btn-sm" style="margin-top: 5px; background: #f44336; color: white;">削除</button>
+                </div>
+              `)
+              .addTo(map);
+            
+            spotMarkers.push(marker);
+          });
+
+          // コールバック関数が提供されていれば実行
+          if (callback) {
+            callback();
+          }
+        })
+        .catch(error => {
+          console.error('お気に入りデータ取得エラー:', error);
+          // エラーの場合は通常のマーカーで表示
+          spotsToShow.forEach(spot => {
+            const marker = L.marker([spot.lat, spot.lon], {
+              title: spot.name
+            })
+              .bindPopup(`
+                <div style="text-align: center;">
+                  <b>${spot.name}</b><br>
+                  <small>${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)}</small><br>
+                  <small>町: ${spot.town}</small><br>
+                  <small>地区: ${spot.district}</small><br>
+                  <small>部落: ${spot.buraku}</small><br>
+                  <button onclick="window.getWeatherForecast(${spot.lat}, ${spot.lon})" class="btn btn-sm">天気予報</button><br>
+                  <button onclick="window.openRecordDialog('${spot.name}')" class="btn btn-sm" style="margin-top: 5px; background: #ff9800; color: white;">記録</button><br>
+                  <button onclick="window.toggleFavorite('${spot.name}', ${spot.lat}, ${spot.lon})" class="btn btn-sm" id="favorite-btn-${spot.name.replace(/[^a-zA-Z0-9]/g, '_')}" style="margin-top: 5px; background: #ffc107; color: white;">お気に入りに追加</button><br>
+                  <button onclick="window.confirmDeleteSpot('${spot.name}', ${spot.lat}, ${spot.lon})" class="btn btn-sm" style="margin-top: 5px; background: #f44336; color: white;">削除</button>
+                </div>
+              `)
+              .addTo(map);
+            
+            spotMarkers.push(marker);
+          });
+
+          if (callback) {
+            callback();
+          }
+        });
+    }
+
+
+    function createMapLocationButton(text, position, clickHandler) {
+      // Leafletマーカーとして作成
+      const button = L.marker(position, {
+        icon: L.divIcon({
+          className: 'map-location-button',
+          html: `<div style="background: #4a8a5a; color: white; padding: 8px 12px; border-radius: 5px; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; text-align: center; white-space: nowrap;">${text}</div>`,
+          iconSize: [null, null], // 自動サイズ
+          iconAnchor: [null, null]
+        })
+      }).addTo(map);
+
+      // クリックイベントを追加
+      button.on('click', function(e) {
+        console.log('Button clicked:', text);
+        clickHandler();
+        e.originalEvent.stopPropagation();
+      });
+      
+      // ボタンリストに追加
+      mapLocationButtons.push(button);
+      
+      return button;
+    }
+
+    function clearMapLocationButtons() {
+      mapLocationButtons.forEach(button => {
+        map.removeLayer(button);
+      });
+      mapLocationButtons = [];
+    }
+
+    function selectTown(townId) {
+      console.log('selectTown called with:', townId);
+      currentTown = townId;
+      currentNavigationLevel = 1;
+      
+      const town = rishiriGeography[townId];
+      console.log('Town data:', town);
+      
+      // 境界線をクリア（緑枠は非表示）
+      clearTownBoundaries();
+      
+      // 選択した町の地点のみ表示
+      filterSpotsByTown(townId);
+      
+      // 町の地点全体が収まるように地図範囲を自動調整
+      setTimeout(() => {
+        fitMapToTownSpots(townId);
+        showDistrictButtons(townId);
+      }, 100); // フィルタリング後に実行
+    }
+
+    function showDistrictButtons(townId) {
+      clearMapLocationButtons();
+      
+      const town = rishiriGeography[townId];
+      Object.entries(town.districts).forEach(([districtId, district]) => {
+        createMapLocationButton(district.name, district.center, () => {
+          selectDistrict(townId, districtId);
+        });
+      });
+    }
+
+    function selectDistrict(townId, districtId) {
+      console.log('selectDistrict called with:', townId, districtId);
+      currentDistrict = districtId;
+      currentNavigationLevel = 2;
+      
+      const district = rishiriGeography[townId].districts[districtId];
+      console.log('District data:', district);
+      
+      // 選択した地区の地点のみ表示
+      filterSpotsByDistrict(townId, districtId);
+      
+      // 地区の地点全体が収まるように地図範囲を自動調整
+      setTimeout(() => {
+        fitMapToDistrictSpots(townId, districtId);
+        showAreaButtons(townId, districtId);
+      }, 100); // フィルタリング後に実行
+    }
+
+    function showAreaButtons(townId, districtId) {
+      clearMapLocationButtons();
+      
+      const district = rishiriGeography[townId].districts[districtId];
+      
+      // 部落ボタンを実際のCSVデータから作成
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      const districtNameMap = {
+        'kutsugata': '沓形',
+        'senposhi': '仙法志', 
+        'oshidomari': '鴛泊',
+        'oniwaki': '鬼脇'
+      };
+      const targetDistrict = districtNameMap[districtId];
+      
+      // 該当地区の部落一覧を取得
+      const distinctBurakus = [...new Set(spots
+        .filter(spot => spot.town === targetTown && spot.district === targetDistrict)
+        .map(spot => spot.buraku)
+      )];
+      
+      // 各部落の中心座標を計算してボタンを配置
+      distinctBurakus.forEach(buraku => {
+        const burakuSpots = spots.filter(spot => 
+          spot.town === targetTown && 
+          spot.district === targetDistrict && 
+          spot.buraku === buraku
+        );
+        
+        if (burakuSpots.length > 0) {
+          const centerLat = burakuSpots.reduce((sum, spot) => sum + spot.lat, 0) / burakuSpots.length;
+          const centerLon = burakuSpots.reduce((sum, spot) => sum + spot.lon, 0) / burakuSpots.length;
+          
+          createMapLocationButton(buraku, [centerLat, centerLon], () => {
+            selectBuraku(townId, districtId, buraku);
+          });
+        }
+      });
+    }
+
+    function selectBuraku(townId, districtId, buraku) {
+      console.log('selectBuraku called with:', townId, districtId, buraku);
+      
+      // 部落の地点のみ表示
+      filterSpotsByBuraku(townId, districtId, buraku);
+      
+      // 部落の地点全体が収まるように地図範囲を自動調整
+      setTimeout(() => {
+        fitMapToBurakuSpots(townId, districtId, buraku);
+        clearMapLocationButtons(); // 最終階層なのでボタンは消す
+      }, 100);
+    }
+
+    function filterSpotsByBuraku(townId, districtId, buraku) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      const districtNameMap = {
+        'kutsugata': '沓形',
+        'senposhi': '仙法志', 
+        'oshidomari': '鴛泊',
+        'oniwaki': '鬼脇'
+      };
+      const targetDistrict = districtNameMap[districtId];
+      
+      console.log(`部落フィルタ対象: ${targetTown} - ${targetDistrict} - ${buraku}`);
+      
+      // 選択した部落の地点のみフィルタリング
+      const filteredSpots = spots.filter(spot => 
+        spot.town === targetTown && 
+        spot.district === targetDistrict && 
+        spot.buraku === buraku
+      );
+      
+      console.log(`${buraku}の地点数: ${filteredSpots.length}`);
+      
+      // 統一関数でマーカーを作成（お気に入り色対応）
+      createMarkersWithFavorites(filteredSpots);
+    }
     
-    // 主要港湾のマーカーを追加（参考用）
-    const oshidomariPort = L.marker([45.241667, 141.230833], {
-      icon: L.divIcon({
-        html: '⚓',
-        iconSize: [20, 20],
-        className: 'port-marker'
-      })
-    }).addTo(map).bindPopup("⚓ 鴛泊港<br><small>利尻島北東岸の主要港湾</small>");
-    
-    const senposhiPort = L.marker([45.136111, 141.211111], {
-      icon: L.divIcon({
-        html: '⚓',
-        iconSize: [20, 20],
-        className: 'port-marker'
-      })
-    }).addTo(map).bindPopup("⚓ 仙法志港<br><small>利尻島南岸の港湾</small>");
+    function fitMapToBurakuSpots(townId, districtId, buraku) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      const districtNameMap = {
+        'kutsugata': '沓形',
+        'senposhi': '仙法志', 
+        'oshidomari': '鴛泊',
+        'oniwaki': '鬼脇'
+      };
+      const targetDistrict = districtNameMap[districtId];
+      
+      const filteredSpots = spots.filter(spot => 
+        spot.town === targetTown && 
+        spot.district === targetDistrict && 
+        spot.buraku === buraku
+      );
+      
+      if (filteredSpots.length > 0) {
+        const bounds = L.latLngBounds();
+        filteredSpots.forEach(spot => {
+          bounds.extend([spot.lat, spot.lon]);
+        });
+        
+        // 部落レベルでは最も詳細にズーム
+        const fitOptions = {
+          padding: [10, 10],
+          maxZoom: 15 // 部落レベルは最も近くにズーム
+        };
+        
+        map.fitBounds(bounds, fitOptions);
+      }
+    }
+
+    function resetMapNavigation() {
+      clearMapLocationButtons();
+      clearTownBoundaries();
+      map.setView([45.178269, 141.228528], 11);
+      showAllSpots(); // 全地点を再表示
+      showTownButtons();
+    }
+
+    // 町別地点フィルタリング機能
+    function filterSpotsByTown(townId) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      
+      // 選択した町の地点のみフィルタリング
+      const filteredSpots = spots.filter(spot => spot.town === targetTown);
+      
+      console.log(`${targetTown}の地点数: ${filteredSpots.length}`);
+      console.log('Filtered spots sample:', filteredSpots.slice(0, 3));
+      
+      // 統一関数でマーカーを作成（お気に入り色対応）
+      createMarkersWithFavorites(filteredSpots);
+    }
+
+    // 地区別地点フィルタリング機能
+    function filterSpotsByDistrict(townId, districtId) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      
+      // 地区IDから実際の地区名にマッピング
+      const districtNameMap = {
+        'kutsugata': '沓形',
+        'senposhi': '仙法志', 
+        'oshidomari': '鴛泊',
+        'oniwaki': '鬼脇'
+      };
+      
+      const targetDistrict = districtNameMap[districtId];
+      console.log(`フィルタ対象: ${targetTown} - ${targetDistrict}`);
+      
+      // 選択した町・地区の地点のみフィルタリング
+      const filteredSpots = spots.filter(spot => 
+        spot.town === targetTown && spot.district === targetDistrict
+      );
+      
+      console.log(`${targetDistrict}地区の地点数: ${filteredSpots.length}`);
+      console.log('Filtered district spots sample:', filteredSpots.slice(0, 3));
+      
+      // 統一関数でマーカーを作成（お気に入り色対応）
+      createMarkersWithFavorites(filteredSpots);
+    }
+
+    // 全地点を表示
+    function showAllSpots() {
+      displaySpots(); // 既存の表示関数を使用
+    }
+
+    // 町の地点に合わせて地図範囲を自動調整
+    function fitMapToTownSpots(townId) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      const filteredSpots = spots.filter(spot => spot.town === targetTown);
+      
+      if (filteredSpots.length > 0) {
+        const bounds = L.latLngBounds();
+        filteredSpots.forEach(spot => {
+          bounds.extend([spot.lat, spot.lon]);
+        });
+        
+        // 町ごとに最適なズーム設定
+        let fitOptions;
+        if (targetTown === '利尻富士町') {
+          // 利尻富士町は範囲が広いので、より積極的にズームイン
+          fitOptions = {
+            padding: [10, 10],
+            maxZoom: 12.5  // より近くにズーム
+          };
+        } else {
+          // 利尻町は比較的コンパクト
+          fitOptions = {
+            padding: [20, 20],
+            maxZoom: 13
+          };
+        }
+        
+        map.fitBounds(bounds, fitOptions);
+      }
+    }
+
+    // 地区の地点に合わせて地図範囲を自動調整
+    function fitMapToDistrictSpots(townId, districtId) {
+      const targetTown = townId === 'rishiri-town' ? '利尻町' : '利尻富士町';
+      
+      const districtNameMap = {
+        'kutsugata': '沓形',
+        'senposhi': '仙法志', 
+        'oshidomari': '鴛泊',
+        'oniwaki': '鬼脇'
+      };
+      
+      const targetDistrict = districtNameMap[districtId];
+      const filteredSpots = spots.filter(spot => 
+        spot.town === targetTown && spot.district === targetDistrict
+      );
+      
+      if (filteredSpots.length > 0) {
+        const bounds = L.latLngBounds();
+        filteredSpots.forEach(spot => {
+          bounds.extend([spot.lat, spot.lon]);
+        });
+        
+        // 地区レベルではより詳細にズーム
+        const fitOptions = {
+          padding: [15, 15],
+          maxZoom: 14 // 地区レベルはより近くにズーム
+        };
+        
+        map.fitBounds(bounds, fitOptions);
+        console.log(`${targetDistrict}地区にズーム調整完了`);
+      }
+    }
 
     // DOM要素の取得
     const addModeButton = document.getElementById('addModeButton');
@@ -988,13 +1561,27 @@
     // 今日の日付を設定
     recordDate.valueAsDate = new Date();
 
+    // 地図リセットボタンのイベントリスナー
+    const resetMapViewButton = document.getElementById('resetMapViewButton');
+    resetMapViewButton.addEventListener('click', resetMapNavigation);
+
     // 干場データの読み込み
     function loadSpots() {
       fetch(`${API_BASE}/spots`)
         .then(res => res.json())
         .then(data => {
           spots = data;
+          console.log('Loaded spots data:', spots.length, 'spots');
+          console.log('Sample spot:', spots[0]);
+          
+          // 町別データの確認
+          const rishiriTown = spots.filter(s => s.town === '利尻町').length;
+          const rishiriFujiTown = spots.filter(s => s.town === '利尻富士町').length;
+          console.log('利尻町の地点数:', rishiriTown);
+          console.log('利尻富士町の地点数:', rishiriFujiTown);
+          
           displaySpots();
+          showTownButtons(); // 初期化時に町ボタンも表示
         })
         .catch(err => {
           console.error('干場データの読み込みエラー:', err);
@@ -1002,25 +1589,10 @@
         });
     }
 
-    // 干場をマップに表示
+    // 干場をマップに表示（統一関数を使用）
     function displaySpots() {
-      // 既存のマーカーをクリア
-      spotMarkers.forEach(marker => map.removeLayer(marker));
-      spotMarkers = [];
-
-      spots.forEach(spot => {
-        const marker = L.marker([spot.lat, spot.lon])
-          .bindPopup(`
-            <div style="text-align: center;">
-              <b>${spot.name}</b><br>
-              <small>${spot.lat.toFixed(4)}, ${spot.lon.toFixed(4)}</small><br>
-              <button onclick="selectSpot('${spot.name}')" style="margin-top: 5px; padding: 5px 10px; background: #4a8a5a; color: white; border: none; border-radius: 3px; cursor: pointer;">選択</button>
-            </div>
-          `)
-          .addTo(map);
-        
-        spotMarkers.push(marker);
-      });
+      console.log('displaySpots: 全干場を表示');
+      createMarkersWithFavorites(spots);
     }
 
     // 干場選択
@@ -1079,8 +1651,9 @@
     addModeButton.addEventListener('click', () => {
       if (!addMode) {
         addMode = true;
-        addModeButton.textContent = '追加モードを終了';
+        addModeButton.textContent = '📍 追加モードを終了';
         addModeButton.className = 'btn btn-danger';
+        addModeButton.style.fontWeight = 'bold';
         newSpotInfo.style.display = 'block';
         spotInfo.style.display = 'none';
         forecastPanel.style.display = 'none';
@@ -1088,18 +1661,111 @@
         document.getElementById('adaptiveLearningPanel').style.display = 'none';
         document.getElementById('seasonPanel').style.display = 'none';
         document.getElementById('notificationPanel').style.display = 'none';
+        
+        // モバイル向けの追加指示を表示
+        showAddModeInstructions();
       } else {
         cancelAddMode();
       }
     });
+
+    // モバイル向けメッセージ表示（汎用）
+    function showMobileMessage(message, type = 'info', duration = 3000) {
+      const messageDiv = document.createElement('div');
+      messageDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${type === 'warning' ? '#ff6b35' : type === 'success' ? '#28a745' : '#007bff'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 20px;
+        z-index: 10001;
+        font-size: 14px;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        max-width: 90%;
+        animation: slideInDown 0.3s ease-out;
+      `;
+      messageDiv.innerHTML = message;
+      document.body.appendChild(messageDiv);
+      
+      // アニメーション用CSS を動的追加
+      if (!document.getElementById('mobileMessageStyles')) {
+        const style = document.createElement('style');
+        style.id = 'mobileMessageStyles';
+        style.textContent = `
+          @keyframes slideInDown {
+            from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+          }
+          @keyframes slideOutUp {
+            from { transform: translateX(-50%) translateY(0); opacity: 1; }
+            to { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
+      setTimeout(() => {
+        messageDiv.style.animation = 'slideOutUp 0.3s ease-out';
+        setTimeout(() => {
+          if (document.body.contains(messageDiv)) {
+            document.body.removeChild(messageDiv);
+          }
+        }, 300);
+      }, duration);
+    }
+
+    // モバイル向け追加モード指示表示
+    function showAddModeInstructions() {
+      // モバイルデバイスかどうかチェック
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                       window.innerWidth <= 768;
+      
+      if (isMobile) {
+        // モバイル用の指示メッセージを追加
+        let instructionDiv = document.getElementById('mobileAddInstructions');
+        if (!instructionDiv) {
+          instructionDiv = document.createElement('div');
+          instructionDiv.id = 'mobileAddInstructions';
+          instructionDiv.style.cssText = `
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 20px;
+            z-index: 10000;
+            font-size: 14px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            max-width: 90%;
+          `;
+          instructionDiv.innerHTML = '👆 地図をタップして新しい干場を追加';
+          document.body.appendChild(instructionDiv);
+        }
+        instructionDiv.style.display = 'block';
+      }
+    }
 
     // 追加モードキャンセル
     function cancelAddMode() {
       addMode = false;
       addModeButton.textContent = '＋ 新規干場を追加';
       addModeButton.className = 'btn';
+      addModeButton.style.fontWeight = 'normal';
       newSpotInfo.style.display = 'none';
       newSpotDetails.style.display = 'none';
+      
+      // モバイル指示メッセージを削除
+      const instructionDiv = document.getElementById('mobileAddInstructions');
+      if (instructionDiv) {
+        instructionDiv.style.display = 'none';
+      }
       
       if (tempMarker) {
         map.removeLayer(tempMarker);
@@ -1107,16 +1773,39 @@
       }
     }
 
-    // 地図クリックイベント
-    map.on('click', (e) => {
+    // 地図クリック・タッチイベント（干場追加用）
+    function handleMapClick(e) {
       if (!addMode) return;
 
       const lat = e.latlng.lat;
       const lon = e.latlng.lng;
       
+      // モバイル向け視覚的フィードバック
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                       window.innerWidth <= 768;
+      
+      if (isMobile) {
+        // タップ位置に一時的な視覚効果を表示
+        const tapIndicator = L.circleMarker([lat, lon], {
+          radius: 15,
+          color: '#007bff',
+          fillColor: '#007bff',
+          fillOpacity: 0.3,
+          weight: 3
+        }).addTo(map);
+        
+        setTimeout(() => {
+          map.removeLayer(tapIndicator);
+        }, 1000);
+      }
+      
       // 利尻島エリア内かチェック
       if (lat < 45.120 || lat > 45.260 || lon < 141.180 || lon > 141.280) {
-        alert('干場は利尻島エリア内（45.120-45.260°N, 141.180-141.280°E）に設定してください。');
+        if (isMobile) {
+          showMobileMessage('干場は利尻島エリア内に設定してください', 'warning');
+        } else {
+          alert('干場は利尻島エリア内（45.120-45.260°N, 141.180-141.280°E）に設定してください。');
+        }
         return;
       }
       
@@ -1127,7 +1816,11 @@
 
       // 重複チェック
       if (spots.find(s => s.name === spotName)) {
-        alert('この場所には既に干場が存在します');
+        if (isMobile) {
+          showMobileMessage('この場所には既に干場が存在します', 'warning');
+        } else {
+          alert('この場所には既に干場が存在します');
+        }
         return;
       }
 
@@ -1144,7 +1837,11 @@
       
       // 保存ボタンにデータを設定
       saveSpot.onclick = () => saveNewSpot(spotName, lat, lon);
-    });
+    }
+
+    // 地図イベントをバインド（クリック・タッチ対応）
+    map.on('click', handleMapClick);
+    map.on('tap', handleMapClick); // タッチデバイス対応
 
     // 新規干場保存
     function saveNewSpot(name, lat, lon) {
@@ -1225,6 +1922,7 @@
 
     // 予報表示
     forecastButton.addEventListener('click', () => {
+      console.log('Forecast button clicked, selectedSpot:', selectedSpot);
       if (!selectedSpot) return;
       
       forecastPanel.style.display = 'block';
@@ -1237,9 +1935,15 @@
       tomorrow.setDate(tomorrow.getDate() + 1);
       const startDate = tomorrow.toISOString().split('T')[0];
       
-      fetch(`${API_BASE}/forecast?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}&start_date=${startDate}`)
-        .then(res => res.json())
+      console.log('Fetching forecast for:', selectedSpot.lat, selectedSpot.lon, 'date:', startDate);
+      
+      fetch(`${API_BASE}/forecast?lat=${selectedSpot.lat}&lon=${selectedSpot.lon}`)
+        .then(res => {
+          console.log('Fetch response received:', res.status);
+          return res.json();
+        })
         .then(data => {
+          console.log('API Response received:', data);
           displayForecast(data);
         })
         .catch(err => {
@@ -1250,63 +1954,365 @@
 
     // 予報表示
     function displayForecast(forecastData) {
-      if (!forecastData.result) {
+      console.log('displayForecast called with:', forecastData);
+      
+      const forecastContent = document.getElementById('forecastContent');
+      if (!forecastContent) {
+        console.error('forecastContent element not found');
+        return;
+      }
+      
+      if (!forecastData) {
+        console.log('No forecast data:', forecastData);
         forecastContent.innerHTML = '<div style="color: red;">予報データがありません</div>';
         return;
       }
 
-      const result = forecastData.result;
+      const result = forecastData;
       let html = '';
       
-      // ML予測の表示
-      if (result.ml_prediction && result.ml_prediction !== "Model not available") {
-        html += `
-          <div class="forecast-day">
-            <div class="forecast-header">🤖 AI予測</div>
-            <div class="recommendation ${getRecommendationClass(result.ml_prediction)}">
-              ${result.ml_prediction}
-            </div>
-            <div style="font-size: 12px; color: #6c757d;">
-              信頼度: ${Math.round(result.ml_confidence * 100)}%
-            </div>
-          </div>
-        `;
-      }
-      
-      // ルールベース予測の表示
+      // 翌日予報を最優先で表示（新APIレスポンス対応）
       html += `
-        <div class="forecast-day">
-          <div class="forecast-header">📋 ルールベース予測</div>
-          <div class="recommendation ${getRecommendationClass(result.rule_based)}">
-            ${result.rule_based}
+        <div class="tomorrow-forecast" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border: 2px solid #2196f3; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+          <div style="font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 15px;">
+            🌅 明日の予報 (${new Date(Date.now() + 24*60*60*1000).toLocaleDateString('ja-JP', {month: 'short', day: 'numeric'})})
           </div>
-        </div>
+          
+          <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+            <div style="font-weight: bold; color: #333; margin-bottom: 8px;">🌊 利尻島特化予測</div>
+            <div class="recommendation ${getRecommendationClass(result.prediction)}" style="font-size: 16px;">
+              ${result.prediction || '予測データなし'}
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+              信頼度: ${result.confidence}%
+            </div>
+          </div>
+          
+          <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+            <div style="font-weight: bold; color: #333; margin-bottom: 8px;">🌬️ 気象条件</div>
+            <div style="margin-bottom: 5px;">風速: ${result.wind} m/s</div>
+            <div style="margin-bottom: 5px;">湿度: ${result.humidity}%</div>
+          </div>
       `;
       
-      // 気象条件の詳細
-      if (forecastData.hourly) {
+      // 安全警告の表示
+      if (result.safety_warnings && result.safety_warnings.length > 0) {
         html += `
-          <div class="forecast-day">
-            <div class="forecast-header">🌤️ 気象条件詳細</div>
-            <div class="weather-summary">
-              <div class="weather-item">気温: ${Math.round(forecastData.hourly.temperature_2m[12])}°C</div>
-              <div class="weather-item">湿度: ${Math.round(forecastData.hourly.relative_humidity_2m[12])}%</div>
-              <div class="weather-item">風速: ${Math.round(forecastData.hourly.wind_speed_10m[12])}m/s</div>
-              <div class="weather-item">降水確率: ${Math.round(forecastData.hourly.precipitation_probability[12])}%</div>
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin-bottom: 10px;">
+            <div style="font-weight: bold; color: #856404; margin-bottom: 8px;">⚠️ 安全情報</div>
+        `;
+        result.safety_warnings.forEach(warning => {
+          html += `<div style="color: #856404; margin-bottom: 3px;">• ${warning}</div>`;
+        });
+        html += `</div>`;
+      }
+      
+      html += `</div>`;
+      
+      // 推奨情報（簡素化）
+      if (result.recommendation) {
+        html += `
+          <div style="background: #f0f8ff; border: 1px solid #b0d4f1; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+            <div style="font-weight: bold; color: #1565c0; margin-bottom: 8px;">
+              ✅ 作業推奨
+            </div>
+            <div style="background: white; padding: 12px; border-radius: 5px;">
+              <div class="recommendation" style="font-size: 16px; font-weight: bold; color: #1565c0;">
+                ${result.recommendation}
+              </div>
             </div>
           </div>
         `;
       }
       
+      // 表示完了
       forecastContent.innerHTML = html;
     }
 
-    // 推奨レベルのCSSクラス取得
+
+    // 推奨レベルのCSSクラス取得（簡素化）
     function getRecommendationClass(recommendation) {
-      if (recommendation.includes('◎')) return 'excellent';
+      if (!recommendation) return 'poor';
+      if (recommendation.includes('◎') || recommendation.includes('Good')) return 'excellent';
       if (recommendation.includes('○')) return 'good';
-      if (recommendation.includes('△')) return 'caution';
+      if (recommendation.includes('△') || recommendation.includes('Storm')) return 'caution';
       return 'poor';
+    }
+
+    // 天気予報を取得して表示する関数
+    function getWeatherForecast(lat, lon) {
+      if (!lat || !lon) {
+        console.error('緯度または経度が指定されていません');
+        return;
+      }
+
+      // 予報パネルを表示
+      const forecastPanel = document.getElementById('forecastPanel');
+      const forecastContent = document.getElementById('forecastContent');
+      
+      if (forecastPanel && forecastContent) {
+        forecastPanel.style.display = 'block';
+        forecastContent.innerHTML = '<div class="loading">天気予報を取得中...</div>';
+        
+        // API呼び出し
+        fetch(`${API_BASE}/forecast?lat=${lat}&lon=${lon}`)
+          .then(response => response.json())
+          .then(data => {
+            console.log('Weather API Response:', data);
+            displayForecast(data);
+          })
+          .catch(error => {
+            console.error('天気予報取得エラー:', error);
+            forecastContent.innerHTML = '<div style="color: red;">天気予報の取得に失敗しました</div>';
+          });
+      }
+    }
+
+
+    // 記録関連機能
+    function generateDetailedHourlyDisplay(detailedHourly) {
+      let html = `
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+          <h3 style="color: #2c3e50; margin-bottom: 20px; text-align: center;">🌤️ 詳細気象条件 (時間帯別)</h3>
+          <div style="font-size: 12px; color: #666; text-align: center; margin-bottom: 15px;">
+            干場θ値: ${detailedHourly.hoshiba_theta?.toFixed(1)}°
+          </div>
+      `;
+
+      // 午前4時〜午後4時（気温・湿度）
+      html += `
+        <div style="background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden;">
+          <div style="background: #e3f2fd; padding: 10px; font-weight: bold; color: #1976d2;">
+            📊 午前4時〜午後4時 (気温・湿度)
+          </div>
+          <div style="padding: 15px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 8px; font-size: 11px;">
+      `;
+      
+      detailedHourly.work_hours_4_16?.forEach(hour => {
+        const temp = hour.temperature?.toFixed(1) || '--';
+        const humidity = hour.humidity?.toFixed(0) || '--';
+        html += `
+          <div style="text-align: center; padding: 8px; border: 1px solid #eee; border-radius: 4px;">
+            <div style="font-weight: bold; color: #333;">${hour.hour}時</div>
+            <div style="color: #d32f2f; margin: 2px 0;">${temp}°C</div>
+            <div style="color: #1976d2;">${humidity}%</div>
+          </div>
+        `;
+      });
+      
+      html += `
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 午前4時〜10時（風向・風速・角度差）
+      html += `
+        <div style="background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden;">
+          <div style="background: #e8f5e8; padding: 10px; font-weight: bold; color: #2e7d32;">
+            🌬️ 午前4時〜10時 (風向・風速・角度差)
+          </div>
+          <div style="padding: 15px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; font-size: 10px;">
+      `;
+      
+      detailedHourly.morning_4_10?.forEach(hour => {
+        const windDir = hour.wind_direction?.toFixed(0) || '--';
+        const windSpeed = hour.wind_speed?.toFixed(1) || '--';
+        const angleDiff = hour.wind_theta_diff?.toFixed(0) || '--';
+        html += `
+          <div style="text-align: center; padding: 8px; border: 1px solid #eee; border-radius: 4px;">
+            <div style="font-weight: bold; color: #333; margin-bottom: 3px;">${hour.hour}時</div>
+            <div style="color: #2e7d32;">風向: ${windDir}°</div>
+            <div style="color: #1976d2;">風速: ${windSpeed}m/s</div>
+            <div style="color: #f57c00;">角度差: ${angleDiff}°</div>
+          </div>
+        `;
+      });
+      
+      html += `
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 午前10時〜午後4時（日射・雲量・気象指標）
+      html += `
+        <div style="background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden;">
+          <div style="background: #fff3e0; padding: 10px; font-weight: bold; color: #e65100;">
+            ☀️ 午前10時〜午後4時 (日射・雲量・気象指標)
+          </div>
+          <div style="padding: 15px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; font-size: 9px;">
+      `;
+      
+      detailedHourly.afternoon_10_16?.forEach(hour => {
+        const solar = hour.solar_radiation?.toFixed(0) || '--';
+        const cloud = hour.cloud_cover?.toFixed(0) || '--';
+        const verticalV = hour.vertical_velocity?.toFixed(2) || '--';
+        const ssi = hour.ssi?.toFixed(1) || '--';
+        const equivTemp = hour.equivalent_potential_temp?.toFixed(0) || '--';
+        
+        html += `
+          <div style="text-align: center; padding: 6px; border: 1px solid #eee; border-radius: 4px;">
+            <div style="font-weight: bold; color: #333; margin-bottom: 2px;">${hour.hour}時</div>
+            <div style="color: #ff9800; line-height: 1.2;">日射: ${solar}W/m²</div>
+            <div style="color: #607d8b; line-height: 1.2;">雲量: ${cloud}%</div>
+            <div style="color: #9c27b0; line-height: 1.2;">鉛直: ${verticalV}m/s</div>
+            <div style="color: #4caf50; line-height: 1.2;">SSI: ${ssi}</div>
+            <div style="color: #795548; line-height: 1.2;">相当温位: ${equivTemp}K</div>
+          </div>
+        `;
+      });
+      
+      html += `
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 総合判定
+      html += `
+        <div style="background: white; border-radius: 8px; overflow: hidden;">
+          <div style="background: #f3e5f5; padding: 10px; font-weight: bold; color: #7b1fa2;">
+            🎯 学習データに基づく総合判定
+          </div>
+          <div style="padding: 15px; text-align: center;">
+            <div style="font-size: 14px; color: #333; margin-bottom: 10px;">
+              上記の気象条件と過去の学習データを総合的に分析した結果:
+            </div>
+            <div style="padding: 10px; background: #e8f5e8; border-radius: 6px; font-weight: bold; color: #2e7d32;">
+              干せるかどうかの判定は上記「経験ルール予測」をご参照ください
+            </div>
+            <div style="font-size: 11px; color: #666; margin-top: 8px;">
+              ※ 風向・風速は朝の作業時間帯、日射・雲量は乾燥時間帯を重視
+            </div>
+          </div>
+        </div>
+      `;
+
+      html += `</div>`;
+      
+      return html;
+    }
+
+    // 地形情報と地形補正効果表示を生成
+    function generateTerrainInfoDisplay(terrainInfo, terrainCorrections) {
+      let html = `
+        <div style="background: #fff8e1; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px solid #ff9800;">
+          <h3 style="color: #e65100; margin-bottom: 15px; text-align: center;">🏔️ 地形条件と気象補正効果</h3>
+      `;
+
+      // 地形情報表示
+      html += `
+        <div style="background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden;">
+          <div style="background: #ffcc02; padding: 10px; font-weight: bold; color: #bf360c;">
+            📍 この地点の地形特性
+          </div>
+          <div style="padding: 15px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 13px;">
+              <div>
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">標高</div>
+                <div style="color: #d32f2f; font-size: 16px; font-weight: bold;">${terrainInfo.elevation?.toFixed(1) || '--'}m</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">土地利用</div>
+                <div style="color: #2e7d32; font-size: 14px; font-weight: bold;">${terrainInfo.land_use || '--'}</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">海岸距離</div>
+                <div style="color: #1976d2;">${terrainInfo.distance_to_coast?.toFixed(1) || '--'}km</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">傾斜角度</div>
+                <div style="color: #f57c00;">${terrainInfo.slope?.toFixed(1) || '--'}°</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 地形補正効果表示
+      if (terrainCorrections) {
+        const forestEffect = terrainCorrections.forest_effect;
+        const coastalEffect = terrainCorrections.coastal_effect;
+        
+        html += `
+          <div style="background: white; margin-bottom: 15px; border-radius: 8px; overflow: hidden;">
+            <div style="background: #e8f5e8; padding: 10px; font-weight: bold; color: #2e7d32;">
+              🔧 地形による気象補正（予報に自動適用済み）
+            </div>
+            <div style="padding: 15px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 12px;">
+                <div>
+                  <div style="font-weight: bold; color: #333; margin-bottom: 5px;">気温補正</div>
+                  <div style="color: ${terrainCorrections.temperature_correction >= 0 ? '#d32f2f' : '#1976d2'};">
+                    ${terrainCorrections.temperature_correction >= 0 ? '+' : ''}${terrainCorrections.temperature_correction?.toFixed(2) || '0.0'}°C
+                  </div>
+                  <div style="font-size: 10px; color: #666;">標高による気温低下</div>
+                </div>
+                <div>
+                  <div style="font-weight: bold; color: #333; margin-bottom: 5px;">湿度補正</div>
+                  <div style="color: ${terrainCorrections.humidity_correction >= 0 ? '#f57c00' : '#2e7d32'};">
+                    ${terrainCorrections.humidity_correction >= 0 ? '+' : ''}${terrainCorrections.humidity_correction?.toFixed(1) || '0.0'}%
+                  </div>
+                  <div style="font-size: 10px; color: #666;">${forestEffect ? '森林効果含む' : '標高効果のみ'}</div>
+                </div>
+                <div>
+                  <div style="font-weight: bold; color: #333; margin-bottom: 5px;">風速補正</div>
+                  <div style="color: ${terrainCorrections.wind_correction >= 0 ? '#2e7d32' : '#d32f2f'};">
+                    ${terrainCorrections.wind_correction >= 0 ? '+' : ''}${terrainCorrections.wind_correction?.toFixed(1) || '0.0'}m/s
+                  </div>
+                  <div style="font-size: 10px; color: #666;">${forestEffect ? '森林による減風' : '地形効果'}</div>
+                </div>
+                <div>
+                  <div style="font-weight: bold; color: #333; margin-bottom: 5px;">日射量補正</div>
+                  <div style="color: #2e7d32;">
+                    ${terrainCorrections.solar_reduction > 0 ? '-' : ''}${(terrainCorrections.solar_reduction * 100)?.toFixed(0) || '0'}%
+                  </div>
+                  <div style="font-size: 10px; color: #666;">干場は日射遮蔽なし</div>
+                </div>
+              </div>
+        `;
+
+        // 特別な警告表示
+        if (forestEffect) {
+          html += `
+              <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 6px; padding: 12px; margin-top: 15px;">
+                <div style="font-weight: bold; color: #d32f2f; margin-bottom: 8px;">⚠️ 森林地帯による重要な影響</div>
+                <div style="font-size: 12px; color: #333; line-height: 1.4;">
+                  • <strong>風速大幅減少</strong>：周囲の森林による風の遮蔽で昆布乾燥に必要な風通しが悪化<br>
+                  • <strong>湿度上昇</strong>：森林地帯の湿潤な空気により乾燥効率が低下<br>
+                  • <strong>日射量</strong>：干場自体は整地された砂利の場なので日射遮蔽はなし
+                </div>
+                <div style="font-size: 11px; color: #d32f2f; margin-top: 8px; font-weight: bold;">
+                  → この地点では乾燥条件が悪化する可能性があります
+                </div>
+              </div>
+          `;
+        }
+
+        if (coastalEffect) {
+          html += `
+              <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 6px; padding: 12px; margin-top: 10px;">
+                <div style="font-weight: bold; color: #1976d2; margin-bottom: 5px;">🌊 海岸効果</div>
+                <div style="font-size: 12px; color: #333;">
+                  海風による湿度上昇と風速増加の影響があります
+                </div>
+              </div>
+          `;
+        }
+
+        html += `
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+      
+      return html;
     }
 
     // 記録入力
@@ -1702,7 +2708,7 @@
 
     // 全島表示リセット
     resetNavButton.addEventListener('click', () => {
-      map.setView([45.178269, 141.228528], 13);
+      map.setView([45.178269, 141.228528], 11);
       
       townSelect.value = '';
       districtSelect.value = '';
@@ -3771,6 +4777,1554 @@
       });
     }
 
+    // 天気予報取得関数を先に定義
+    function getWeatherForecast(lat, lon) {
+      console.log('天気予報取得開始:', lat, lon);
+      
+      // 天気予報ダイアログを作成・表示
+      createWeatherForecastDialog(lat, lon);
+    }
+
+    function createWeatherForecastDialog(lat, lon) {
+      // 既存のダイアログがあれば削除
+      const existingDialog = document.getElementById('weatherForecastDialog');
+      if (existingDialog) {
+        existingDialog.remove();
+      }
+
+      const dialog = document.createElement('div');
+      dialog.id = 'weatherForecastDialog';
+      dialog.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 2px solid #2c5f2d;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        z-index: 10000;
+        max-width: 90vw;
+        max-height: 90vh;
+        overflow-y: auto;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      `;
+
+      dialog.innerHTML = `
+        <div style="margin-bottom: 20px; border-bottom: 2px solid #2c5f2d; padding-bottom: 15px;">
+          <h3 style="margin: 0; color: #2c5f2d; display: flex; align-items: center; justify-content: space-between;">
+            <span>🌤️ 天気予報</span>
+            <button onclick="closeWeatherForecastDialog()" style="background: #f44336; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 16px;">×</button>
+          </h3>
+          <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">座標: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
+        </div>
+
+        <!-- 日付タブ -->
+        <div style="margin-bottom: 20px;">
+          <div id="dateTabsContainer" style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 15px;">
+            <!-- タブは動的に生成 -->
+          </div>
+        </div>
+
+        <!-- 予報内容表示エリア -->
+        <div id="forecastContentContainer" style="min-height: 400px;">
+          <div style="text-align: center; padding: 40px; color: #666;">
+            <div style="font-size: 24px; margin-bottom: 10px;">📊</div>
+            <p>予報データを読み込み中...</p>
+          </div>
+        </div>
+
+        <!-- 閉じるボタン -->
+        <div style="text-align: center; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+          <button onclick="closeWeatherForecastDialog()" style="background: #2c5f2d; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px;">閉じる</button>
+        </div>
+      `;
+
+      document.body.appendChild(dialog);
+
+      // 予報データを取得・表示
+      loadWeatherForecastData(lat, lon);
+    }
+
+    function closeWeatherForecastDialog() {
+      const dialog = document.getElementById('weatherForecastDialog');
+      if (dialog) {
+        dialog.remove();
+      }
+    }
+
+    async function loadWeatherForecastData(lat, lon) {
+      try {
+        // 日付タブを生成（翌日から1週間）
+        generateDateTabs();
+        
+        // APIから天気データを取得
+        const response = await fetch(`${API_BASE}/forecast?lat=${lat}&lon=${lon}`);
+        const data = await response.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        console.log('予報データ:', data);
+        
+        // 予報データを保存（タブ切り替え時に再利用）
+        window.currentForecastData = data;
+        window.currentLat = lat;
+        window.currentLon = lon;
+        
+        // 最初のタブ（翌日）を選択状態にして表示
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+        
+        displayForecastForDate(data, tomorrowStr, lat, lon);
+        setActiveTab(tomorrowStr);
+        
+      } catch (error) {
+        console.error('天気予報取得エラー:', error);
+        document.getElementById('forecastContentContainer').innerHTML = `
+          <div style="text-align: center; padding: 40px; color: #f44336;">
+            <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+            <p><strong>予報データの取得に失敗しました</strong></p>
+            <p style="font-size: 14px; color: #666;">エラー: ${error.message}</p>
+            <p style="font-size: 12px; color: #999; margin-top: 15px;">※ 実際のAPIキーが設定されていない可能性があります</p>
+          </div>
+        `;
+      }
+    }
+
+    function generateDateTabs() {
+      const tabsContainer = document.getElementById('dateTabsContainer');
+      const today = new Date();
+      
+      let tabsHTML = '';
+      
+      for (let i = 1; i <= 7; i++) {
+        const date = new Date(today);
+        date.setDate(today.getDate() + i);
+        
+        const dateStr = date.toISOString().split('T')[0];
+        const displayDate = `${date.getMonth() + 1}/${date.getDate()}`;
+        const dayName = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+        
+        const isFirst = i === 1;
+        
+        tabsHTML += `
+          <button 
+            id="tab-${dateStr}" 
+            onclick="selectForecastDate('${dateStr}')"
+            style="
+              padding: 8px 12px;
+              border: 2px solid #2c5f2d;
+              background: ${isFirst ? '#2c5f2d' : 'white'};
+              color: ${isFirst ? 'white' : '#2c5f2d'};
+              border-radius: 20px;
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: bold;
+              transition: all 0.3s ease;
+            "
+            onmouseover="this.style.transform='scale(1.05)'"
+            onmouseout="this.style.transform='scale(1)'"
+          >
+            ${i === 1 ? '明日' : `${i}日後`}<br>
+            <small style="font-size: 11px;">${displayDate}(${dayName})</small>
+          </button>
+        `;
+      }
+      
+      tabsContainer.innerHTML = tabsHTML;
+    }
+
+    function selectForecastDate(dateStr) {
+      // タブの選択状態を更新
+      setActiveTab(dateStr);
+      
+      const contentContainer = document.getElementById('forecastContentContainer');
+      
+      // 最初の日付（翌日）以外は制限版を表示
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      
+      if (dateStr === tomorrowStr) {
+        // 翌日の場合は保存されたデータを表示
+        if (window.currentForecastData) {
+          displayForecastForDate(window.currentForecastData, dateStr, window.currentLat, window.currentLon);
+          return;
+        }
+      }
+      
+      // 2日後以降は簡易予報を表示
+      const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
+      let reliabilityInfo = '';
+      let reliabilityPercent = 100;
+      
+      if (dayOffset === 2) {
+        reliabilityInfo = '信頼度: 95% (高精度)';
+        reliabilityPercent = 95;
+      } else if (dayOffset === 3) {
+        reliabilityInfo = '信頼度: 85% (良好)';
+        reliabilityPercent = 85;
+      } else if (dayOffset <= 5) {
+        reliabilityInfo = '信頼度: 70% (中程度)';
+        reliabilityPercent = 70;
+      } else {
+        reliabilityInfo = '信頼度: 50% (参考程度)';
+        reliabilityPercent = 50;
+      }
+      
+      contentContainer.innerHTML = `
+        <div style="padding: 20px;">
+          <h4 style="color: #2c5f2d; margin-bottom: 20px; text-align: center;">
+            📅 ${dateStr} の予報
+          </h4>
+          
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h5 style="color: #856404; margin-bottom: 10px;">📊 ${dayOffset}日後予報</h5>
+            <div style="color: #856404;">
+              ${reliabilityInfo}<br>
+              ${dayOffset > 3 ? '※ 計画の参考程度にご活用ください' : '※ 作業計画の検討にご活用ください'}
+            </div>
+          </div>
+          
+          <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd; margin-bottom: 20px;">
+            <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌤️ 長期傾向予測</h5>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div>
+                <div style="font-weight: bold; margin-bottom: 5px;">一般的な気象傾向:</div>
+                <div style="color: #666;">利尻島の${new Date(dateStr).getMonth() + 1}月の特徴を考慮した予測を準備中</div>
+              </div>
+              <div>
+                <div style="font-weight: bold; margin-bottom: 5px;">推奨:</div>
+                <div style="color: #2e7d32;">翌日・2日後の高精度予報を優先して作業計画を立ててください</div>
+              </div>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+            <p style="font-size: 12px; color: #666; margin: 0;">
+              💡 高精度予報は翌日・2日後がおすすめです | 📊 利尻島昆布干し特化予報
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    function setActiveTab(activeDate) {
+      // すべてのタブを非選択状態にする
+      const allTabs = document.querySelectorAll('[id^="tab-"]');
+      allTabs.forEach(tab => {
+        tab.style.background = 'white';
+        tab.style.color = '#2c5f2d';
+      });
+      
+      // 選択されたタブを選択状態にする
+      const activeTab = document.getElementById(`tab-${activeDate}`);
+      if (activeTab) {
+        activeTab.style.background = '#2c5f2d';
+        activeTab.style.color = 'white';
+      }
+    }
+
+    function displayForecastForDate(data, dateStr, lat, lon) {
+      const contentContainer = document.getElementById('forecastContentContainer');
+      
+      console.log('表示中のデータ:', data);
+      
+      // 最適化されたAPIレスポンス形式に対応
+      if (!data) {
+        contentContainer.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">予報データがありません</div>';
+        return;
+      }
+      
+      // 簡易表示のHTML生成（最適化されたAPIレスポンス用）
+      const tempHumidityHTML = `
+        <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
+          <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌡️ 基本気象情報</h5>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>平均湿度: ${data.humidity || '--'}%</div>
+            <div>平均風速: ${data.wind || '--'} m/s</div>
+          </div>
+        </div>
+      `;
+      
+      const windHTML = `
+        <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
+          <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌬️ 換気重視期間（午前4時〜10時）</h5>
+          <div>風速: ${data.wind || '--'} m/s</div>
+          <div style="margin-top: 8px; padding: 8px; background: ${data.wind > 1.5 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
+            ${data.wind > 1.5 ? '✓ 換気条件良好' : '⚠ 風が弱め - 換気注意'}
+          </div>
+        </div>
+      `;
+      
+      const solarHTML = `
+        <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
+          <h5 style="color: #2c5f2d; margin-bottom: 10px;">☀️ 熱供給重視期間（午前10時〜午後4時）</h5>
+          <div>湿度: ${data.humidity || '--'}%</div>
+          <div style="margin-top: 8px; padding: 8px; background: ${data.humidity < 80 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
+            ${data.humidity < 80 ? '✓ 乾燥条件良好' : '⚠ 高湿度 - 乾燥注意'}
+          </div>
+        </div>
+      `;
+      
+      // 乾燥判定結果の処理
+      const dryingHTML = `
+        <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
+          <h5 style="color: #2c5f2d; margin-bottom: 10px;">🎯 総合判定</h5>
+          <div style="font-size: 16px; font-weight: bold; color: ${data.prediction?.includes('Storm') ? '#d32f2f' : '#2e7d32'}; margin-bottom: 8px;">
+            ${data.prediction || '判定データなし'}
+          </div>
+          <div>信頼度: ${data.confidence || '--'}%</div>
+          ${data.recommendation ? `<div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 4px;">推奨: ${data.recommendation}</div>` : ''}
+        </div>
+      `;
+      
+      // 安全警告の処理
+      let safetyWarningsHTML = '';
+      if (data.safety_warnings && data.safety_warnings.length > 0) {
+        const warningsList = data.safety_warnings.map(warning => `<li>${warning}</li>`).join('');
+        safetyWarningsHTML = `
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h5 style="color: #856404; margin-bottom: 10px;">⚠️ 安全警告</h5>
+            <ul style="color: #856404; margin: 0; padding-left: 20px;">
+              ${warningsList}
+            </ul>
+          </div>
+        `;
+      }
+      
+      // 仕様書に従った予報表示を作成
+      contentContainer.innerHTML = `
+        <div style="padding: 20px;">
+          <h4 style="color: #2c5f2d; margin-bottom: 20px; text-align: center;">
+            📅 ${dateStr} の詳細予報
+          </h4>
+          
+          ${safetyWarningsHTML}
+          
+          <!-- 時間帯別予報セクション -->
+          <div style="display: grid; gap: 20px;">
+            ${tempHumidityHTML}
+            ${windHTML}
+            ${solarHTML}
+            ${dryingHTML}
+          </div>
+          
+          <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+            <p style="font-size: 12px; color: #666; margin: 0;">
+              ✅ 地形補正・高湿度リスク検出システム適用済み | 📊 利尻島昆布干し特化予報
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    function generateTempHumiditySection(hourlyData, dateStr) {
+      if (!hourlyData || !hourlyData.time) {
+        return `
+          <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9;">
+            <h5 style="color: #2c5f2d; margin-bottom: 15px;">🌡️ 基本気象情報 (4:00〜16:00)</h5>
+            <p style="color: #666; text-align: center;">データ取得中...</p>
+          </div>
+        `;
+      }
+      
+      // 4:00-16:00のデータを抽出
+      const targetHours = [];
+      for (let i = 0; i < hourlyData.time.length; i++) {
+        const timeStr = hourlyData.time[i];
+        const hour = new Date(timeStr).getHours();
+        const dateMatch = timeStr.includes(dateStr);
+        
+        if (dateMatch && hour >= 4 && hour <= 16) {
+          targetHours.push({
+            time: timeStr,
+            hour: hour,
+            temp: hourlyData.temperature_2m ? hourlyData.temperature_2m[i] : null,
+            humidity: hourlyData.relative_humidity_2m ? hourlyData.relative_humidity_2m[i] : null
+          });
+        }
+      }
+      
+      let tempChartHTML = '';
+      let humidityChartHTML = '';
+      
+      if (targetHours.length > 0) {
+        // 気温チャート作成
+        const tempValues = targetHours.map(h => h.temp).filter(t => t !== null);
+        const minTemp = Math.min(...tempValues);
+        const maxTemp = Math.max(...tempValues);
+        
+        tempChartHTML = `
+          <div style="margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px;">
+              <span>4:00</span><span>8:00</span><span>12:00</span><span>16:00</span>
+            </div>
+            <div style="display: flex; gap: 2px; height: 30px; align-items: end;">
+              ${targetHours.filter(h => [4,8,12,16].includes(h.hour)).map(h => `
+                <div style="flex: 1; background: linear-gradient(to top, #ff9800, #ffc107); height: ${h.temp ? ((h.temp - minTemp) / (maxTemp - minTemp + 1)) * 100 : 0}%; min-height: 3px; border-radius: 2px;" title="${h.temp}°C"></div>
+              `).join('')}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-top: 3px;">
+              ${targetHours.filter(h => [4,8,12,16].includes(h.hour)).map(h => `<span>${h.temp || '--'}°C</span>`).join('')}
+            </div>
+          </div>
+        `;
+        
+        // 湿度チャート作成
+        const humidityValues = targetHours.map(h => h.humidity).filter(h => h !== null);
+        const avgHumidity = humidityValues.reduce((a, b) => a + b, 0) / humidityValues.length;
+        const maxHumidity = Math.max(...humidityValues);
+        
+        const humidityRisk = maxHumidity >= 85 ? '⚠️ 高湿度警報' : 
+                           avgHumidity >= 80 ? '⚡ 注意' : '✅ 良好';
+        const humidityColor = maxHumidity >= 85 ? '#f44336' :
+                            avgHumidity >= 80 ? '#ff9800' : '#4caf50';
+        
+        humidityChartHTML = `
+          <div style="margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px;">
+              <span>4:00</span><span>8:00</span><span>12:00</span><span>16:00</span>
+            </div>
+            <div style="display: flex; gap: 2px; height: 30px; align-items: end;">
+              ${targetHours.filter(h => [4,8,12,16].includes(h.hour)).map(h => `
+                <div style="flex: 1; background: linear-gradient(to top, #2196f3, #03a9f4); height: ${h.humidity || 0}%; min-height: 3px; border-radius: 2px;" title="${h.humidity}%"></div>
+              `).join('')}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #333; margin-top: 3px;">
+              ${targetHours.filter(h => [4,8,12,16].includes(h.hour)).map(h => `<span>${h.humidity || '--'}%</span>`).join('')}
+            </div>
+            <div style="margin-top: 8px; padding: 5px; background: ${humidityColor}22; border-left: 3px solid ${humidityColor}; border-radius: 3px;">
+              <span style="color: ${humidityColor}; font-weight: bold; font-size: 12px;">${humidityRisk}</span>
+              <span style="color: #666; font-size: 11px; margin-left: 8px;">平均: ${Math.round(avgHumidity)}%</span>
+            </div>
+          </div>
+        `;
+      }
+      
+      return `
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #f9f9f9;">
+          <h5 style="color: #2c5f2d; margin-bottom: 15px;">🌡️ 基本気象情報 (4:00〜16:00)</h5>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <strong>気温推移</strong>
+              ${tempChartHTML}
+            </div>
+            <div>
+              <strong>湿度推移</strong>
+              ${humidityChartHTML}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function generateWindSection(hourlyData, dateStr, lat, lon) {
+      if (!hourlyData || !hourlyData.time) {
+        return `
+          <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #e8f5e8;">
+            <h5 style="color: #2c5f2d; margin-bottom: 15px;">💨 換気重視期間 (4:00〜10:00)</h5>
+            <p style="color: #666; text-align: center;">データ取得中...</p>
+          </div>
+        `;
+      }
+      
+      // 4:00-10:00のデータを抽出
+      const windHours = [];
+      for (let i = 0; i < hourlyData.time.length; i++) {
+        const timeStr = hourlyData.time[i];
+        const hour = new Date(timeStr).getHours();
+        const dateMatch = timeStr.includes(dateStr);
+        
+        if (dateMatch && hour >= 4 && hour <= 10) {
+          const windDirection = hourlyData.wind_direction_10m ? hourlyData.wind_direction_10m[i] : null;
+          const windSpeed = hourlyData.wind_speed_10m ? hourlyData.wind_speed_10m[i] : null;
+          
+          windHours.push({
+            time: timeStr,
+            hour: hour,
+            direction: windDirection,
+            speed: windSpeed,
+            traditionName: getTraditionalWindName(windDirection),
+            angleFromSpot: calculateAngleFromSpot(windDirection, lat, lon)
+          });
+        }
+      }
+      
+      let windChartHTML = '';
+      let windAnalysisHTML = '';
+      
+      if (windHours.length > 0) {
+        // 風速の評価
+        const avgWindSpeed = windHours.reduce((sum, h) => sum + (h.speed || 0), 0) / windHours.length;
+        const goodWindCount = windHours.filter(h => h.speed >= 1.5).length;
+        const windQuality = goodWindCount >= windHours.length * 0.7 ? '✅ 良好' : 
+                          goodWindCount >= windHours.length * 0.4 ? '⚡ 普通' : '⚠️ 弱風';
+        const windColor = goodWindCount >= windHours.length * 0.7 ? '#4caf50' :
+                        goodWindCount >= windHours.length * 0.4 ? '#ff9800' : '#f44336';
+        
+        // 風向・風速チャート
+        windChartHTML = `
+          <div style="margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px;">
+              ${windHours.filter(h => [4,6,8,10].includes(h.hour)).map(h => `<span>${h.hour}:00</span>`).join('')}
+            </div>
+            <div style="display: flex; gap: 3px; height: 40px; align-items: end; margin-bottom: 5px;">
+              ${windHours.filter(h => [4,6,8,10].includes(h.hour)).map(h => `
+                <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+                  <div style="background: ${h.speed >= 1.5 ? '#4caf50' : '#ff5722'}; height: ${Math.min((h.speed || 0) * 8, 40)}px; width: 100%; min-height: 3px; border-radius: 2px; margin-bottom: 2px;" title="${h.speed}m/s"></div>
+                  <span style="font-size: 9px; transform: rotate(${h.direction || 0}deg);">↑</span>
+                </div>
+              `).join('')}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #333;">
+              ${windHours.filter(h => [4,6,8,10].includes(h.hour)).map(h => `<span>${h.speed || '--'}m/s</span>`).join('')}
+            </div>
+          </div>
+        `;
+        
+        // 利尻島伝統風名表示
+        const uniqueWindNames = [...new Set(windHours.map(h => h.traditionName).filter(n => n))];
+        const windNameHTML = uniqueWindNames.length > 0 ? uniqueWindNames.join('、') : '不明';
+        
+        windAnalysisHTML = `
+          <div style="margin-top: 10px; padding: 8px; background: ${windColor}22; border-left: 3px solid ${windColor}; border-radius: 3px;">
+            <div style="color: ${windColor}; font-weight: bold; font-size: 12px; margin-bottom: 3px;">${windQuality}</div>
+            <div style="font-size: 11px; color: #666;">
+              <div>平均風速: ${avgWindSpeed.toFixed(1)}m/s</div>
+              <div>主風向: ${windNameHTML}</div>
+              <div>適正時間: ${goodWindCount}/${windHours.length}時間</div>
+            </div>
+          </div>
+        `;
+      }
+      
+      return `
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #e8f5e8;">
+          <h5 style="color: #2c5f2d; margin-bottom: 15px;">💨 換気重視期間 (4:00〜10:00)</h5>
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px;">
+            <div>
+              <strong>風速・風向推移</strong>
+              ${windChartHTML}
+            </div>
+            <div>
+              <strong>風況評価</strong>
+              ${windAnalysisHTML}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function getTraditionalWindName(direction) {
+      if (direction === null || direction === undefined) return '不明';
+      
+      // 利尻島伝統風名マッピング（仕様書準拠）
+      const windNames = [
+        { min: 348.75, max: 11.25, name: 'アイ' },
+        { min: 11.25, max: 33.75, name: 'アイシモ・シモ' },
+        { min: 33.75, max: 56.25, name: 'シモ' },
+        { min: 56.25, max: 78.75, name: 'シモヤマセ' },
+        { min: 78.75, max: 101.25, name: 'ホンヤマセ' },
+        { min: 101.25, max: 123.75, name: 'ヤマセ' },
+        { min: 123.75, max: 146.25, name: 'ミナミヤマセ' },
+        { min: 146.25, max: 168.75, name: 'ミナミヤマ' },
+        { min: 168.75, max: 191.25, name: 'クダリ' },
+        { min: 191.25, max: 213.75, name: 'クダリヒカタ' },
+        { min: 213.75, max: 236.25, name: 'ヒカタ' },
+        { min: 236.25, max: 258.75, name: 'ニシヒカタ' },
+        { min: 258.75, max: 281.25, name: 'ニシ' },
+        { min: 281.25, max: 303.75, name: 'ニシタマ' },
+        { min: 303.75, max: 326.25, name: 'タマ' },
+        { min: 326.25, max: 348.75, name: 'アイタマ' }
+      ];
+      
+      for (const wind of windNames) {
+        if (wind.min > wind.max) { // 北風の場合（0度をまたぐ）
+          if (direction >= wind.min || direction <= wind.max) {
+            return wind.name;
+          }
+        } else {
+          if (direction >= wind.min && direction <= wind.max) {
+            return wind.name;
+          }
+        }
+      }
+      
+      return '不明';
+    }
+
+    function calculateAngleFromSpot(windDirection, lat, lon) {
+      if (windDirection === null || windDirection === undefined) return null;
+      
+      // 利尻山の座標（θ値計算用）
+      const RISHIRI_SAN_LAT = 45.1821;
+      const RISHIRI_SAN_LON = 141.2421;
+      
+      // 簡易的な干場θ値計算
+      const deltaLon = lon - RISHIRI_SAN_LON;
+      const deltaLat = lat - RISHIRI_SAN_LAT;
+      let spotTheta = Math.atan2(deltaLon, deltaLat) * 180 / Math.PI;
+      if (spotTheta < 0) spotTheta += 360;
+      
+      // 風向との角度差を計算
+      let angleDiff = Math.abs(windDirection - spotTheta);
+      if (angleDiff > 180) angleDiff = 360 - angleDiff;
+      
+      return Math.round(angleDiff);
+    }
+
+    function generateSolarSection(hourlyData, dateStr) {
+      if (!hourlyData || !hourlyData.time) {
+        return `
+          <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff3e0;">
+            <h5 style="color: #2c5f2d; margin-bottom: 15px;">☀️ 熱供給重視期間 (10:00〜16:00)</h5>
+            <p style="color: #666; text-align: center;">データ取得中...</p>
+          </div>
+        `;
+      }
+      
+      // 10:00-16:00のデータを抽出
+      const solarHours = [];
+      for (let i = 0; i < hourlyData.time.length; i++) {
+        const timeStr = hourlyData.time[i];
+        const hour = new Date(timeStr).getHours();
+        const dateMatch = timeStr.includes(dateStr);
+        
+        if (dateMatch && hour >= 10 && hour <= 16) {
+          solarHours.push({
+            time: timeStr,
+            hour: hour,
+            solar: hourlyData.shortwave_radiation ? hourlyData.shortwave_radiation[i] : null,
+            cloud: hourlyData.cloud_cover ? hourlyData.cloud_cover[i] : null,
+            temp: hourlyData.temperature_2m ? hourlyData.temperature_2m[i] : null
+          });
+        }
+      }
+      
+      let solarChartHTML = '';
+      let cloudChartHTML = '';
+      
+      if (solarHours.length > 0) {
+        // 日射量評価
+        const avgSolar = solarHours.reduce((sum, h) => sum + (h.solar || 0), 0) / solarHours.length;
+        const avgCloud = solarHours.reduce((sum, h) => sum + (h.cloud || 0), 0) / solarHours.length;
+        
+        const solarQuality = avgSolar >= 600 ? '✅ 強い' :
+                           avgSolar >= 300 ? '⚡ 普通' : '⚠️ 弱い';
+        const solarColor = avgSolar >= 600 ? '#ff9800' :
+                         avgSolar >= 300 ? '#ffc107' : '#757575';
+        
+        // 日射量チャート
+        solarChartHTML = `
+          <div style="margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666; margin-bottom: 5px;">
+              <span>10:00</span><span>12:00</span><span>14:00</span><span>16:00</span>
+            </div>
+            <div style="display: flex; gap: 2px; height: 30px; align-items: end;">
+              ${solarHours.filter(h => [10,12,14,16].includes(h.hour)).map(h => `
+                <div style="flex: 1; background: linear-gradient(to top, #ff9800, #ffc107); height: ${Math.min((h.solar || 0) / 10, 30)}px; min-height: 3px; border-radius: 2px;" title="${h.solar}W/m²"></div>
+              `).join('')}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #333; margin-top: 3px;">
+              ${solarHours.filter(h => [10,12,14,16].includes(h.hour)).map(h => `<span>${h.solar || '--'}</span>`).join('')}
+            </div>
+          </div>
+        `;
+        
+        // 雲量チャート
+        cloudChartHTML = `
+          <div style="margin-top: 10px;">
+            <div style="display: flex; gap: 2px; height: 30px; align-items: end;">
+              ${solarHours.filter(h => [10,12,14,16].includes(h.hour)).map(h => `
+                <div style="flex: 1; background: linear-gradient(to top, #78909c, #90a4ae); height: ${h.cloud || 0}%; min-height: 3px; border-radius: 2px;" title="${h.cloud}%"></div>
+              `).join('')}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #333; margin-top: 3px;">
+              ${solarHours.filter(h => [10,12,14,16].includes(h.hour)).map(h => `<span>${h.cloud || '--'}%</span>`).join('')}
+            </div>
+            <div style="margin-top: 8px; padding: 5px; background: ${solarColor}22; border-left: 3px solid ${solarColor}; border-radius: 3px;">
+              <span style="color: ${solarColor}; font-weight: bold; font-size: 12px;">${solarQuality}</span>
+              <span style="color: #666; font-size: 11px; margin-left: 8px;">平均雲量: ${Math.round(avgCloud)}%</span>
+            </div>
+          </div>
+        `;
+      }
+      
+      return `
+        <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: #fff3e0;">
+          <h5 style="color: #2c5f2d; margin-bottom: 15px;">☀️ 熱供給重視期間 (10:00〜16:00)</h5>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <strong>日射量 (W/m²)</strong>
+              ${solarChartHTML}
+            </div>
+            <div>
+              <strong>雲量 (%)</strong>
+              ${cloudChartHTML}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function generateDryingAnalysis(analysisData, hourlyData, dateStr) {
+      // 乾燥適合度を総合的に判定
+      let dryingScore = 0;
+      let analysisText = [];
+      let completionTime = '不明';
+      let riskFactors = [];
+      
+      if (hourlyData && hourlyData.time) {
+        // 湿度リスク評価
+        const humidityValues = [];
+        const windValues = [];
+        const solarValues = [];
+        
+        for (let i = 0; i < hourlyData.time.length; i++) {
+          const timeStr = hourlyData.time[i];
+          if (timeStr.includes(dateStr)) {
+            const hour = new Date(timeStr).getHours();
+            if (hour >= 4 && hour <= 16) {
+              if (hourlyData.relative_humidity_2m && hourlyData.relative_humidity_2m[i] !== null) {
+                humidityValues.push(hourlyData.relative_humidity_2m[i]);
+              }
+              if (hourlyData.wind_speed_10m && hourlyData.wind_speed_10m[i] !== null) {
+                windValues.push(hourlyData.wind_speed_10m[i]);
+              }
+              if (hour >= 10 && hourlyData.shortwave_radiation && hourlyData.shortwave_radiation[i] !== null) {
+                solarValues.push(hourlyData.shortwave_radiation[i]);
+              }
+            }
+          }
+        }
+        
+        // 湿度評価（40点満点）
+        const maxHumidity = humidityValues.length > 0 ? Math.max(...humidityValues) : 100;
+        const avgHumidity = humidityValues.length > 0 ? humidityValues.reduce((a, b) => a + b) / humidityValues.length : 100;
+        
+        if (maxHumidity < 70) {
+          dryingScore += 40;
+          analysisText.push('✅ 湿度条件良好');
+        } else if (maxHumidity < 85) {
+          dryingScore += 25;
+          analysisText.push('⚡ 湿度条件普通');
+        } else {
+          dryingScore += 5;
+          analysisText.push('⚠️ 高湿度リスク');
+          riskFactors.push('高湿度');
+        }
+        
+        // 風速評価（30点満点）
+        const avgWind = windValues.length > 0 ? windValues.reduce((a, b) => a + b) / windValues.length : 0;
+        const goodWindHours = windValues.filter(w => w >= 1.5).length;
+        
+        if (avgWind >= 2.0 && goodWindHours >= windValues.length * 0.7) {
+          dryingScore += 30;
+          analysisText.push('✅ 風況良好');
+        } else if (avgWind >= 1.5) {
+          dryingScore += 20;
+          analysisText.push('⚡ 風況普通');
+        } else {
+          dryingScore += 5;
+          analysisText.push('⚠️ 弱風');
+          riskFactors.push('風速不足');
+        }
+        
+        // 日射評価（30点満点）
+        const avgSolar = solarValues.length > 0 ? solarValues.reduce((a, b) => a + b) / solarValues.length : 0;
+        
+        if (avgSolar >= 500) {
+          dryingScore += 30;
+          analysisText.push('✅ 日射量良好');
+          completionTime = '午後2時頃';
+        } else if (avgSolar >= 300) {
+          dryingScore += 20;
+          analysisText.push('⚡ 日射量普通');
+          completionTime = '午後3時頃';
+        } else {
+          dryingScore += 10;
+          analysisText.push('⚠️ 日射量不足');
+          completionTime = '夕方以降';
+          riskFactors.push('日射量不足');
+        }
+      }
+      
+      // 総合判定
+      let overallStatus = '';
+      let statusIcon = '';
+      let statusColor = '';
+      
+      if (dryingScore >= 80) {
+        overallStatus = '非常に良好';
+        statusIcon = '🌟';
+        statusColor = '#4caf50';
+      } else if (dryingScore >= 60) {
+        overallStatus = '良好';
+        statusIcon = '✅';
+        statusColor = '#8bc34a';
+      } else if (dryingScore >= 40) {
+        overallStatus = '要注意';
+        statusIcon = '⚡';
+        statusColor = '#ff9800';
+      } else {
+        overallStatus = '不適';
+        statusIcon = '⚠️';
+        statusColor = '#f44336';
+      }
+      
+      const riskText = riskFactors.length > 0 ? 
+        `<div style="margin-top: 8px; padding: 5px; background: #ffebee; border-left: 3px solid #f44336; border-radius: 3px;">
+          <span style="color: #f44336; font-size: 11px;">⚠️ リスク要因: ${riskFactors.join('、')}</span>
+        </div>` : '';
+      
+      return `
+        <div style="border: 2px solid ${statusColor}; border-radius: 8px; padding: 15px; background: ${statusColor}11;">
+          <h5 style="color: #2c5f2d; margin-bottom: 15px;">🎯 科学的乾燥予測</h5>
+          <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 32px; margin-bottom: 10px;">${statusIcon}</div>
+            <p style="font-size: 20px; font-weight: bold; color: #2c5f2d; margin-bottom: 10px;">
+              乾燥適合度: <span style="color: ${statusColor};">${overallStatus}</span>
+            </p>
+            <p style="font-size: 16px; color: ${statusColor}; margin-bottom: 5px;">
+              スコア: ${dryingScore}/100点
+            </p>
+            <p style="font-size: 14px; color: #666; margin-bottom: 10px;">
+              予測完了時間: ${completionTime}
+            </p>
+            <div style="text-align: left; margin-top: 15px;">
+              ${analysisText.map(text => `<div style="font-size: 12px; color: #333; margin: 2px 0;">• ${text}</div>`).join('')}
+            </div>
+            ${riskText}
+          </div>
+        </div>
+      `;
+    }
+
+    // 記録ダイアログを開く関数（仕様書準拠）
+    function openRecordDialog(spotName) {
+      console.log('記録ダイアログを開く:', spotName);
+      
+      // Step 1: 日付選択ダイアログ
+      const dialogHtml = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;" id="recordDialog">
+          <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h3 style="margin-top: 0; color: #2c5f2d;">${spotName} の記録</h3>
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 10px; margin: 10px 0; color: #856404;">
+              <strong>⚠️ 注意:</strong> 日付の入力間違いは機械学習に負の影響を及ぼすので注意してください
+            </div>
+            <label style="display: block; margin: 10px 0 5px 0; font-weight: bold;">日付を選択:</label>
+            
+            <!-- 年選択 -->
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">年:</label>
+              <div id="yearContainer" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                <!-- 年ボタンが動的に生成されます -->
+              </div>
+            </div>
+            
+            <!-- 月選択 -->
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">月:</label>
+              <div id="monthContainer" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">
+                <!-- 月ボタンが動的に生成されます -->
+              </div>
+            </div>
+            
+            <!-- 日選択 -->
+            <div style="margin-bottom: 10px;">
+              <label style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;">日:</label>
+              <div id="dayContainer" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-height: 120px; overflow-y: auto;">
+                <!-- 日ボタンが動的に生成されます -->
+              </div>
+            </div>
+            
+            <div style="font-size: 12px; color: #666; margin-bottom: 10px; text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+              選択された日付: <span id="selectedDateDisplay">未選択</span>
+            </div>
+            <button onclick="window.checkExistingRecord('${spotName}')" style="display: block; width: 100%; margin: 5px 0; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">次へ</button>
+            <button onclick="window.closeRecordDialog()" style="display: block; width: 100%; margin: 5px 0; padding: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', dialogHtml);
+      
+      // 日付ボタンを生成
+      generateDateButtons();
+      
+      // 日付入力のイベントリスナーを設定
+      setTimeout(() => {
+        const dateInput = document.getElementById('recordDate');
+        const nextButton = document.querySelector('#recordDialog button[onclick*="checkExistingRecord"]');
+        
+        if (dateInput && nextButton) {
+          // 日付フィールドを完全にクリア
+          dateInput.value = '';
+          nextButton.disabled = true;
+          nextButton.style.background = '#ccc';
+          nextButton.textContent = '日付を選択してください';
+          
+          console.log('日付入力フィールドが準備されました（初期値クリア）');
+          console.log('初期状態の日付値:', dateInput.value);
+          
+          // 今日の日付を取得
+          const today = new Date();
+          const todayString = today.getFullYear() + '-' + 
+                            String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                            String(today.getDate()).padStart(2, '0');
+          
+          console.log('今日の日付基準:', todayString);
+          
+          // 日付変更時のイベントリスナーを追加
+          function updateButton() {
+            console.log('updateButton呼び出し - 現在の値:', dateInput.value);
+            console.log('値の存在チェック:', !!dateInput.value);
+            console.log('値の長さ:', dateInput.value.length);
+            
+            if (dateInput.value && dateInput.value.length > 0) {
+              // 未来の日付チェック
+              if (dateInput.value > todayString) {
+                nextButton.disabled = true;
+                nextButton.style.background = '#ff5722';
+                nextButton.textContent = '未来の日付は選択できません';
+                console.log('未来の日付が選択されました:', dateInput.value);
+              } else {
+                nextButton.disabled = false;
+                nextButton.style.background = '#4caf50';
+                nextButton.textContent = '次へ';
+                console.log('有効な日付が選択されました:', dateInput.value);
+              }
+            } else {
+              nextButton.disabled = true;
+              nextButton.style.background = '#ccc';
+              nextButton.textContent = '日付を選択してください';
+              console.log('日付が空です');
+            }
+          }
+          
+          dateInput.addEventListener('change', function(e) {
+            console.log('change イベント発生:', e.target.value);
+            updateButton();
+          });
+          
+          dateInput.addEventListener('input', function(e) {
+            console.log('input イベント発生:', e.target.value);
+            updateButton();
+          });
+          
+          // 追加のイベントリスナー
+          dateInput.addEventListener('blur', function(e) {
+            console.log('blur イベント発生:', e.target.value);
+            updateButton();
+          });
+          
+          dateInput.addEventListener('keyup', function(e) {
+            console.log('keyup イベント発生:', e.target.value);
+            updateButton();
+          });
+          
+          // ポーリングで値の変化を監視（より頻繁に）
+          let lastValue = '';
+          const checkValue = setInterval(() => {
+            if (dateInput.value !== lastValue) {
+              console.log('ポーリング検知 - 値変更:', lastValue, '->', dateInput.value);
+              lastValue = dateInput.value;
+              updateButton();
+            }
+          }, 100); // 500ms -> 100msに変更
+          
+          // ダイアログが閉じられた時にポーリングを停止
+          const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+              if (mutation.type === 'childList') {
+                mutation.removedNodes.forEach((node) => {
+                  if (node.id === 'recordDialog') {
+                    clearInterval(checkValue);
+                    observer.disconnect();
+                  }
+                });
+              }
+            });
+          });
+          observer.observe(document.body, { childList: true });
+          
+          // 初期状態をチェック
+          updateButton();
+        }
+      }, 10);
+    }
+    
+    // 既存記録をチェックする関数
+    function checkExistingRecord(spotName) {
+      const selectedDate = window.selectedRecordDate;
+      console.log('選択された日付:', selectedDate);
+      
+      if (!selectedDate) {
+        alert('日付を選択してください');
+        console.log('日付が選択されていません');
+        return;
+      }
+      
+      // 未来の日付チェック
+      const today = new Date();
+      const todayString = today.getFullYear() + '-' + 
+                        String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                        String(today.getDate()).padStart(2, '0');
+      
+      if (selectedDate > todayString) {
+        alert('未来の日付は記録できません。過去または今日の日付を選択してください。');
+        console.log('未来の日付が選択されました:', selectedDate);
+        return;
+      }
+      
+      console.log('既存記録チェック:', spotName, selectedDate);
+      console.log('選択された日付の詳細確認:', selectedDate);
+      
+      // 既存記録をチェック
+      fetch(`${API_BASE}/check_spot_records?name=${encodeURIComponent(spotName)}&date=${selectedDate}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success' && data.record) {
+            // 既存記録が存在する場合
+            showExistingRecordDialog(spotName, selectedDate, data.record.result);
+          } else {
+            // 新規記録の場合
+            showRecordOptionsDialog(spotName, selectedDate);
+          }
+        })
+        .catch(error => {
+          console.error('記録チェックエラー:', error);
+          // エラーの場合も新規記録として進める
+          showRecordOptionsDialog(spotName, selectedDate);
+        });
+    }
+    
+    // 既存記録確認ダイアログ
+    function showExistingRecordDialog(spotName, date, existingResult) {
+      closeRecordDialog();
+      
+      console.log('showExistingRecordDialog呼び出し - 受信した日付:', date);
+      
+      const dialogHtml = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;" id="recordDialog">
+          <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h3 style="margin-top: 0; color: #2c5f2d;">記録が存在します</h3>
+            <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; padding: 10px; margin: 10px 0;">
+              <strong>地点:</strong> ${spotName}<br>
+              <strong>日付:</strong> ${date}<br>
+              <strong>既存記録:</strong> ${existingResult}
+            </div>
+            <p style="font-size: 12px; color: #666;">デバッグ: 受信した日付 = ${date}</p>
+            <button onclick="window.showRecordOptionsDialog('${spotName}', '${date}')" style="display: block; width: 100%; margin: 5px 0; padding: 10px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer;">記録を変更</button>
+            <button onclick="window.closeRecordDialog()" style="display: block; width: 100%; margin: 5px 0; padding: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+    
+    // 記録選択肢ダイアログ（仕様書準拠の3択）
+    function showRecordOptionsDialog(spotName, date) {
+      closeRecordDialog();
+      
+      console.log('showRecordOptionsDialog呼び出し - 受信した日付:', date);
+      
+      const recordOptions = [
+        '完全乾燥',
+        '中止',
+        '干したが完全には乾かせなかった（泣）'
+      ];
+      
+      let optionsHtml = '';
+      recordOptions.forEach((option) => {
+        optionsHtml += `<button onclick="window.submitRecord('${spotName}', '${date}', '${option}')" style="display: block; width: 100%; margin: 5px 0; padding: 10px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer;">${option}</button>`;
+      });
+      
+      const dialogHtml = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;" id="recordDialog">
+          <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h3 style="margin-top: 0; color: #2c5f2d;">${spotName} の記録</h3>
+            <p><strong>日付:</strong> ${date}</p>
+            <p style="font-size: 12px; color: #666;">デバッグ: 受信した日付 = ${date}</p>
+            <p>乾燥結果を選択してください：</p>
+            ${optionsHtml}
+            <button onclick="window.closeRecordDialog()" style="display: block; width: 100%; margin: 10px 0 0 0; padding: 8px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+    
+    // 記録を送信する関数
+    function submitRecord(spotName, date, result) {
+      console.log('記録送信:', spotName, date, result);
+      console.log('送信される日付の確認:', date);
+      console.log('日付のタイプ:', typeof date);
+      
+      fetch(`${API_BASE}/record`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: date,
+          name: spotName,
+          result: result
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('記録送信結果:', data);
+        if (data.status === 'success') {
+          alert(`記録が保存されました！\n\n地点: ${spotName}\n日付: ${date}\n結果: ${result}\n\n機械学習モデルが自動でアップデートされました。`);
+        } else {
+          alert('記録の保存に失敗しました: ' + data.message);
+        }
+        closeRecordDialog();
+      })
+      .catch(error => {
+        console.error('記録送信エラー:', error);
+        alert('記録の送信中にエラーが発生しました');
+        closeRecordDialog();
+      });
+    }
+    
+    // 日付選択UI変数
+    let selectedYear = null;
+    let selectedMonth = null;
+    let selectedDay = null;
+
+    // 日付選択UIを生成する関数
+    function generateDateButtons() {
+      generateYearButtons();
+      generateMonthButtons();
+      updateDateDisplay();
+    }
+    
+    // 年ボタンを生成
+    function generateYearButtons() {
+      const container = document.getElementById('yearContainer');
+      if (!container) return;
+      
+      const currentYear = new Date().getFullYear();
+      const years = [currentYear - 1, currentYear]; // 昨年と今年
+      
+      const buttons = years.map(year => 
+        `<button type="button" onclick="window.selectYear(${year})" id="year-${year}"
+                 style="padding: 8px 12px; background: #666; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer;">
+           ${year}年
+         </button>`
+      ).join('');
+      
+      container.innerHTML = buttons;
+    }
+    
+    // 月ボタンを生成
+    function generateMonthButtons() {
+      const container = document.getElementById('monthContainer');
+      if (!container) return;
+      
+      const months = Array.from({length: 12}, (_, i) => i + 1);
+      
+      const buttons = months.map(month => 
+        `<button type="button" onclick="window.selectMonth(${month})" id="month-${month}"
+                 style="padding: 6px; background: #666; color: white; border: none; border-radius: 4px; font-size: 11px; cursor: pointer;">
+           ${month}月
+         </button>`
+      ).join('');
+      
+      container.innerHTML = buttons;
+    }
+    
+    // 日ボタンを生成
+    function generateDayButtons() {
+      const container = document.getElementById('dayContainer');
+      if (!container || !selectedYear || !selectedMonth) return;
+      
+      // 該当月の日数を取得
+      const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+      const today = new Date();
+      
+      const buttons = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateObj = new Date(selectedYear, selectedMonth - 1, day);
+        const isValidDate = dateObj <= today; // 未来の日付は無効
+        
+        const buttonStyle = isValidDate 
+          ? "padding: 6px; background: #666; color: white; border: none; border-radius: 3px; font-size: 11px; cursor: pointer;"
+          : "padding: 6px; background: #ccc; color: #999; border: none; border-radius: 3px; font-size: 11px; cursor: not-allowed;";
+        
+        const onClick = isValidDate ? `onclick="window.selectDay(${day})"` : '';
+        
+        buttons.push(
+          `<button type="button" ${onClick} id="day-${day}" style="${buttonStyle}">
+             ${day}
+           </button>`
+        );
+      }
+      
+      container.innerHTML = buttons.join('');
+    }
+    
+    // 年を選択
+    function selectYear(year) {
+      selectedYear = year;
+      
+      // 年ボタンの色をリセット・更新
+      document.querySelectorAll('[id^="year-"]').forEach(btn => btn.style.background = '#666');
+      document.getElementById(`year-${year}`).style.background = '#2196f3';
+      
+      console.log('年が選択されました:', year);
+      generateDayButtons();
+      updateDateDisplay();
+    }
+    
+    // 月を選択
+    function selectMonth(month) {
+      selectedMonth = month;
+      
+      // 月ボタンの色をリセット・更新
+      document.querySelectorAll('[id^="month-"]').forEach(btn => btn.style.background = '#666');
+      document.getElementById(`month-${month}`).style.background = '#4caf50';
+      
+      console.log('月が選択されました:', month);
+      generateDayButtons();
+      updateDateDisplay();
+    }
+    
+    // 日を選択
+    function selectDay(day) {
+      selectedDay = day;
+      
+      // 日ボタンの色をリセット・更新
+      document.querySelectorAll('[id^="day-"]').forEach(btn => {
+        if (btn.style.background !== 'rgb(204, 204, 204)') { // 無効な日付でなければ
+          btn.style.background = '#666';
+        }
+      });
+      document.getElementById(`day-${day}`).style.background = '#ff9800';
+      
+      console.log('日が選択されました:', day);
+      updateDateDisplay();
+    }
+    
+    // 日付表示を更新
+    function updateDateDisplay() {
+      const displayElement = document.getElementById('selectedDateDisplay');
+      const nextButton = document.querySelector('#recordDialog button[onclick*="checkExistingRecord"]');
+      
+      if (selectedYear && selectedMonth && selectedDay) {
+        const year = selectedYear;
+        const month = String(selectedMonth).padStart(2, '0');
+        const day = String(selectedDay).padStart(2, '0');
+        const dateString = `${year}-${month}-${day}`;
+        
+        // 表示更新
+        displayElement.textContent = `${selectedYear}年${selectedMonth}月${selectedDay}日`;
+        displayElement.style.color = '#2c5f2d';
+        displayElement.style.fontWeight = 'bold';
+        
+        // 内部的に日付を保存
+        window.selectedRecordDate = dateString;
+        console.log('完全な日付が選択されました:', dateString);
+        
+        // 次へボタンを有効化
+        if (nextButton) {
+          nextButton.disabled = false;
+          nextButton.style.background = '#4caf50';
+          nextButton.textContent = '次へ';
+        }
+      } else {
+        displayElement.textContent = '未選択';
+        displayElement.style.color = '#666';
+        displayElement.style.fontWeight = 'normal';
+        
+        // 次へボタンを無効化
+        if (nextButton) {
+          nextButton.disabled = true;
+          nextButton.style.background = '#ccc';
+          nextButton.textContent = '年・月・日を選択してください';
+        }
+      }
+    }
+    
+    // 干場削除確認ダイアログ
+    function confirmDeleteSpot(spotName, lat, lon) {
+      console.log('削除確認ダイアログを開く:', spotName);
+      
+      // まず記録の存在をチェック
+      fetch(`${API_BASE}/check_spot_records?name=${encodeURIComponent(spotName)}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.has_records) {
+            // 記録がある場合は削除不可のダイアログを表示
+            showCannotDeleteDialog(spotName, lat, lon);
+          } else {
+            // 記録がない場合は削除確認ダイアログを表示
+            showDeleteConfirmDialog(spotName, lat, lon);
+          }
+        })
+        .catch(error => {
+          console.error('記録チェックエラー:', error);
+          // エラーの場合も削除確認ダイアログを表示
+          showDeleteConfirmDialog(spotName, lat, lon);
+        });
+    }
+    
+    // 削除不可ダイアログ
+    function showCannotDeleteDialog(spotName, lat, lon) {
+      const dialogHtml = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;" id="deleteDialog">
+          <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h3 style="margin-top: 0; color: #f44336;">❌ 削除できません</h3>
+            <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 15px; margin: 15px 0;">
+              <p style="margin: 0; color: #c62828;"><strong>対象干場:</strong></p>
+              <p style="margin: 5px 0 0 0; font-weight: bold;">${spotName}</p>
+              <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">座標: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
+            </div>
+            <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; padding: 15px; margin: 15px 0; color: #1976d2;">
+              <strong>削除できない理由:</strong><br>
+              この干場にはhoshiba_records.csv内に記録が存在します。<br><br>
+              記録がある干場は削除できません。
+            </div>
+            <button onclick="window.closeDeleteDialog()" style="width: 100%; padding: 12px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer;">了解</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+    
+    // 削除確認ダイアログ
+    function showDeleteConfirmDialog(spotName, lat, lon) {
+      const dialogHtml = `
+        <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;" id="deleteDialog">
+          <div style="background: white; padding: 20px; border-radius: 8px; max-width: 400px; width: 90%;">
+            <h3 style="margin-top: 0; color: #f44336;">⚠️ 干場削除の確認</h3>
+            <div style="background: #ffebee; border: 1px solid #f44336; border-radius: 4px; padding: 15px; margin: 15px 0;">
+              <p style="margin: 0; color: #c62828;"><strong>削除対象:</strong></p>
+              <p style="margin: 5px 0 0 0; font-weight: bold;">${spotName}</p>
+              <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">座標: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
+            </div>
+            <div style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; padding: 10px; margin: 15px 0; color: #2e7d32;">
+              ✅ <strong>削除可能:</strong> この干場には記録がありません
+            </div>
+            <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 10px; margin: 15px 0; color: #856404;">
+              <strong>注意:</strong> 削除された干場は以下のファイルから完全に除去されます：
+              <ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">
+                <li>hoshiba_spots.csv</li>
+                <li>hoshiba_spots_named.kml</li>
+              </ul>
+              この操作は取り消せません。
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+              <button onclick="window.deleteSpot('${spotName}')" style="flex: 1; padding: 12px; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer;">削除実行</button>
+              <button onclick="window.closeDeleteDialog()" style="flex: 1; padding: 12px; background: #666; color: white; border: none; border-radius: 4px; cursor: pointer;">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.insertAdjacentHTML('beforeend', dialogHtml);
+    }
+    
+    // 干場削除実行
+    function deleteSpot(spotName) {
+      console.log('干場削除実行:', spotName);
+      
+      fetch(`${API_BASE}/delete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: spotName
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('削除結果:', data);
+        if (data.status === 'success') {
+          alert(`干場「${spotName}」を削除しました。\n\n関連する記録データも削除されました。\n地図を更新します。`);
+          closeDeleteDialog();
+          
+          // 地図を更新
+          loadSpots();
+        } else {
+          alert('干場の削除に失敗しました: ' + (data.message || 'エラーが発生しました'));
+        }
+      })
+      .catch(error => {
+        console.error('削除エラー:', error);
+        alert('削除中にエラーが発生しました');
+      });
+    }
+    
+    // 削除ダイアログを閉じる
+    function closeDeleteDialog() {
+      const dialog = document.getElementById('deleteDialog');
+      if (dialog) {
+        dialog.remove();
+      }
+    }
+
+    // お気に入り機能
+    function toggleFavorite(spotName, lat, lon) {
+      console.log('お気に入り切り替え:', spotName);
+      
+      // まず現在の状態をチェック
+      fetch(`${API_BASE}/favorites/check?name=${encodeURIComponent(spotName)}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            if (data.is_favorite) {
+              // お気に入りから削除
+              removeFavorite(spotName);
+            } else {
+              // お気に入りに追加
+              addFavorite(spotName, lat, lon);
+            }
+          }
+        })
+        .catch(error => {
+          console.error('お気に入り状態チェックエラー:', error);
+          alert('お気に入りの状態確認に失敗しました');
+        });
+    }
+
+    function addFavorite(spotName, lat, lon) {
+      const data = {
+        name: spotName,
+        lat: lat,
+        lon: lon
+      };
+
+      fetch(`${API_BASE}/favorites/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          updateFavoriteButton(spotName, true);
+          // マーカーの色を更新
+          updateMarkerColor(spotName, true);
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(error => {
+        console.error('お気に入り追加エラー:', error);
+        alert('お気に入りの追加に失敗しました');
+      });
+    }
+
+    function removeFavorite(spotName) {
+      const data = {
+        name: spotName
+      };
+
+      fetch(`${API_BASE}/favorites/remove`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          alert(data.message);
+          updateFavoriteButton(spotName, false);
+          // マーカーの色を更新
+          updateMarkerColor(spotName, false);
+        } else {
+          alert(data.message);
+        }
+      })
+      .catch(error => {
+        console.error('お気に入り削除エラー:', error);
+        alert('お気に入りの削除に失敗しました');
+      });
+    }
+
+    function updateFavoriteButton(spotName, isFavorite) {
+      const buttonId = `favorite-btn-${spotName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const button = document.getElementById(buttonId);
+      
+      if (button) {
+        if (isFavorite) {
+          button.textContent = 'お気に入りから外す';
+          button.style.background = '#28a745';
+        } else {
+          button.textContent = 'お気に入りに追加';
+          button.style.background = '#ffc107';
+        }
+      }
+    }
+
+    function updateMarkerColor(spotName, isFavorite) {
+      // より確実な方法：現在表示されているスポットで再描画
+      const currentDisplayedSpots = [];
+      
+      // 現在表示されているマーカーから対応するスポットを特定
+      for (let marker of spotMarkers) {
+        if (marker.options && marker.options.title) {
+          const spot = spots.find(s => s.name === marker.options.title);
+          if (spot) {
+            currentDisplayedSpots.push(spot);
+          }
+        }
+      }
+      
+      // 統一関数で再描画（お気に入り状態が正しく反映される）
+      if (currentDisplayedSpots.length > 0) {
+        createMarkersWithFavorites(currentDisplayedSpots);
+      }
+    }
+    
+    // 記録ダイアログを閉じる関数
+    function closeRecordDialog() {
+      const dialog = document.getElementById('recordDialog');
+      if (dialog) {
+        dialog.remove();
+      }
+    }
+
+    // グローバル関数として設定
+    window.getWeatherForecast = getWeatherForecast;
+    window.openRecordDialog = openRecordDialog;
+    window.checkExistingRecord = checkExistingRecord;
+    window.showExistingRecordDialog = showExistingRecordDialog;
+    window.showRecordOptionsDialog = showRecordOptionsDialog;
+    window.submitRecord = submitRecord;
+    window.generateDateButtons = generateDateButtons;
+    window.selectYear = selectYear;
+    window.selectMonth = selectMonth;
+    window.selectDay = selectDay;
+    window.confirmDeleteSpot = confirmDeleteSpot;
+    window.showCannotDeleteDialog = showCannotDeleteDialog;
+    window.showDeleteConfirmDialog = showDeleteConfirmDialog;
+    window.deleteSpot = deleteSpot;
+    window.closeDeleteDialog = closeDeleteDialog;
+    window.closeRecordDialog = closeRecordDialog;
+    window.toggleFavorite = toggleFavorite;
+    window.addFavorite = addFavorite;
+    window.removeFavorite = removeFavorite;
+    window.closeWeatherForecastDialog = closeWeatherForecastDialog;
+    window.selectForecastDate = selectForecastDate;
+
     // 初期読み込み
     loadSpots();
     
@@ -4743,6 +7297,71 @@
         console.error('観測記録エラー:', err);
         document.getElementById('fogObsResult').innerHTML = '<div style="color: red;">✗ 保存に失敗しました</div>';
       });
+    }
+
+    // オフライン機能を簡素化
+    function initializeOfflineHandlers() {
+        // Handle online/offline status
+        window.addEventListener('online', () => {
+          updateOfflineStatus(true);
+          console.log('Connection restored');
+        });
+        
+        window.addEventListener('offline', () => {
+          updateOfflineStatus(false);
+          console.log('Connection lost');
+        });
+    }
+
+    // Offline status indicator functions
+    function showOfflineStatusIndicator() {
+      // Create offline status indicator
+      const indicator = document.createElement('div');
+      indicator.id = 'offline-indicator';
+      indicator.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        padding: 8px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 10000;
+        transition: all 0.3s ease;
+        display: none;
+      `;
+      document.body.appendChild(indicator);
+      
+      // Update initial status
+      updateOfflineStatus(navigator.onLine);
+    }
+
+    function updateOfflineStatus(isOnline) {
+      const indicator = document.getElementById('offline-indicator');
+      if (!indicator) return;
+      
+      if (isOnline) {
+        indicator.style.display = 'none';
+      } else {
+        indicator.style.display = 'block';
+        indicator.style.background = 'rgba(244, 67, 54, 0.9)';
+        indicator.style.color = 'white';
+        indicator.innerHTML = '🔴 オフライン';
+        
+        // Show cached data status
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(registration => {
+            caches.open('rishiri-kelp-weather-v1').then(cache => {
+              cache.keys().then(keys => {
+                if (keys.length > 0) {
+                  indicator.innerHTML = '💾 オフライン (キャッシュ利用可能)';
+                  indicator.style.background = 'rgba(255, 193, 7, 0.9)';
+                }
+              });
+            });
+          });
+        }
+      }
     }
   </script>
 </body>

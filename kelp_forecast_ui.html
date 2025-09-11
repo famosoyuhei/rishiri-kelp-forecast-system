@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場予報システム</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .location-info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: white;
+            text-align: center;
+        }
+        
+        /* タブ切り替え */
+        .day-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .day-tab {
+            padding: 12px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            min-width: 120px;
+        }
+        
+        .day-tab:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .day-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* メイン予報エリア */
+        .forecast-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+        }
+        
+        .forecast-date-header {
+            text-align: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .forecast-date {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .days-ahead {
+            font-size: 0.9em;
+            color: #888;
+        }
+        
+        /* 時間推移グラフエリア */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+        
+        .chart-section {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+        
+        .chart-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .chart-icon {
+            width: 24px;
+            height: 24px;
+            display: inline-block;
+        }
+        
+        /* 直感的表示アイコン */
+        .visual-indicators {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 10px;
+        }
+        
+        .indicator {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .indicator-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .indicator-label {
+            font-size: 0.8em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .indicator-arrow {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+        
+        /* 風向き矢印 */
+        .wind-arrow {
+            display: inline-block;
+            font-size: 2em;
+            transform: rotate(var(--wind-direction, 0deg));
+            color: #4CAF50;
+            margin-bottom: 5px;
+        }
+        
+        /* 大気安定度インジケーター */
+        .stability-meter {
+            width: 100%;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            overflow: hidden;
+        }
+        
+        .stability-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .stability-stable { background: #4CAF50; }
+        .stability-moderate { background: #FF9800; }
+        .stability-unstable { background: #F44336; }
+        
+        /* 判定結果エリア */
+        .judgment-area {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .judgment-result {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .judgment-score {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            opacity: 0.9;
+        }
+        
+        .judgment-message {
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        
+        /* 信頼度表示 */
+        .confidence-area {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .confidence-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .confidence-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .confidence-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .confidence-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF5722, #FF9800, #4CAF50);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        /* レスポンシブ対応 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .visual-indicators {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .confidence-area {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .day-tabs {
+                gap: 5px;
+            }
+            
+            .day-tab {
+                min-width: 100px;
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+        }
+        
+        /* アニメーション */
+        .forecast-panel {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUp 0.5s ease forwards;
+        }
+        
+        @keyframes slideUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* 警告アイコン */
+        .warning-icon {
+            color: #ff9800;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* チャートエリアの高さ調整 */
+        .chart-container {
+            height: 250px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="header">
+            <h1>🌊 利尻島昆布干場予報システム</h1>
+            <p>Enhanced Atmospheric Stability Analysis</p>
+        </div>
+        
+        <!-- 地点情報 -->
+        <div class="location-info">
+            <h2 id="locationName">H_2065_1368</h2>
+            <p id="locationCoords">45.2065°N, 141.1368°E</p>
+            <p id="locationDescription">利尻島 昆布干場</p>
+        </div>
+        
+        <!-- 日付タブ -->
+        <div class="day-tabs">
+            <button class="day-tab active" data-day="1">明日</button>
+            <button class="day-tab" data-day="2">明後日</button>
+            <button class="day-tab" data-day="3">3日後</button>
+            <button class="day-tab" data-day="4">4日後</button>
+            <button class="day-tab" data-day="5">5日後</button>
+            <button class="day-tab" data-day="6">6日後</button>
+            <button class="day-tab" data-day="7">7日後</button>
+        </div>
+        
+        <!-- メイン予報パネル -->
+        <div class="forecast-panel">
+            <!-- 日付ヘッダー -->
+            <div class="forecast-date-header">
+                <div class="forecast-date" id="forecastDate">2025年8月13日（火）</div>
+                <div class="days-ahead" id="daysAhead">1日後の予報</div>
+            </div>
+            
+            <!-- 時間推移チャート -->
+            <div class="charts-container">
+                <!-- 気温・湿度チャート -->
+                <div class="chart-section">
+                    <div class="chart-title">
+                        <span class="chart-icon">🌡️</span>
+                        気温・湿度 (4:00-16:00)
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="tempHumidityChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 風・日射チャート -->
+                <div class="chart-section">
+                    <div class="chart-title">
+                        <span class="chart-icon">💨</span>
+                        風速・日射量 (4:00-16:00)
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="windRadiationChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 大気安定度チャート -->
+                <div class="chart-section">
+                    <div class="chart-title">
+                        <span class="chart-icon">⚡</span>
+                        大気安定度 (4:00-16:00)
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="stabilityChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 降水確率チャート -->
+                <div class="chart-section">
+                    <div class="chart-title">
+                        <span class="chart-icon">🌧️</span>
+                        降水確率 (4:00-16:00)
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="precipitationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 直感的視覚表示 -->
+            <div class="visual-indicators">
+                <div class="indicator">
+                    <div class="indicator-arrow" id="tempArrow">📈</div>
+                    <div class="indicator-value" id="avgTemp">23°C</div>
+                    <div class="indicator-label">平均気温</div>
+                </div>
+                
+                <div class="indicator">
+                    <div class="indicator-arrow" id="humidityArrow">💧</div>
+                    <div class="indicator-value" id="avgHumidity">75%</div>
+                    <div class="indicator-label">平均湿度</div>
+                </div>
+                
+                <div class="indicator">
+                    <div class="wind-arrow" id="windArrow">↑</div>
+                    <div class="indicator-value" id="avgWind">8m/s</div>
+                    <div class="indicator-label">平均風速</div>
+                </div>
+                
+                <div class="indicator">
+                    <div class="stability-meter">
+                        <div class="stability-fill stability-stable" id="stabilityBar" style="width: 80%"></div>
+                    </div>
+                    <div class="indicator-value" id="stabilityRisk">低</div>
+                    <div class="indicator-label">不安定リスク</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 判定結果 -->
+        <div class="judgment-area">
+            <div class="judgment-result" id="judgmentResult">
+                ✅ 干せる条件
+                <span class="warning-icon" id="warningIcon" style="display: none;">⚠️</span>
+            </div>
+            <div class="judgment-score" id="judgmentScore">
+                総合スコア: 68/100点
+            </div>
+            <div class="judgment-message" id="judgmentMessage">
+                良好な乾燥条件です。大気は安定しており、降水の可能性は低いです。
+            </div>
+        </div>
+        
+        <!-- 信頼度表示 -->
+        <div class="confidence-area">
+            <div class="confidence-item">
+                <div class="confidence-label">予報精度</div>
+                <div class="confidence-value" id="forecastAccuracy">85%</div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="accuracyBar" style="width: 85%"></div>
+                </div>
+            </div>
+            
+            <div class="confidence-item">
+                <div class="confidence-label">予報日数</div>
+                <div class="confidence-value" id="forecastDays">1日後</div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="daysBar" style="width: 95%"></div>
+                </div>
+            </div>
+            
+            <div class="confidence-item">
+                <div class="confidence-label">大気安定性</div>
+                <div class="confidence-value" id="stabilityConfidence">90%</div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="stabilityConfidenceBar" style="width: 90%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // グローバル変数
+        let currentDay = 1;
+        let forecastData = {};
+        let charts = {};
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTabs();
+            loadForecastData();
+            updateDisplay();
+        });
+        
+        // タブ初期化
+        function initializeTabs() {
+            const tabs = document.querySelectorAll('.day-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // アクティブタブの切り替え
+                    tabs.forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // 日数の更新
+                    currentDay = parseInt(this.dataset.day);
+                    updateDisplay();
+                });
+            });
+        }
+        
+        // 予報データの読み込み（実際にはAPIから取得）
+        function loadForecastData() {
+            // サンプルデータ（実際にはAPIから取得）
+            forecastData = {
+                1: generateSampleData(1),
+                2: generateSampleData(2),
+                3: generateSampleData(3),
+                4: generateSampleData(4),
+                5: generateSampleData(5),
+                6: generateSampleData(6),
+                7: generateSampleData(7)
+            };
+        }
+        
+        // サンプルデータ生成
+        function generateSampleData(day) {
+            const baseTemp = 20 + Math.random() * 8;
+            const baseHumidity = 70 + Math.random() * 20;
+            const baseWind = 5 + Math.random() * 10;
+            const instabilityRisk = Math.random() * 50;
+            
+            const hours = [];
+            const temps = [];
+            const humidity = [];
+            const windSpeed = [];
+            const radiation = [];
+            const cape = [];
+            const precipitation = [];
+            
+            for (let hour = 4; hour <= 16; hour++) {
+                hours.push(hour + ':00');
+                temps.push(baseTemp + Math.sin((hour - 6) / 12 * Math.PI) * 5 + (Math.random() - 0.5) * 2);
+                humidity.push(Math.max(40, Math.min(95, baseHumidity - Math.sin((hour - 6) / 12 * Math.PI) * 15 + (Math.random() - 0.5) * 5)));
+                windSpeed.push(Math.max(0, baseWind + (Math.random() - 0.5) * 3));
+                radiation.push(Math.max(0, Math.sin((hour - 6) / 12 * Math.PI) * 800 + (Math.random() - 0.5) * 100));
+                cape.push(Math.max(0, instabilityRisk * 20 + (Math.random() - 0.5) * 200));
+                precipitation.push(Math.max(0, Math.min(100, instabilityRisk + (Math.random() - 0.5) * 20)));
+            }
+            
+            return {
+                date: new Date(2025, 7, 12 + day),
+                hours,
+                temperature: temps,
+                humidity,
+                windSpeed,
+                radiation,
+                cape,
+                precipitation,
+                instabilityRisk,
+                finalScore: Math.max(10, Math.min(90, 70 - instabilityRisk + (Math.random() - 0.5) * 20))
+            };
+        }
+        
+        // 表示更新
+        function updateDisplay() {
+            const data = forecastData[currentDay];
+            if (!data) return;
+            
+            // 日付更新
+            const dateStr = data.date.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'short'
+            });
+            document.getElementById('forecastDate').textContent = dateStr;
+            document.getElementById('daysAhead').textContent = `${currentDay}日後の予報`;
+            
+            // 平均値計算
+            const avgTemp = data.temperature.reduce((a, b) => a + b) / data.temperature.length;
+            const avgHumidity = data.humidity.reduce((a, b) => a + b) / data.humidity.length;
+            const avgWind = data.windSpeed.reduce((a, b) => a + b) / data.windSpeed.length;
+            
+            // 視覚表示更新
+            document.getElementById('avgTemp').textContent = Math.round(avgTemp) + '°C';
+            document.getElementById('avgHumidity').textContent = Math.round(avgHumidity) + '%';
+            document.getElementById('avgWind').textContent = Math.round(avgWind) + 'm/s';
+            
+            // 大気安定度表示
+            const stabilityLevel = data.instabilityRisk < 20 ? '低' : data.instabilityRisk < 50 ? '中' : '高';
+            const stabilityClass = data.instabilityRisk < 20 ? 'stability-stable' : 
+                                   data.instabilityRisk < 50 ? 'stability-moderate' : 'stability-unstable';
+            
+            document.getElementById('stabilityRisk').textContent = stabilityLevel;
+            const stabilityBar = document.getElementById('stabilityBar');
+            stabilityBar.className = `stability-fill ${stabilityClass}`;
+            stabilityBar.style.width = (100 - data.instabilityRisk) + '%';
+            
+            // 判定結果更新
+            updateJudgment(data);
+            
+            // 信頼度更新
+            updateConfidence(currentDay, data);
+            
+            // チャート更新
+            updateCharts(data);
+        }
+        
+        // 判定結果更新
+        function updateJudgment(data) {
+            const score = Math.round(data.finalScore);
+            let result, message, showWarning = false;
+            
+            if (score >= 70) {
+                result = '✅ 優良な乾燥条件';
+                message = '最適な昆布干し日和です。安心して作業を進めてください。';
+            } else if (score >= 50) {
+                result = '⚠️ 注意して干せる';
+                message = '条件は良好ですが、気象変化を注意深く監視してください。';
+                showWarning = true;
+            } else if (score >= 30) {
+                result = '❌ 干すには不適';
+                message = '気象条件が不安定です。作業は見合わせることを推奨します。';
+                showWarning = true;
+            } else {
+                result = '🚨 絶対に干さない';
+                message = '非常に危険な気象条件です。昆布干し作業は中止してください。';
+                showWarning = true;
+            }
+            
+            document.getElementById('judgmentResult').innerHTML = result + 
+                (showWarning ? ' <span class="warning-icon">⚠️</span>' : '');
+            document.getElementById('judgmentScore').textContent = `総合スコア: ${score}/100点`;
+            document.getElementById('judgmentMessage').textContent = message;
+        }
+        
+        // 信頼度更新
+        function updateConfidence(day, data) {
+            // 予報日数による信頼度減衰
+            const dayConfidence = Math.max(50, 100 - (day - 1) * 8);
+            
+            // 大気安定性による信頼度
+            const stabilityConfidence = Math.max(60, 100 - data.instabilityRisk);
+            
+            // 全体的な予報精度
+            const overallAccuracy = Math.round((dayConfidence + stabilityConfidence) / 2);
+            
+            document.getElementById('forecastAccuracy').textContent = overallAccuracy + '%';
+            document.getElementById('forecastDays').textContent = day + '日後';
+            document.getElementById('stabilityConfidence').textContent = Math.round(stabilityConfidence) + '%';
+            
+            document.getElementById('accuracyBar').style.width = overallAccuracy + '%';
+            document.getElementById('daysBar').style.width = dayConfidence + '%';
+            document.getElementById('stabilityConfidenceBar').style.width = stabilityConfidence + '%';
+        }
+        
+        // チャート更新
+        function updateCharts(data) {
+            // 既存チャートを破棄
+            Object.values(charts).forEach(chart => chart && chart.destroy());
+            
+            // 気温・湿度チャート
+            const ctx1 = document.getElementById('tempHumidityChart').getContext('2d');
+            charts.tempHumidity = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: data.hours,
+                    datasets: [{
+                        label: '気温 (°C)',
+                        data: data.temperature,
+                        borderColor: '#FF6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        yAxisID: 'y'
+                    }, {
+                        label: '湿度 (%)',
+                        data: data.humidity,
+                        borderColor: '#36A2EB',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: '気温 (°C)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: '湿度 (%)' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+            
+            // 風速・日射チャート
+            const ctx2 = document.getElementById('windRadiationChart').getContext('2d');
+            charts.windRadiation = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: data.hours,
+                    datasets: [{
+                        label: '風速 (m/s)',
+                        data: data.windSpeed,
+                        borderColor: '#4BC0C0',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        yAxisID: 'y'
+                    }, {
+                        label: '日射量 (W/m²)',
+                        data: data.radiation,
+                        borderColor: '#FFCE56',
+                        backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: '風速 (m/s)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: '日射量 (W/m²)' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+            
+            // 大気安定度チャート
+            const ctx3 = document.getElementById('stabilityChart').getContext('2d');
+            charts.stability = new Chart(ctx3, {
+                type: 'line',
+                data: {
+                    labels: data.hours,
+                    datasets: [{
+                        label: 'CAPE値',
+                        data: data.cape,
+                        borderColor: '#FF9F40',
+                        backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: { display: true, text: 'CAPE値' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // 降水確率チャート
+            const ctx4 = document.getElementById('precipitationChart').getContext('2d');
+            charts.precipitation = new Chart(ctx4, {
+                type: 'bar',
+                data: {
+                    labels: data.hours,
+                    datasets: [{
+                        label: '降水確率 (%)',
+                        data: data.precipitation,
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                        borderColor: '#36A2EB',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: { display: true, text: '降水確率 (%)' },
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

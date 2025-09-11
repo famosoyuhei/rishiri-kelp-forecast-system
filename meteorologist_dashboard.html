@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>気象予報士向けダッシュボード - 利尻島昆布干場予報</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        @media (min-width: 1400px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+                gap: 15px;
+            }
+        }
+
+        @media (min-width: 1200px) and (max-width: 1399px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr 1fr 1fr;
+            }
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 18px;
+            border-left: 4px solid #3498db;
+            min-height: 300px;
+        }
+
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .section h2::before {
+            content: "📊";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+
+        .expert-section h2::before { content: "🧪"; }
+        .ensemble-section h2::before { content: "🤖"; }
+        .rationale-section h2::before { content: "📝"; }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 12px;
+            margin: 15px 0;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border: 1px solid #e3e6ea;
+        }
+
+        .metric-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #3498db;
+            line-height: 1.2;
+        }
+
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.85em;
+            margin-top: 4px;
+        }
+
+        .control-panel {
+            grid-column: 1 / -1;
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .location-input {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .input-group input, .input-group select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .data-quality {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .quality-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .quality-good { background: #27ae60; }
+        .quality-medium { background: #f39c12; }
+        .quality-poor { background: #e74c3c; }
+
+        .insight-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .insight-list li {
+            background: white;
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .expert-analysis {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .ensemble-results {
+            background: #d1ecf1;
+            border-left-color: #17a2b8;
+        }
+
+        .forecast-rationale {
+            background: #d4edda;
+            border-left-color: #28a745;
+        }
+
+        .detail-toggle {
+            margin: 15px 0;
+        }
+
+        .collapsible {
+            background: #34495e;
+            color: white;
+            cursor: pointer;
+            padding: 15px;
+            border: none;
+            text-align: left;
+            width: 100%;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .collapsible:hover {
+            background: #2c3e50;
+        }
+
+        .content {
+            padding: 0 15px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.2s ease-out;
+            background: white;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .content.active {
+            max-height: 1000px;
+            padding: 15px;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #e8f5e8;
+            color: #2d7d32;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-indicator::before {
+            content: "●";
+            color: #4caf50;
+        }
+
+        .technical-details {
+            font-family: 'Monaco', 'Consolas', monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 8px 0;
+            overflow-x: auto;
+            font-size: 0.8em;
+            line-height: 1.4;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #dc3545;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #ffc107;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                padding: 15px;
+                gap: 15px;
+            }
+            
+            .section {
+                min-height: auto;
+                padding: 15px;
+            }
+            
+            .location-input {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .metric-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .metric-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌊 気象予報士向けダッシュボード</h1>
+            <div class="subtitle">利尻島昆布干場予報システム - 専門分析インターフェース</div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="control-panel">
+                <h2>📍 観測地点設定</h2>
+                <div class="location-input">
+                    <div class="input-group">
+                        <label for="latitude">緯度</label>
+                        <input type="number" id="latitude" value="45.178" step="0.001" min="40" max="50">
+                    </div>
+                    <div class="input-group">
+                        <label for="longitude">経度</label>
+                        <input type="number" id="longitude" value="141.229" step="0.001" min="135" max="145">
+                    </div>
+                    <div class="input-group">
+                        <label for="detailLevel">詳細レベル</label>
+                        <select id="detailLevel">
+                            <option value="basic">基本</option>
+                            <option value="standard" selected>標準</option>
+                            <option value="detailed">詳細</option>
+                            <option value="expert">専門家</option>
+                        </select>
+                    </div>
+                    <button class="btn" onclick="loadDashboard()">データ取得</button>
+                    <button class="btn" onclick="refreshData()">更新</button>
+                </div>
+            </div>
+
+            <div class="section" id="weatherOverview">
+                <h2>気象概況</h2>
+                <div id="weatherData">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        データ読み込み中...
+                    </div>
+                </div>
+            </div>
+
+            <div class="section ensemble-section" id="ensemblePrediction">
+                <h2>アンサンブル予測</h2>
+                <div id="ensembleData">
+                    <div class="loading">初期化中...</div>
+                </div>
+            </div>
+
+            <div class="section expert-section" id="expertAnalysis">
+                <h2>専門家解析</h2>
+                <div id="expertData">
+                    <div class="loading">分析準備中...</div>
+                </div>
+            </div>
+
+            <div class="section rationale-section" id="forecastRationale">
+                <h2>予測根拠</h2>
+                <div id="rationaleData">
+                    <div class="loading">根拠データ準備中...</div>
+                </div>
+            </div>
+
+            <div class="section" id="systemStatus">
+                <h2>システム状態</h2>
+                <div id="statusData">
+                    <div class="loading">システム確認中...</div>
+                </div>
+            </div>
+
+            <div class="section" id="modelPerformance">
+                <h2>モデル性能</h2>
+                <div id="performanceData">
+                    <div class="loading">性能指標読み込み中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = {
+            dashboard: null,
+            rationale: null,
+            performance: null,
+            status: null
+        };
+
+        // Initialize dashboard on page load
+        window.addEventListener('load', function() {
+            loadDashboard();
+            // Auto-refresh every 5 minutes
+            setInterval(refreshData, 5 * 60 * 1000);
+        });
+
+        async function loadDashboard() {
+            const lat = parseFloat(document.getElementById('latitude').value);
+            const lon = parseFloat(document.getElementById('longitude').value);
+            
+            // Disable controls during loading
+            setLoadingState(true);
+            
+            try {
+                // Load dashboard data
+                await loadDashboardData(lat, lon);
+                
+                // Load forecast rationale
+                await loadForecastRationale(lat, lon);
+                
+                // Load model performance
+                await loadModelPerformance();
+                
+                // Load system status
+                await loadSystemStatus();
+                
+            } catch (error) {
+                console.error('Dashboard loading error:', error);
+                showError('データの読み込みに失敗しました: ' + error.message);
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        async function loadDashboardData(lat, lon) {
+            try {
+                const response = await fetch(`/advanced_prediction/meteorologist_dashboard?lat=${lat}&lon=${lon}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentData.dashboard = data;
+                updateWeatherOverview(data);
+                updateEnsemblePrediction(data);
+                updateExpertAnalysis(data);
+                
+            } catch (error) {
+                console.error('Dashboard data error:', error);
+                document.getElementById('weatherData').innerHTML = '<div class="error">ダッシュボードデータの取得に失敗しました</div>';
+            }
+        }
+
+        async function loadForecastRationale(lat, lon) {
+            try {
+                const detailLevel = document.getElementById('detailLevel').value;
+                const response = await fetch('/advanced_prediction/forecast_rationale', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        lat: lat,
+                        lon: lon,
+                        detail_level: detailLevel
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentData.rationale = data;
+                updateForecastRationale(data);
+                
+            } catch (error) {
+                console.error('Rationale data error:', error);
+                document.getElementById('rationaleData').innerHTML = '<div class="error">予測根拠データの取得に失敗しました</div>';
+            }
+        }
+
+        async function loadModelPerformance() {
+            try {
+                const response = await fetch('/advanced_prediction/model_performance');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentData.performance = data;
+                updateModelPerformance(data);
+                
+            } catch (error) {
+                console.error('Performance data error:', error);
+                document.getElementById('performanceData').innerHTML = '<div class="error">モデル性能データの取得に失敗しました</div>';
+            }
+        }
+
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/advanced_prediction/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentData.status = data;
+                updateSystemStatus(data);
+                
+            } catch (error) {
+                console.error('Status data error:', error);
+                document.getElementById('statusData').innerHTML = '<div class="error">システム状態の取得に失敗しました</div>';
+            }
+        }
+
+        function updateWeatherOverview(data) {
+            if (!data.dashboard_sections?.weather_overview) {
+                document.getElementById('weatherData').innerHTML = '<div class="warning">天気概況データがありません</div>';
+                return;
+            }
+            
+            const weather = data.dashboard_sections.weather_overview;
+            const current = weather.current_conditions;
+            
+            let html = '<div class="metric-grid">';
+            
+            if (current) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-value">${current.temperature}°C</div>
+                        <div class="metric-label">気温</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${current.humidity}%</div>
+                        <div class="metric-label">湿度</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${current.wind_speed}m/s</div>
+                        <div class="metric-label">風速</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${current.cloud_cover}%</div>
+                        <div class="metric-label">雲量</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            
+            // Data quality indicator
+            const quality = weather.data_quality;
+            if (quality) {
+                const qualityClass = quality.quality === '優良' ? 'quality-good' : 
+                                   quality.quality === '良好' || quality.quality === '普通' ? 'quality-medium' : 
+                                   'quality-poor';
+                html += `
+                    <div class="data-quality">
+                        <div class="quality-indicator ${qualityClass}"></div>
+                        <span>データ品質: ${quality.quality} (${quality.data_points}時間)</span>
+                    </div>
+                `;
+            }
+            
+            // Quick insights
+            const insights = data.dashboard_sections?.quick_insights || [];
+            if (insights.length > 0) {
+                html += '<h3>クイック洞察</h3><ul class="insight-list">';
+                insights.forEach(insight => {
+                    html += `<li>${insight}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            document.getElementById('weatherData').innerHTML = html;
+        }
+
+        function updateEnsemblePrediction(data) {
+            const ensemble = data.dashboard_sections?.ensemble_prediction;
+            if (!ensemble) {
+                document.getElementById('ensembleData').innerHTML = '<div class="warning">アンサンブル予測データがありません</div>';
+                return;
+            }
+            
+            let html = '<div class="ensemble-results">';
+            
+            if (ensemble.prediction_summary) {
+                html += `<h3>予測サマリー</h3>`;
+                html += `<p>${JSON.stringify(ensemble.prediction_summary, null, 2)}</p>`;
+            }
+            
+            if (ensemble.model_weights) {
+                html += '<h3>モデル重み</h3><div class="metric-grid">';
+                Object.entries(ensemble.model_weights).forEach(([model, weight]) => {
+                    html += `
+                        <div class="metric-card">
+                            <div class="metric-value">${(weight * 100).toFixed(1)}%</div>
+                            <div class="metric-label">${model}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            html += '</div>';
+            document.getElementById('ensembleData').innerHTML = html;
+        }
+
+        function updateExpertAnalysis(data) {
+            const expert = data.dashboard_sections?.expert_analysis;
+            if (!expert) {
+                document.getElementById('expertData').innerHTML = '<div class="warning">専門家解析データがありません</div>';
+                return;
+            }
+            
+            let html = '<div class="expert-analysis">';
+            
+            if (expert.executive_summary) {
+                html += '<button class="collapsible">エグゼクティブサマリー</button>';
+                html += '<div class="content"><div class="technical-details">';
+                html += JSON.stringify(expert.executive_summary, null, 2);
+                html += '</div></div>';
+            }
+            
+            if (expert.detailed_meteorology) {
+                html += '<button class="collapsible">詳細気象解析</button>';
+                html += '<div class="content"><div class="technical-details">';
+                html += JSON.stringify(expert.detailed_meteorology, null, 2);
+                html += '</div></div>';
+            }
+            
+            html += '</div>';
+            document.getElementById('expertData').innerHTML = html;
+            
+            // Add collapsible functionality
+            addCollapsibleEventListeners();
+        }
+
+        function updateForecastRationale(data) {
+            if (!data.explanation) {
+                document.getElementById('rationaleData').innerHTML = '<div class="warning">予測根拠データがありません</div>';
+                return;
+            }
+            
+            let html = `<div class="forecast-rationale">`;
+            html += `<div class="status-indicator">詳細レベル: ${data.detail_level}</div>`;
+            
+            const explanation = data.explanation;
+            
+            if (explanation.summary) {
+                html += `<h3>概要</h3><p>${explanation.summary}</p>`;
+            }
+            
+            if (explanation.current_assessment) {
+                html += '<h3>現在の評価</h3><div class="technical-details">';
+                html += JSON.stringify(explanation.current_assessment, null, 2);
+                html += '</div>';
+            }
+            
+            if (explanation.drying_recommendation) {
+                html += `<h3>乾燥推奨度</h3><p><strong>${explanation.drying_recommendation}</strong></p>`;
+            }
+            
+            html += '</div>';
+            document.getElementById('rationaleData').innerHTML = html;
+        }
+
+        function updateModelPerformance(data) {
+            if (!data.ensemble_models) {
+                document.getElementById('performanceData').innerHTML = '<div class="warning">モデル性能データがありません</div>';
+                return;
+            }
+            
+            let html = '<div class="metric-grid">';
+            
+            // Overall performance
+            const overall = data.ensemble_performance;
+            if (overall) {
+                html += `
+                    <div class="metric-card">
+                        <div class="metric-value">${(overall.overall_accuracy * 100).toFixed(1)}%</div>
+                        <div class="metric-label">総合精度</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${overall.prediction_horizon}</div>
+                        <div class="metric-label">予測期間</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            
+            // Individual model performance
+            html += '<h3>個別モデル性能</h3>';
+            Object.entries(data.ensemble_models).forEach(([model, metrics]) => {
+                html += `<button class="collapsible">${model.replace('_', ' ').toUpperCase()}</button>`;
+                html += '<div class="content"><div class="technical-details">';
+                html += JSON.stringify(metrics, null, 2);
+                html += '</div></div>';
+            });
+            
+            document.getElementById('performanceData').innerHTML = html;
+            addCollapsibleEventListeners();
+        }
+
+        function updateSystemStatus(data) {
+            let html = '<div class="status-indicator">システム: ' + data.status + '</div>';
+            html += `<p>バージョン: ${data.version}</p>`;
+            html += `<p>最終更新: ${new Date(data.last_updated).toLocaleString()}</p>`;
+            
+            if (data.components) {
+                html += '<h3>コンポーネント状態</h3>';
+                Object.entries(data.components).forEach(([component, status]) => {
+                    const statusClass = status === 'ready' ? 'quality-good' : 'quality-poor';
+                    html += `<div class="data-quality">
+                        <div class="quality-indicator ${statusClass}"></div>
+                        <span>${component}: ${status}</span>
+                    </div>`;
+                });
+            }
+            
+            if (data.performance) {
+                html += '<h3>パフォーマンス</h3><div class="metric-grid">';
+                Object.entries(data.performance).forEach(([metric, value]) => {
+                    html += `
+                        <div class="metric-card">
+                            <div class="metric-value">${value}</div>
+                            <div class="metric-label">${metric}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            document.getElementById('statusData').innerHTML = html;
+        }
+
+        function addCollapsibleEventListeners() {
+            const collapsibles = document.querySelectorAll('.collapsible');
+            collapsibles.forEach(collapsible => {
+                collapsible.onclick = function() {
+                    this.classList.toggle('active');
+                    const content = this.nextElementSibling;
+                    content.classList.toggle('active');
+                };
+            });
+        }
+
+        function setLoadingState(loading) {
+            const button = document.querySelector('.btn');
+            const inputs = document.querySelectorAll('input, select');
+            
+            inputs.forEach(input => input.disabled = loading);
+            button.disabled = loading;
+            button.textContent = loading ? '読み込み中...' : 'データ取得';
+        }
+
+        function refreshData() {
+            loadDashboard();
+        }
+
+        function showError(message) {
+            const sections = ['weatherData', 'ensembleData', 'expertData', 'rationaleData'];
+            sections.forEach(sectionId => {
+                const element = document.getElementById(sectionId);
+                if (element && element.querySelector('.loading')) {
+                    element.innerHTML = `<div class="error">${message}</div>`;
+                }
+            });
+        }
+
+        // Additional utility functions for data export and analysis
+        function exportData() {
+            if (!currentData.dashboard) {
+                alert('データがロードされていません');
+                return;
+            }
+            
+            const dataBlob = new Blob([JSON.stringify(currentData, null, 2)], {
+                type: 'application/json'
+            });
+            const url = URL.createObjectURL(dataBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `meteorologist_data_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.ctrlKey || event.metaKey) {
+                switch(event.key) {
+                    case 'r':
+                        event.preventDefault();
+                        refreshData();
+                        break;
+                    case 'e':
+                        event.preventDefault();
+                        exportData();
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

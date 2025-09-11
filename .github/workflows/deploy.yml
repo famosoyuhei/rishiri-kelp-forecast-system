@@ -1,0 +1,97 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: 3.11
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run system tests
+      run: |
+        python quick_system_test.py
+    
+    - name: Run API tests
+      run: |
+        python simple_api_test.py
+    
+    - name: Run offline functionality tests
+      run: |
+        python offline_test_simple.py
+    
+    - name: Run performance tests
+      run: |
+        python performance_test.py
+    
+    - name: Security check
+      run: |
+        pip install safety bandit
+        safety check --json || true
+        bandit -r . -f json || true
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Railway CLI
+      run: |
+        npm install -g @railway/cli
+    
+    - name: Deploy to Railway
+      run: |
+        railway login --browserless
+        railway up --detach
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    
+    - name: Health Check
+      run: |
+        # Wait for deployment to complete
+        sleep 60
+        
+        # Check if service is healthy
+        curl -f ${{ secrets.RAILWAY_URL }}/health || exit 1
+        curl -f ${{ secrets.RAILWAY_URL }}/ready || exit 1
+    
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "🌊 Rishiri Kelp Forecast System deployed successfully!"
+        echo "URL: ${{ secrets.RAILWAY_URL }}"
+    
+    - name: Notify deployment failure
+      if: failure()
+      run: |
+        echo "❌ Deployment failed. Check logs for details."
+        exit 1

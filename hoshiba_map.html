@@ -1,215 +1,1077 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>干場マップ with 予報＆記録</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-providers/leaflet-providers.js"></script>
-  <style>
-    #map { height: 600px; }
-    #controlPanel {
-      margin: 10px 0;
-    }
-    #saveCancelButtons {
-      margin-top: 5px;
-      display: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場マップ</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: #f5f5f5;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0984e3, #74b9ff);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+            z-index: 1000;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            background: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .add-hoshiba-btn {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        
+        .add-hoshiba-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,184,148,0.3);
+        }
+        
+        .add-hoshiba-btn.active {
+            background: linear-gradient(135deg, #fd79a8, #fdcb6e);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(253,121,168,0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(253,121,168,0); }
+            100% { box-shadow: 0 0 0 0 rgba(253,121,168,0); }
+        }
+        
+        .filter-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            background: #74b9ff;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .filter-btn:hover,
+        .filter-btn.active {
+            background: #0984e3;
+        }
+        
+        .filter-level {
+            display: none;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-level.active {
+            display: flex;
+        }
+        
+        .back-filter-btn {
+            background: #636e72;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 10px;
+            transition: background 0.3s;
+        }
+        
+        .back-filter-btn:hover {
+            background: #2d3436;
+        }
+        
+        #district-buttons,
+        #buraku-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .map-container {
+            height: calc(100vh - 140px);
+            position: relative;
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .hoshiba-popup {
+            min-width: 250px;
+        }
+        
+        .hoshiba-popup .popup-header {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #2d3436;
+        }
+        
+        .hoshiba-popup .popup-info {
+            margin-bottom: 15px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .hoshiba-popup .popup-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .popup-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        
+        .forecast-btn {
+            background: linear-gradient(135deg, #74b9ff, #0984e3);
+            color: white;
+        }
+        
+        .record-btn {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+        }
+        
+        .delete-btn {
+            background: linear-gradient(135deg, #d63031, #fd79a8);
+            color: white;
+        }
+        
+        .popup-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        
+        .add-hoshiba-popup {
+            min-width: 200px;
+        }
+        
+        .add-hoshiba-popup .popup-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2d3436;
+        }
+        
+        .add-hoshiba-popup .coordinate-info {
+            font-size: 12px;
+            color: #636e72;
+            margin-bottom: 10px;
+        }
+        
+        .add-hoshiba-popup .suggested-name {
+            font-weight: bold;
+            color: #0984e3;
+            margin-bottom: 15px;
+        }
+        
+        .confirm-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .confirm-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .confirm-add {
+            background: #00b894;
+            color: white;
+        }
+        
+        .cancel-add {
+            background: #636e72;
+            color: white;
+        }
+        
+        .status-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            z-index: 2000;
+            display: none;
+        }
+        
+        .status-message.success {
+            border-left: 4px solid #00b894;
+        }
+        
+        .status-message.error {
+            border-left: 4px solid #d63031;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            font-size: 12px;
+        }
+        
+        .legend h4 {
+            margin-bottom: 10px;
+            color: #2d3436;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .filter-controls {
+                justify-content: center;
+            }
+            
+            .legend {
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+                font-size: 11px;
+            }
+            
+            .map-container {
+                height: calc(100vh - 180px);
+            }
+        }
+    </style>
 </head>
 <body>
-  <h2>利尻島 干場マップ</h2>
-  <div id="controlPanel">
-    <button id="addModeButton">＋ 新規干場を追加</button>
-    <div id="saveCancelButtons">
-      <span id="newSpotName"></span>
-      <button id="saveSpot">保存</button>
-      <button id="cancelSpot">キャンセル</button>
-      <iframe id="windyFrame" width="650" height="450" frameborder="0"></iframe>
-
+    <div class="header">
+        <h1>🗾 利尻島昆布干場マップ</h1>
+        <div class="subtitle">全331干場 - クリックして予報・記録・管理</div>
     </div>
-  </div>
-  <div id="map"></div>
-  <script>
-    const map = L.map('map').setView([45.170, 141.150], 12);  // 利尻島全体をカバー
-    L.tileLayer.provider('Esri.WorldImagery').addTo(map);
-
-    let spots = [];
-    let addMode = false;
-    let tempMarker = null;
-    let tempName = '';
-
-    fetch('http://localhost:8000/spots')
-      .then(res => res.json())
-      .then(data => {
-        spots = data;
-        spots.forEach(spot => {
-          const popup = `
-            <b>${spot.name}</b><br>
-            <button onclick="checkForecast('${spot.name}')">干せる予報</button>
-            <button onclick="recordDrying('${spot.name}')">記録をつける</button><br>
-            <button onclick="deleteSpot('${spot.name}')">削除</button>
-          `;
-          L.marker([spot.lat, spot.lon]).addTo(map).bindPopup(popup);
-        });
-      });
-
-    document.getElementById("addModeButton").onclick = () => {
-      addMode = true;
-      alert("地図上の場所をクリックして干場を仮登録してください。");
-    };
-
-    document.getElementById("saveSpot").onclick = () => {
-      if (!tempName || !tempMarker) return;
-      fetch('http://localhost:8000/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tempName, lat: tempMarker.getLatLng().lat, lon: tempMarker.getLatLng().lng })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'success') {
-          alert('干場を登録しました');
-
-          const csvLink = document.createElement('a');
-          csvLink.href = 'http://localhost:8000/download/csv';
-          csvLink.download = 'hoshiba_spots.csv';
-          csvLink.click();
-
-          const kmlLink = document.createElement('a');
-          kmlLink.href = 'http://localhost:8000/download/kml';
-          kmlLink.download = 'hoshiba_spots_named.kml';
-          kmlLink.click();
-
-          location.reload();
-        } else {
-          alert('登録に失敗しました');
+    
+    <div class="controls">
+        <button class="add-hoshiba-btn" id="addHoshibaBtn">
+            ➕ 新しい干場を追加
+        </button>
+        
+        <div class="filter-controls">
+            <!-- レベル1: 全体・町選択 -->
+            <div id="level1-filters" class="filter-level active">
+                <button class="filter-btn active" data-filter="all" data-level="1">全て</button>
+                <button class="filter-btn" data-filter="利尻富士町" data-level="1">利尻富士町</button>
+                <button class="filter-btn" data-filter="利尻町" data-level="1">利尻町</button>
+                <button class="filter-btn" data-filter="favorite" data-level="1">お気に入り</button>
+            </div>
+            
+            <!-- レベル2: 地区選択 -->
+            <div id="level2-filters" class="filter-level" style="display: none;">
+                <button class="back-filter-btn" onclick="goBackToLevel(1)">← 町選択に戻る</button>
+                <div id="district-buttons">
+                    <!-- 動的に生成 -->
+                </div>
+            </div>
+            
+            <!-- レベル3: 部落選択 -->
+            <div id="level3-filters" class="filter-level" style="display: none;">
+                <button class="back-filter-btn" onclick="goBackToLevel(2)">← 地区選択に戻る</button>
+                <div id="buraku-buttons">
+                    <!-- 動的に生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="map-container">
+        <div id="map"></div>
+        
+        <div class="legend">
+            <h4>干場の色分け</h4>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #0984e3;"></div>
+                <span>利尻富士町</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #00b894;"></div>
+                <span>利尻町</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fdcb6e;"></div>
+                <span>お気に入り</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fd79a8;"></div>
+                <span>利尻山（中心点）</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-message" id="statusMessage"></div>
+    
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Global variables
+        let map;
+        let hoshibaData = [];
+        let hoshibaMarkers = [];
+        let addHoshibaMode = false;
+        let centerMarker = null;
+        let favoriteHoshiba = new Set(); // お気に入り干場のセット
+        let currentFilterLevel = 1;
+        let currentTown = 'all';
+        let currentDistrict = null;
+        let currentBuraku = null;
+        
+        // Constants from the coordinate system
+        const RISHIRI_SAN = {
+            lat: 45.1821,
+            lon: 141.2421,
+            elevation: 1721
+        };
+        
+        const SOUTH_BOUNDARY = {
+            lat: 45.1007,
+            lon: 141.2461
+        };
+        
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([RISHIRI_SAN.lat, RISHIRI_SAN.lon], 12);
+            
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Add Rishiri-san center marker
+            centerMarker = L.marker([RISHIRI_SAN.lat, RISHIRI_SAN.lon], {
+                icon: L.divIcon({
+                    className: 'center-marker',
+                    html: '🏔️',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 15]
+                })
+            }).addTo(map);
+            
+            centerMarker.bindPopup(`
+                <div class="center-popup">
+                    <strong>利尻山（極座標中心点）</strong><br>
+                    標高: ${RISHIRI_SAN.elevation}m<br>
+                    座標: ${RISHIRI_SAN.lat}°N, ${RISHIRI_SAN.lon}°E
+                </div>
+            `);
+            
+            // Add click event for adding hoshiba
+            map.on('click', onMapClick);
+            
+            // Load hoshiba data
+            loadHoshibaData();
         }
-      });
-    };
-
-    document.getElementById("cancelSpot").onclick = () => {
-      if (tempMarker) map.removeLayer(tempMarker);
-      document.getElementById("saveCancelButtons").style.display = 'none';
-      tempMarker = null;
-      tempName = '';
-      addMode = false;
-    };
-
-    map.on('click', function(e) {
-      if (!addMode) return;
-      if (tempMarker) map.removeLayer(tempMarker);
-      const lat = e.latlng.lat.toFixed(6);
-      const lon = e.latlng.lng.toFixed(6);
-      const latPart = lat.split('.')[1].substring(0, 4);
-      const lonPart = lon.split('.')[1].substring(0, 4);
-      tempName = `H_${latPart}_${lonPart}`;
-      tempMarker = L.marker([lat, lon]).addTo(map);
-      tempMarker.bindPopup(`${tempName}<br>(${lat}, ${lon})`).openPopup();
-      document.getElementById("newSpotName").textContent = tempName;
-      document.getElementById("saveCancelButtons").style.display = 'inline-block';
-    });
-
-    function checkForecast(name) {
-      const spot = spots.find(s => s.name === name);
-      if (!spot) return alert("干場情報が見つかりません");
-      const url = `http://localhost:8000/forecast?name=${name}&lat=${spot.lat}&lon=${spot.lon}`;
-      fetch(url)
-        .then(res => res.json())
-        .then(data => alert(`${name} の予報結果: ${data.result}`));
-    }
-
-    function recordDrying(name) {
-      const date = prompt("記録日を入力してください (例: 2025-06-22)");
-      if (!date) return;
-
-      fetch(`http://localhost:8000/get_record?name=${name}&date=${date}`)
-        .then(res => res.json())
-        .then(data => {
-          let initial = data.result || "";
-          let choice = prompt(`記録（空欄可）\n1. 完全乾燥\n2. 中止\n3. 干したが完全には乾かせなかった（泣）`, initial);
-          if (!choice) return;
-
-          const result =
-            choice === "1" ? "完全乾燥" :
-            choice === "2" ? "中止" :
-            choice === "3" ? "干したが完全には乾かせなかった（泣）" :
-            choice;
-
-          const confirm1 = confirm(`記録内容：${name} / ${date} / ${result}\nこの記録を提出しますか？`);
-          if (!confirm1) return;
-
-          fetch("http://localhost:8000/record", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, date, result })
-          })
-            .then(res => res.json())
-            .then(data => {
-              if (data.status === "success") {
-                alert("記録を保存しました");
-              } else {
-                alert("記録の保存に失敗しました");
-              }
+        
+        // Calculate boundary-based theta
+        function calculateBoundaryBasedTheta(lat, lon) {
+            // Calculate relative coordinates from Rishiri-san
+            const deltaLat = lat - RISHIRI_SAN.lat;
+            const deltaLon = lon - RISHIRI_SAN.lon;
+            
+            // Convert to approximate meters for angle calculation
+            const latFactor = 111000;
+            const lonFactor = 111000 * Math.cos(RISHIRI_SAN.lat * Math.PI / 180);
+            
+            const deltaY = deltaLat * latFactor;
+            const deltaX = deltaLon * lonFactor;
+            
+            // Calculate angle from east (standard polar coordinates)
+            const thetaFromEast = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+            
+            // Calculate south town boundary line angle from Rishiri-san
+            const southDeltaLat = SOUTH_BOUNDARY.lat - RISHIRI_SAN.lat;
+            const southDeltaLon = SOUTH_BOUNDARY.lon - RISHIRI_SAN.lon;
+            const southDeltaY = southDeltaLat * latFactor;
+            const southDeltaX = southDeltaLon * lonFactor;
+            const southBoundaryAngle = Math.atan2(southDeltaY, southDeltaX) * 180 / Math.PI;
+            
+            // Adjust angle so south town boundary line becomes θ=0
+            let thetaAdjusted = thetaFromEast - southBoundaryAngle;
+            
+            // Normalize to 0-360 degrees
+            while (thetaAdjusted < 0) {
+                thetaAdjusted += 360;
+            }
+            while (thetaAdjusted >= 360) {
+                thetaAdjusted -= 360;
+            }
+            
+            return thetaAdjusted;
+        }
+        
+        // Generate hoshiba name from coordinates
+        function generateHoshibaName(lat, lon) {
+            const latStr = String(Math.round((lat % 1) * 10000)).padStart(4, '0');
+            const lonStr = String(Math.round((lon % 1) * 10000)).padStart(4, '0');
+            return `H_${latStr}_${lonStr}`;
+        }
+        
+        // Favorite management functions
+        function loadFavorites() {
+            const saved = localStorage.getItem('rishiri_favorites');
+            if (saved) {
+                favoriteHoshiba = new Set(JSON.parse(saved));
+            }
+        }
+        
+        function saveFavorites() {
+            localStorage.setItem('rishiri_favorites', JSON.stringify([...favoriteHoshiba]));
+        }
+        
+        function toggleFavorite(hoshibaName) {
+            if (favoriteHoshiba.has(hoshibaName)) {
+                favoriteHoshiba.delete(hoshibaName);
+                showStatus(`${hoshibaName} をお気に入りから外しました`, 'success');
+            } else {
+                favoriteHoshiba.add(hoshibaName);
+                showStatus(`${hoshibaName} をお気に入りに追加しました`, 'success');
+            }
+            saveFavorites();
+            
+            // マーカーを再表示
+            displayHoshiba();
+        }
+        
+        // Load hoshiba data from API
+        async function loadHoshibaData() {
+            try {
+                const response = await fetch('http://localhost:5001/api/hoshiba-data');
+                if (response.ok) {
+                    hoshibaData = await response.json();
+                    displayHoshiba();
+                    showStatus('干場データを読み込みました', 'success');
+                } else {
+                    throw new Error('API Error');
+                }
+                
+            } catch (error) {
+                console.warn('API not available, using mock data', error);
+                hoshibaData = generateMockData();
+                displayHoshiba();
+                showStatus('サンプルデータを表示中 (API未接続)', 'success');
+            }
+            
+            // お気に入りをロード
+            loadFavorites();
+        }
+        
+        // Parse CSV data
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            const headers = lines[0].split(',');
+            const data = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',');
+                const row = {};
+                
+                headers.forEach((header, index) => {
+                    row[header.trim()] = values[index]?.trim();
+                });
+                
+                // Convert coordinates to numbers
+                row.lat = parseFloat(row.lat);
+                row.lon = parseFloat(row.lon);
+                row.theta = calculateBoundaryBasedTheta(row.lat, row.lon);
+                row.favorite = Math.random() < 0.1; // 10% chance of being favorite
+                
+                data.push(row);
+            }
+            
+            return data;
+        }
+        
+        // Generate mock data for demonstration
+        function generateMockData() {
+            const mockData = [];
+            
+            // Generate sample hoshiba around Rishiri Island
+            const samples = [
+                {name: 'H_1021_2473', lat: 45.1021947, lon: 141.247311, town: '利尻富士町', district: '鬼脇', buraku: '野中'},
+                {name: 'H_1025_2483', lat: 45.1025111, lon: 141.2483481, town: '利尻富士町', district: '鬼脇', buraku: '野中'},
+                {name: 'H_1094_2687', lat: 45.1094479, lon: 141.268727, town: '利尻富士町', district: '鬼脇', buraku: '南浜'},
+                {name: 'H_2273_2793', lat: 45.2273, lon: 141.2793, town: '利尻富士町', district: '鴛泊', buraku: '雄忠志内'},
+                {name: 'H_1490_1567', lat: 45.149, lon: 141.1567, town: '利尻町', district: '沓形', buraku: '栄浜'},
+                {name: 'H_0988_2398', lat: 45.0988, lon: 141.2398, town: '利尻町', district: '仙法志', buraku: '久連'}
+            ];
+            
+            samples.forEach(sample => {
+                sample.theta = calculateBoundaryBasedTheta(sample.lat, sample.lon);
+                sample.favorite = Math.random() < 0.2; // 20% chance of being favorite
             });
-        });
-    }
-
-    function deleteSpot(name) {
-      if (!confirm(`${name} を削除してもよろしいですか？`)) return;
-
-      fetch('http://localhost:8000/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-      })
-      .then(res => res.json())
-      .then(data => {
-        alert(data.status === 'success' ? '削除しました' : '削除に失敗しました');
-        if (data.status === 'success') location.reload();
-      });
-    }
-    function showWindyMap(lat, lon) {
-      const windyUrl = `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&width=650&height=450&zoom=10&level=surface&overlay=wind&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
-      document.getElementById("windyFrame").src = windyUrl;
-    }
-  </script>
-  <!-- 🔵 Chatbot UI -->
-<div id="chat-container" style="position: fixed; bottom: 20px; right: 20px; width: 300px; z-index: 9999; font-family: sans-serif;">
-  <div style="background-color: #444; color: white; padding: 10px; border-radius: 8px 8px 0 0;">🤖 コンブAIチャット</div>
-  <div id="chat-log" style="height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; background: white;"></div>
-  <div style="display: flex;">
-    <input id="chat-input" type="text" placeholder="質問を入力…" style="flex: 1; padding: 5px;">
-    <button onclick="sendChat()" style="padding: 5px 10px;">送信</button>
-  </div>
-</div>
-
-<script>
-function sendChat() {
-  const input = document.getElementById("chat-input");
-  const log = document.getElementById("chat-log");
-  const message = input.value.trim();
-  if (!message) return;
-
-  log.innerHTML += `<div><strong>あなた:</strong> ${message}</div>`;
-  input.value = "";
-
-  fetch("http://localhost:8000/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message })
-  })
-  .then(res => res.json())
-  .then(data => {
-    log.innerHTML += `<div><strong>コンブAI:</strong> ${data.reply}</div>`;
-    log.scrollTop = log.scrollHeight;
-  })
-  .catch(err => {
-    log.innerHTML += `<div><strong>エラー:</strong> 応答が得られませんでした</div>`;
-  });
-}
-
-</script>
+            
+            return samples;
+        }
+        
+        // Display hoshiba markers on map with hierarchical filtering
+        function displayHoshiba() {
+            // Clear existing markers
+            hoshibaMarkers.forEach(marker => {
+                map.removeLayer(marker);
+            });
+            hoshibaMarkers = [];
+            
+            // Apply current filter
+            let filteredData = applyCurrentFilter();
+            
+            // Add markers
+            filteredData.forEach(hoshiba => {
+                const markerColor = getMarkerColor(hoshiba);
+                const isFavorite = favoriteHoshiba.has(hoshiba.name);
+                
+                const marker = L.circleMarker([hoshiba.lat, hoshiba.lon], {
+                    radius: isFavorite ? 8 : 6,
+                    color: 'white',
+                    weight: isFavorite ? 3 : 2,
+                    fillColor: markerColor,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                
+                marker.bindPopup(createHoshibaPopup(hoshiba));
+                hoshibaMarkers.push(marker);
+            });
+            
+            // Adjust map view to fit filtered data
+            if (filteredData.length > 0) {
+                fitMapToHoshiba(filteredData);
+            }
+        }
+        
+        // Apply current hierarchical filter
+        function applyCurrentFilter() {
+            let filteredData = hoshibaData;
+            
+            // Level 1 filtering (町 or favorite)
+            if (currentTown === 'favorite') {
+                filteredData = hoshibaData.filter(h => favoriteHoshiba.has(h.name));
+            } else if (currentTown && currentTown !== 'all') {
+                filteredData = hoshibaData.filter(h => h.town === currentTown);
+            }
+            
+            // Level 2 filtering (地区)
+            if (currentDistrict && currentFilterLevel >= 2) {
+                filteredData = filteredData.filter(h => h.district === currentDistrict);
+            }
+            
+            // Level 3 filtering (部落)
+            if (currentBuraku && currentFilterLevel >= 3) {
+                filteredData = filteredData.filter(h => h.buraku === currentBuraku);
+            }
+            
+            return filteredData;
+        }
+        
+        // Fit map view to show all filtered hoshiba
+        function fitMapToHoshiba(hoshiba) {
+            if (hoshiba.length === 0) return;
+            
+            // Calculate bounds
+            let minLat = Math.min(...hoshiba.map(h => h.lat));
+            let maxLat = Math.max(...hoshiba.map(h => h.lat));
+            let minLon = Math.min(...hoshiba.map(h => h.lon));
+            let maxLon = Math.max(...hoshiba.map(h => h.lon));
+            
+            // Add padding
+            const padding = 0.005;
+            minLat -= padding;
+            maxLat += padding;
+            minLon -= padding;
+            maxLon += padding;
+            
+            // Fit bounds
+            const bounds = [[minLat, minLon], [maxLat, maxLon]];
+            map.fitBounds(bounds, { padding: [20, 20] });
+        }
+        
+        // Get marker color based on hoshiba properties
+        function getMarkerColor(hoshiba) {
+            if (favoriteHoshiba.has(hoshiba.name)) return '#fdcb6e';
+            return hoshiba.town === '利尻富士町' ? '#0984e3' : '#00b894';
+        }
+        
+        // Create popup content for hoshiba
+        function createHoshibaPopup(hoshiba) {
+            return `
+                <div class="hoshiba-popup">
+                    <div class="popup-header">${hoshiba.name}</div>
+                    <div class="popup-info">
+                        <strong>町:</strong> ${hoshiba.town}<br>
+                        <strong>地区:</strong> ${hoshiba.district}<br>
+                        <strong>部落:</strong> ${hoshiba.buraku}<br>
+                        <strong>θ:</strong> ${hoshiba.theta?.toFixed(1)}°<br>
+                        <strong>座標:</strong> ${hoshiba.lat.toFixed(4)}°N, ${hoshiba.lon.toFixed(4)}°E
+                    </div>
+                    <div class="popup-buttons">
+                        <button class="popup-btn forecast-btn" onclick="showForecast('${hoshiba.name}')">
+                            📊 予報を見る
+                        </button>
+                        <button class="popup-btn record-btn" onclick="showRecord('${hoshiba.name}')">
+                            📝 記録を入力
+                        </button>
+                        ${favoriteHoshiba.has(hoshiba.name) ? 
+                            `<button class="popup-btn" style="background: linear-gradient(135deg, #fd79a8, #fdcb6e); color: white;" onclick="toggleFavorite('${hoshiba.name}')">
+                                ⭐ お気に入りから外す
+                            </button>` :
+                            `<button class="popup-btn" style="background: linear-gradient(135deg, #fdcb6e, #fd79a8); color: white;" onclick="toggleFavorite('${hoshiba.name}')">
+                                ⭐ お気に入りに追加
+                            </button>`
+                        }
+                        <button class="popup-btn delete-btn" onclick="deleteHoshiba('${hoshiba.name}')">
+                            🗑️ 干場を削除
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Map click handler
+        function onMapClick(e) {
+            if (!addHoshibaMode) return;
+            
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+            const suggestedName = generateHoshibaName(lat, lon);
+            const theta = calculateBoundaryBasedTheta(lat, lon);
+            
+            // Simple classification based on theta ranges
+            let town, district, buraku;
+            if (theta >= 0 && theta < 122) {
+                town = '利尻富士町'; district = '鬼脇'; buraku = '野中';
+            } else if (theta >= 122 && theta < 235.1) {
+                town = '利尻富士町'; district = '鴛泊'; buraku = '雄忠志内';
+            } else if (theta >= 235.1 && theta < 296.8) {
+                town = '利尻町'; district = '沓形'; buraku = '栄浜';
+            } else {
+                town = '利尻町'; district = '仙法志'; buraku = '久連';
+            }
+            
+            const popup = L.popup()
+                .setLatLng(e.latlng)
+                .setContent(`
+                    <div class="add-hoshiba-popup">
+                        <div class="popup-header">新しい干場を追加</div>
+                        <div class="coordinate-info">
+                            座標: ${lat.toFixed(6)}°N, ${lon.toFixed(6)}°E<br>
+                            θ: ${theta.toFixed(1)}°
+                        </div>
+                        <div class="suggested-name">
+                            提案名: ${suggestedName}
+                        </div>
+                        <div class="classification-info">
+                            町: ${town}<br>
+                            地区: ${district}<br>
+                            部落: ${buraku}
+                        </div>
+                        <div class="confirm-buttons">
+                            <button class="confirm-btn confirm-add" onclick="confirmAddHoshiba(${lat}, ${lon}, '${suggestedName}', ${theta}, '${town}', '${district}', '${buraku}')">
+                                追加
+                            </button>
+                            <button class="confirm-btn cancel-add" onclick="cancelAddHoshiba()">
+                                キャンセル
+                            </button>
+                        </div>
+                    </div>
+                `)
+                .openOn(map);
+        }
+        
+        // Event handlers
+        function toggleAddHoshibaMode() {
+            addHoshibaMode = !addHoshibaMode;
+            const btn = document.getElementById('addHoshibaBtn');
+            
+            if (addHoshibaMode) {
+                btn.classList.add('active');
+                btn.textContent = '❌ 追加モードを終了';
+                showStatus('地図上をクリックして新しい干場を追加してください', 'success');
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '➕ 新しい干場を追加';
+            }
+        }
+        
+        async function confirmAddHoshiba(lat, lon, name, theta, town, district, buraku) {
+            const newHoshiba = {
+                name: name,
+                lat: lat,
+                lon: lon,
+                town: town,
+                district: district,
+                buraku: buraku,
+                theta: theta,
+                favorite: false
+            };
+            
+            try {
+                // Save to API
+                const response = await fetch('http://localhost:5001/api/hoshiba-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(newHoshiba)
+                });
+                
+                if (response.ok) {
+                    // Reload data from API to ensure sync
+                    await loadHoshibaData();
+                    showStatus(`干場 "${name}" を追加しました（CSV自動保存）`, 'success');
+                } else {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'API Error');
+                }
+                
+            } catch (error) {
+                console.warn('API not available, adding locally', error);
+                // Fallback to local addition
+                hoshibaData.push(newHoshiba);
+                hoshibaData.sort((a, b) => (a.theta || 0) - (b.theta || 0));
+                displayHoshiba();
+                showStatus(`干場 "${name}" を追加しました (ローカルのみ)`, 'success');
+            }
+            
+            map.closePopup();
+            toggleAddHoshibaMode();
+        }
+        
+        function cancelAddHoshiba() {
+            map.closePopup();
+        }
+        
+        function showForecast(hoshibaName) {
+            // 干場データを検索
+            const hoshiba = hoshibaData.find(h => h.name === hoshibaName);
+            if (!hoshiba) {
+                showStatus('干場データが見つかりません', 'error');
+                return;
+            }
+            
+            // URLパラメータを作成
+            const params = new URLSearchParams({
+                name: hoshiba.name,
+                town: hoshiba.town,
+                district: hoshiba.district,
+                buraku: hoshiba.buraku,
+                theta: hoshiba.theta,
+                lat: hoshiba.lat,
+                lon: hoshiba.lon
+            });
+            
+            // 予報ページに遷移
+            window.location.href = `hoshiba_forecast.html?${params.toString()}`;
+        }
+        
+        function showRecord(hoshibaName) {
+            // 干場データを検索
+            const hoshiba = hoshibaData.find(h => h.name === hoshibaName);
+            if (!hoshiba) {
+                showStatus('干場データが見つかりません', 'error');
+                return;
+            }
+            
+            // URLパラメータを作成
+            const params = new URLSearchParams({
+                name: hoshiba.name,
+                town: hoshiba.town,
+                district: hoshiba.district,
+                buraku: hoshiba.buraku,
+                theta: hoshiba.theta,
+                lat: hoshiba.lat,
+                lon: hoshiba.lon
+            });
+            
+            // 記録ページに遷移
+            window.location.href = `hoshiba_record.html?${params.toString()}`;
+        }
+        
+        async function deleteHoshiba(hoshibaName) {
+            if (confirm(`干場 "${hoshibaName}" を本当に削除しますか？\n\n※ 関連する記録データも全て削除されます`)) {
+                try {
+                    // Delete via API
+                    const response = await fetch(`http://localhost:5001/api/hoshiba-data/${encodeURIComponent(hoshibaName)}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        // Reload data from API to ensure sync
+                        await loadHoshibaData();
+                        showStatus(`干場 "${hoshibaName}" を削除しました（CSV自動更新）`, 'success');
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'API Error');
+                    }
+                    
+                } catch (error) {
+                    console.warn('API not available, deleting locally', error);
+                    // Fallback to local deletion
+                    hoshibaData = hoshibaData.filter(h => h.name !== hoshibaName);
+                    displayHoshiba();
+                    showStatus(`干場 "${hoshibaName}" を削除しました (ローカルのみ)`, 'success');
+                }
+                
+                map.closePopup();
+            }
+        }
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Event listeners
+        document.getElementById('addHoshibaBtn').addEventListener('click', toggleAddHoshibaMode);
+        
+        // Setup hierarchical filter event listeners
+        setupHierarchicalFilters();
+        
+        function setupHierarchicalFilters() {
+            // Level 1 filter buttons (町選択)
+            document.querySelectorAll('#level1-filters .filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const filter = e.target.dataset.filter;
+                    
+                    // Update active state for level 1
+                    document.querySelectorAll('#level1-filters .filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    
+                    if (filter === 'all' || filter === 'favorite') {
+                        // 全て or お気に入り - レベル1のまま表示
+                        currentTown = filter;
+                        currentDistrict = null;
+                        currentFilterLevel = 1;
+                        displayHoshiba();
+                    } else {
+                        // 町選択 - レベル2に進む
+                        currentTown = filter;
+                        currentDistrict = null;
+                        currentFilterLevel = 2;
+                        showLevel2Filters(filter);
+                    }
+                });
+            });
+        }
+        
+        function showLevel2Filters(town) {
+            // レベル1を非表示、レベル2を表示
+            document.getElementById('level1-filters').style.display = 'none';
+            document.getElementById('level2-filters').style.display = 'flex';
+            document.getElementById('level3-filters').style.display = 'none';
+            
+            // 地区ボタンを生成
+            generateDistrictButtons(town);
+            
+            // 現在のフィルターを適用
+            displayHoshiba();
+        }
+        
+        function generateDistrictButtons(town) {
+            const districtContainer = document.getElementById('district-buttons');
+            districtContainer.innerHTML = '';
+            
+            // 選択された町の地区を取得
+            const districts = getDistrictsForTown(town);
+            
+            districts.forEach(district => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.textContent = district;
+                btn.addEventListener('click', () => {
+                    // 地区選択 - レベル3に進む
+                    currentDistrict = district;
+                    currentFilterLevel = 3;
+                    
+                    // 選択状態を更新
+                    document.querySelectorAll('#district-buttons .filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    showLevel3Filters(town, district);
+                });
+                districtContainer.appendChild(btn);
+            });
+        }
+        
+        function showLevel3Filters(town, district) {
+            // レベル2を非表示、レベル3を表示
+            document.getElementById('level2-filters').style.display = 'none';
+            document.getElementById('level3-filters').style.display = 'flex';
+            
+            // 部落ボタンを生成
+            generateBurakuButtons(town, district);
+            
+            // 現在のフィルターを適用
+            displayHoshiba();
+        }
+        
+        function generateBurakuButtons(town, district) {
+            const burakuContainer = document.getElementById('buraku-buttons');
+            burakuContainer.innerHTML = '';
+            
+            // 選択された町・地区の部落を取得
+            const burakus = getBurakusForDistrict(town, district);
+            
+            burakus.forEach(buraku => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.textContent = buraku;
+                btn.addEventListener('click', () => {
+                    // 部落選択 - 最終レベル
+                    currentBuraku = buraku;
+                    currentFilterLevel = 3;
+                    
+                    // 選択状態を更新
+                    document.querySelectorAll('#buraku-buttons .filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    displayHoshiba();
+                });
+                burakuContainer.appendChild(btn);
+            });
+        }
+        
+        function getDistrictsForTown(town) {
+            // 町に基づいて地区のリストを返す
+            const townDistricts = {
+                '利尻富士町': ['鬼脇', '鴛泊'],
+                '利尻町': ['沓形', '仙法志']
+            };
+            return townDistricts[town] || [];
+        }
+        
+        function getBurakusForDistrict(town, district) {
+            // 町・地区に基づいて部落のリストを返す
+            const districtBurakus = {
+                '利尻富士町': {
+                    '鬼脇': ['野中', '南浜'],
+                    '鴛泊': ['雄忠志内']
+                },
+                '利尻町': {
+                    '沓形': ['栄浜'],
+                    '仙法志': ['久連']
+                }
+            };
+            return districtBurakus[town]?.[district] || [];
+        }
+        
+        function goBackToLevel(level) {
+            if (level === 1) {
+                // レベル1に戻る
+                currentFilterLevel = 1;
+                currentTown = 'all';
+                currentDistrict = null;
+                currentBuraku = null;
+                
+                document.getElementById('level1-filters').style.display = 'flex';
+                document.getElementById('level2-filters').style.display = 'none';
+                document.getElementById('level3-filters').style.display = 'none';
+                
+                // 「全て」ボタンをアクティブに
+                document.querySelectorAll('#level1-filters .filter-btn').forEach(b => b.classList.remove('active'));
+                document.querySelector('#level1-filters .filter-btn[data-filter="all"]').classList.add('active');
+                
+                displayHoshiba();
+            } else if (level === 2) {
+                // レベル2に戻る
+                currentFilterLevel = 2;
+                currentDistrict = null;
+                currentBuraku = null;
+                
+                document.getElementById('level2-filters').style.display = 'flex';
+                document.getElementById('level3-filters').style.display = 'none';
+                
+                displayHoshiba();
+            }
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initMap);
+    </script>
 </body>
 </html>

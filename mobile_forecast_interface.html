@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干し予報</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0984e3, #74b9ff);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .weather-input {
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #2d3436;
+        }
+        
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #0984e3;
+        }
+        
+        .forecast-button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #00b894, #00a085);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .forecast-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .forecast-button:active {
+            transform: translateY(0);
+        }
+        
+        .results {
+            display: none;
+            padding: 20px;
+        }
+        
+        .overall-status {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .status-excellent {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+        }
+        
+        .status-good {
+            background: linear-gradient(135deg, #fdcb6e, #e17055);
+            color: white;
+        }
+        
+        .status-fair {
+            background: linear-gradient(135deg, #fd79a8, #fdcb6e);
+            color: white;
+        }
+        
+        .status-poor {
+            background: linear-gradient(135deg, #d63031, #fd79a8);
+            color: white;
+        }
+        
+        .district-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .district-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: 2px solid #f1f2f6;
+            transition: transform 0.2s;
+        }
+        
+        .district-card:hover {
+            transform: translateY(-3px);
+        }
+        
+        .district-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #2d3436;
+        }
+        
+        .district-score {
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .district-humidity {
+            font-size: 14px;
+            color: #636e72;
+        }
+        
+        .score-excellent { color: #00b894; font-weight: bold; }
+        .score-good { color: #fdcb6e; font-weight: bold; }
+        .score-fair { color: #fd79a8; font-weight: bold; }
+        .score-poor { color: #d63031; font-weight: bold; }
+        
+        .recommendations {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .recommendations h3 {
+            color: #2d3436;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .recommendation-item {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            border-left: 4px solid #0984e3;
+        }
+        
+        .top-locations {
+            margin-bottom: 20px;
+        }
+        
+        .top-locations h3 {
+            color: #2d3436;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .location-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #00b894;
+        }
+        
+        .location-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .location-details {
+            font-size: 12px;
+            color: #636e72;
+        }
+        
+        .wind-analysis {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .wind-analysis h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .wind-info {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .refresh-button {
+            width: 100%;
+            padding: 12px;
+            background: #74b9ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #636e72;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0984e3;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .footer {
+            background: #2d3436;
+            color: white;
+            text-align: center;
+            padding: 15px;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 400px) {
+            .district-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌊 利尻島昆布干し予報</h1>
+            <div class="subtitle">科学的分析による最適干場予測</div>
+        </div>
+        
+        <div class="weather-input">
+            <div class="input-group">
+                <label for="wind-direction">風向 (度)</label>
+                <input type="number" id="wind-direction" min="0" max="359" value="295" placeholder="例: 295 (北西)">
+            </div>
+            
+            <div class="input-group">
+                <label for="wind-speed">風速 (m/s)</label>
+                <input type="number" id="wind-speed" min="0" max="30" step="0.1" value="6.5" placeholder="例: 6.5">
+            </div>
+            
+            <div class="input-group">
+                <label for="temperature">気温 (°C)</label>
+                <input type="number" id="temperature" min="-10" max="40" step="0.1" value="18.0" placeholder="例: 18.0">
+            </div>
+            
+            <div class="input-group">
+                <label for="humidity">湿度 (%)</label>
+                <input type="number" id="humidity" min="0" max="100" step="1" value="55" placeholder="例: 55">
+            </div>
+            
+            <button class="forecast-button" onclick="generateForecast()">
+                🔍 予報を生成
+            </button>
+        </div>
+        
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            予報を計算中...
+        </div>
+        
+        <div class="results" id="results">
+            <div class="overall-status" id="overall-status">
+                <!-- Status will be populated by JavaScript -->
+            </div>
+            
+            <div class="wind-analysis" id="wind-analysis">
+                <!-- Wind analysis will be populated by JavaScript -->
+            </div>
+            
+            <div class="district-cards" id="district-cards">
+                <!-- District cards will be populated by JavaScript -->
+            </div>
+            
+            <div class="recommendations" id="recommendations">
+                <!-- Recommendations will be populated by JavaScript -->
+            </div>
+            
+            <div class="top-locations" id="top-locations">
+                <!-- Top locations will be populated by JavaScript -->
+            </div>
+            
+            <button class="refresh-button" onclick="generateForecast()">
+                🔄 予報を更新
+            </button>
+        </div>
+        
+        <div class="footer">
+            伝統的な漁師の知識 × 現代気象学<br>
+            利尻島昆布干し最適化システム
+        </div>
+    </div>
+
+    <script>
+        // Mock forecast system - in production, this would call the Python backend
+        class MobileForecastSystem {
+            constructor() {
+                this.moistureModelParams = {
+                    'WNW': 58.7,
+                    'SSW': 61.2,
+                    'W': 68.5,
+                    'SW': 71.1,
+                    'S': 74.0,
+                    'SE': 74.5,
+                    'WSW': 75.6,
+                    'SSE': 89.7
+                };
+                
+                this.districts = [
+                    { name: '鬼脇', en: 'Oniwaki', lifting: 0.200 },
+                    { name: '鴛泊', en: 'Oshidomari', lifting: 0.240 },
+                    { name: '沓形', en: 'Kutsugata', lifting: 0.250 },
+                    { name: '仙法志', en: 'Senposhi', lifting: 0.230 }
+                ];
+            }
+            
+            getWindSector(windDirection) {
+                const sectors = [
+                    [0, 22.5, 'N'], [22.5, 45, 'NNE'], [45, 67.5, 'NE'], [67.5, 90, 'ENE'],
+                    [90, 112.5, 'E'], [112.5, 135, 'ESE'], [135, 157.5, 'SE'], [157.5, 180, 'SSE'],
+                    [180, 202.5, 'S'], [202.5, 225, 'SSW'], [225, 247.5, 'SW'], [247.5, 270, 'WSW'],
+                    [270, 292.5, 'W'], [292.5, 315, 'WNW'], [315, 337.5, 'NW'], [337.5, 360, 'NNW']
+                ];
+                
+                for (let [min, max, sector] of sectors) {
+                    if (windDirection >= min && windDirection < max) {
+                        return sector;
+                    }
+                }
+                return 'N';
+            }
+            
+            predictMoisture(windDirection, baseHumidity) {
+                const sector = this.getWindSector(windDirection);
+                const expectedHumidity = this.moistureModelParams[sector] || baseHumidity;
+                const humidityAdjustment = expectedHumidity - 70.0;
+                const adjustedHumidity = Math.max(20, Math.min(95, baseHumidity + humidityAdjustment));
+                
+                let condition, score;
+                if (adjustedHumidity <= 60) {
+                    condition = "最良";
+                    score = 1.0;
+                } else if (adjustedHumidity <= 75) {
+                    condition = "良好";
+                    score = 0.6;
+                } else {
+                    condition = "不良";
+                    score = 0.3;
+                }
+                
+                return {
+                    sector: sector,
+                    expectedHumidity: adjustedHumidity,
+                    condition: condition,
+                    score: score
+                };
+            }
+            
+            calculateVPD(temperature, humidity) {
+                const es = 6.112 * Math.exp((17.27 * temperature) / (237.7 + temperature));
+                const e = (humidity / 100.0) * es;
+                return es - e;
+            }
+            
+            generateDistrictForecast(weatherData) {
+                const { windDirection, windSpeed, temperature, humidity } = weatherData;
+                const moisturePrediction = this.predictMoisture(windDirection, humidity);
+                const vpd = this.calculateVPD(temperature, moisturePrediction.expectedHumidity);
+                
+                return this.districts.map(district => {
+                    // Simplified scoring - in production, use full orographic model
+                    const windScore = Math.min(1.0, Math.max(0.2, (windSpeed - 1) / 8));
+                    const tempScore = Math.min(1.0, Math.max(0.2, (temperature - 5) / 20));
+                    const vpdScore = Math.min(1.0, vpd / 10);
+                    
+                    const comprehensiveScore = (
+                        moisturePrediction.score * 0.35 +
+                        0.7 * 0.25 + // Simplified cloud score
+                        windScore * 0.15 +
+                        tempScore * 0.15 +
+                        vpdScore * 0.10
+                    );
+                    
+                    let condition;
+                    if (comprehensiveScore >= 0.8) condition = "最良";
+                    else if (comprehensiveScore >= 0.6) condition = "良好";
+                    else if (comprehensiveScore >= 0.4) condition = "普通";
+                    else condition = "不良";
+                    
+                    return {
+                        name: district.name,
+                        en: district.en,
+                        score: comprehensiveScore,
+                        condition: condition,
+                        expectedHumidity: moisturePrediction.expectedHumidity
+                    };
+                });
+            }
+            
+            generateRecommendations(weatherData, districtForecasts) {
+                const recommendations = [];
+                const avgScore = districtForecasts.reduce((sum, d) => sum + d.score, 0) / districtForecasts.length;
+                
+                if (avgScore >= 0.8) {
+                    recommendations.push("🌟 島全体で最良の乾燥条件です！");
+                } else if (avgScore >= 0.6) {
+                    recommendations.push("☀️ 良好な乾燥条件です。");
+                } else if (avgScore >= 0.4) {
+                    recommendations.push("⚠️ 普通の条件。地域選択に注意。");
+                } else {
+                    recommendations.push("❌ 不良な条件。乾燥は控えめに。");
+                }
+                
+                const windSector = this.getWindSector(weatherData.windDirection);
+                const expectedHumidity = this.moistureModelParams[windSector] || weatherData.humidity;
+                
+                if (expectedHumidity <= 60) {
+                    recommendations.push(`💨 ${windSector}風は低湿度で乾燥に最適です。`);
+                } else if (expectedHumidity >= 75) {
+                    recommendations.push(`🌊 ${windSector}風は高湿度のため注意が必要です。`);
+                }
+                
+                return recommendations;
+            }
+        }
+        
+        const forecastSystem = new MobileForecastSystem();
+        
+        function generateForecast() {
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            // Get input values
+            const weatherData = {
+                windDirection: parseFloat(document.getElementById('wind-direction').value),
+                windSpeed: parseFloat(document.getElementById('wind-speed').value),
+                temperature: parseFloat(document.getElementById('temperature').value),
+                humidity: parseFloat(document.getElementById('humidity').value)
+            };
+            
+            // Simulate API delay
+            setTimeout(() => {
+                // Generate forecasts
+                const districtForecasts = forecastSystem.generateDistrictForecast(weatherData);
+                const recommendations = forecastSystem.generateRecommendations(weatherData, districtForecasts);
+                
+                // Update UI
+                updateOverallStatus(districtForecasts);
+                updateWindAnalysis(weatherData);
+                updateDistrictCards(districtForecasts);
+                updateRecommendations(recommendations);
+                updateTopLocations(districtForecasts);
+                
+                // Hide loading and show results
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('results').style.display = 'block';
+            }, 1500);
+        }
+        
+        function updateOverallStatus(districtForecasts) {
+            const excellentCount = districtForecasts.filter(d => d.condition === "最良").length;
+            const goodCount = districtForecasts.filter(d => d.condition === "良好").length;
+            const avgScore = districtForecasts.reduce((sum, d) => sum + d.score, 0) / districtForecasts.length;
+            
+            const statusEl = document.getElementById('overall-status');
+            
+            let statusClass, statusText;
+            if (avgScore >= 0.8) {
+                statusClass = 'status-excellent';
+                statusText = `🌟 最良の乾燥条件 (${excellentCount}/4地区が最良)`;
+            } else if (avgScore >= 0.6) {
+                statusClass = 'status-good';
+                statusText = `☀️ 良好な乾燥条件 (${goodCount}/4地区が良好以上)`;
+            } else if (avgScore >= 0.4) {
+                statusClass = 'status-fair';
+                statusText = `⚠️ 普通の条件 (地域選択に注意)`;
+            } else {
+                statusClass = 'status-poor';
+                statusText = `❌ 不良な条件 (乾燥は推奨しません)`;
+            }
+            
+            statusEl.className = `overall-status ${statusClass}`;
+            statusEl.textContent = statusText;
+        }
+        
+        function updateWindAnalysis(weatherData) {
+            const windSector = forecastSystem.getWindSector(weatherData.windDirection);
+            const expectedHumidity = forecastSystem.moistureModelParams[windSector] || weatherData.humidity;
+            
+            const windAnalysisEl = document.getElementById('wind-analysis');
+            
+            let favorability;
+            if (expectedHumidity <= 60) {
+                favorability = "✅ 乾燥に有利な風向";
+            } else if (expectedHumidity >= 75) {
+                favorability = "⚠️ 湿度が高くなりやすい風向";
+            } else {
+                favorability = "◯ 平均的な風向";
+            }
+            
+            windAnalysisEl.innerHTML = `
+                <h3>🌬️ 風向分析</h3>
+                <div class="wind-info">
+                    <strong>${windSector}風 (${weatherData.windDirection}°)</strong><br>
+                    風速: ${weatherData.windSpeed} m/s<br>
+                    予想湿度: ${expectedHumidity.toFixed(1)}%<br>
+                    ${favorability}
+                </div>
+            `;
+        }
+        
+        function updateDistrictCards(districtForecasts) {
+            const cardsContainer = document.getElementById('district-cards');
+            cardsContainer.innerHTML = '';
+            
+            districtForecasts.forEach(district => {
+                const card = document.createElement('div');
+                card.className = 'district-card';
+                
+                let scoreClass;
+                if (district.condition === "最良") scoreClass = 'score-excellent';
+                else if (district.condition === "良好") scoreClass = 'score-good';
+                else if (district.condition === "普通") scoreClass = 'score-fair';
+                else scoreClass = 'score-poor';
+                
+                card.innerHTML = `
+                    <div class="district-name">${district.name}</div>
+                    <div class="district-score">
+                        条件: <span class="${scoreClass}">${district.condition}</span>
+                    </div>
+                    <div class="district-humidity">
+                        予想湿度: ${district.expectedHumidity.toFixed(1)}%
+                    </div>
+                `;
+                
+                cardsContainer.appendChild(card);
+            });
+        }
+        
+        function updateRecommendations(recommendations) {
+            const recommendationsEl = document.getElementById('recommendations');
+            recommendationsEl.innerHTML = '<h3>📝 推奨事項</h3>';
+            
+            recommendations.forEach(rec => {
+                const item = document.createElement('div');
+                item.className = 'recommendation-item';
+                item.textContent = rec;
+                recommendationsEl.appendChild(item);
+            });
+        }
+        
+        function updateTopLocations(districtForecasts) {
+            const topLocationsEl = document.getElementById('top-locations');
+            
+            // Sort districts by score
+            const sortedDistricts = [...districtForecasts].sort((a, b) => b.score - a.score);
+            const topDistricts = sortedDistricts.slice(0, 3);
+            
+            topLocationsEl.innerHTML = '<h3>🏆 推奨地域</h3>';
+            
+            topDistricts.forEach((district, index) => {
+                const item = document.createElement('div');
+                item.className = 'location-item';
+                
+                item.innerHTML = `
+                    <div class="location-name">${index + 1}. ${district.name}地区</div>
+                    <div class="location-details">
+                        条件: ${district.condition} | 湿度: ${district.expectedHumidity.toFixed(1)}% | 
+                        スコア: ${(district.score * 100).toFixed(0)}点
+                    </div>
+                `;
+                
+                topLocationsEl.appendChild(item);
+            });
+        }
+        
+        // Generate initial forecast
+        window.onload = function() {
+            generateForecast();
+        };
+    </script>
+</body>
+</html>

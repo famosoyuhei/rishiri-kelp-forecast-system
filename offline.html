@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オフライン - 利尻島昆布干場予報</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: white;
+        }
+
+        .offline-container {
+            text-align: center;
+            max-width: 500px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .offline-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 16px;
+            font-weight: 300;
+        }
+
+        .status-message {
+            font-size: 16px;
+            opacity: 0.9;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .offline-features {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .offline-features h3 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #fff;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 6px 0;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .feature-list li:before {
+            content: "✓ ";
+            color: #4CAF50;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .action-buttons {
+            margin-top: 30px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            margin: 5px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: rgba(76, 175, 80, 0.8);
+            border-color: rgba(76, 175, 80, 0.8);
+        }
+
+        .connection-status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .status-offline {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .status-online {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .cached-data-info {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        @media (max-width: 480px) {
+            .offline-container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .offline-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 30px;
+            }
+        }
+
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">
+            📡
+        </div>
+        
+        <h1>オフラインモード</h1>
+        
+        <div class="status-message">
+            インターネット接続が利用できません。<br>
+            利用可能な機能で引き続きサービスをご利用いただけます。
+        </div>
+
+        <div class="connection-status" id="connection-status">
+            <div class="spinner"></div>
+            接続状態を確認中...
+        </div>
+
+        <div class="offline-features">
+            <h3>🔹 オフラインで利用可能な機能</h3>
+            <ul class="feature-list">
+                <li>キャッシュされた天気予報データ（最大6時間前まで）</li>
+                <li>地図の基本表示（保存済みエリア）</li>
+                <li>お気に入り地点の管理</li>
+                <li>過去の予報履歴データ</li>
+                <li>基本的なアラート機能</li>
+            </ul>
+        </div>
+
+        <div class="cached-data-info" id="cached-info">
+            💾 キャッシュデータの状態を確認中...
+        </div>
+
+        <div class="action-buttons">
+            <a href="/" class="btn btn-primary" onclick="checkConnection()">
+                🔄 接続を再試行
+            </a>
+            <a href="/dashboard.html" class="btn">
+                📊 ダッシュボード
+            </a>
+            <a href="javascript:history.back()" class="btn">
+                ← 戻る
+            </a>
+        </div>
+    </div>
+
+    <script>
+        let connectionCheckInterval;
+        
+        // Connection status check
+        function checkConnection() {
+            const statusElement = document.getElementById('connection-status');
+            const cachedInfoElement = document.getElementById('cached-info');
+            
+            statusElement.innerHTML = '<div class="spinner"></div>接続を確認中...';
+            
+            // Check online status
+            if (navigator.onLine) {
+                // Try to fetch a small resource to verify real connectivity
+                fetch('/weather/forecast?lat=45.242&lon=141.242', {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                }).then(response => {
+                    if (response.ok) {
+                        statusElement.className = 'connection-status status-online';
+                        statusElement.innerHTML = '✅ インターネット接続が復旧しました！';
+                        
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        throw new Error('Server not responding');
+                    }
+                }).catch(error => {
+                    showOfflineStatus();
+                });
+            } else {
+                showOfflineStatus();
+            }
+            
+            // Check cached data status
+            checkCachedData();
+        }
+        
+        function showOfflineStatus() {
+            const statusElement = document.getElementById('connection-status');
+            statusElement.className = 'connection-status status-offline';
+            statusElement.innerHTML = '❌ オフライン - インターネット接続がありません';
+        }
+        
+        function checkCachedData() {
+            const cachedInfoElement = document.getElementById('cached-info');
+            
+            // Check if service worker is available
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready.then(registration => {
+                    // Check cached weather data
+                    caches.open('rishiri-kelp-weather-v1').then(cache => {
+                        cache.keys().then(keys => {
+                            if (keys.length > 0) {
+                                cachedInfoElement.innerHTML = `💾 キャッシュデータ: ${keys.length}件の天気予報データが利用可能`;
+                            } else {
+                                cachedInfoElement.innerHTML = '⚠️ キャッシュデータがありません。オンライン時にデータを取得してください。';
+                            }
+                        });
+                    });
+                });
+            } else {
+                cachedInfoElement.innerHTML = '⚠️ オフライン機能がサポートされていません。';
+            }
+        }
+        
+        // Online/offline event listeners
+        window.addEventListener('online', function() {
+            console.log('Connection restored');
+            checkConnection();
+        });
+        
+        window.addEventListener('offline', function() {
+            console.log('Connection lost');
+            showOfflineStatus();
+        });
+        
+        // Initial status check
+        document.addEventListener('DOMContentLoaded', function() {
+            checkConnection();
+            
+            // Periodic connection check
+            connectionCheckInterval = setInterval(checkConnection, 30000); // Check every 30 seconds
+        });
+        
+        // Clean up interval when leaving page
+        window.addEventListener('beforeunload', function() {
+            if (connectionCheckInterval) {
+                clearInterval(connectionCheckInterval);
+            }
+        });
+        
+        console.log('Offline page loaded successfully');
+    </script>
+</body>
+</html>

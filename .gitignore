@@ -100,11 +100,13 @@ dmypy.json
 *.pkl
 *.json
 !requirements.json
+!manifest.json
 backup_*/
 charts/
 visualization_cache/
 visualization_charts/
 temp_*/
+offline_cache/
 
 # Sensitive configuration files
 *_config.json

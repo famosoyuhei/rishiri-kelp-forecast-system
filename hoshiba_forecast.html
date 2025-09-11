@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>干場予報 - 利尻島昆布干し予報システム</title>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'ヒラギノ角ゴシック', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #0984e3, #74b9ff);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .back-btn {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        
+        .hoshiba-info {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .forecast-tabs {
+            display: flex;
+            background: #f8f9fa;
+            overflow-x: auto;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 12px 8px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            color: #636e72;
+            transition: all 0.3s;
+            white-space: nowrap;
+            min-width: 80px;
+        }
+        
+        .tab-btn.active {
+            background: white;
+            color: #0984e3;
+            border-bottom: 3px solid #0984e3;
+        }
+        
+        .tab-btn:hover {
+            background: #e8f4ff;
+        }
+        
+        .forecast-content {
+            padding: 20px;
+            min-height: 400px;
+        }
+        
+        .forecast-day {
+            display: none;
+        }
+        
+        .forecast-day.active {
+            display: block;
+        }
+        
+        .overall-condition {
+            text-align: center;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .condition-excellent {
+            background: linear-gradient(135deg, #00b894, #55efc4);
+            color: white;
+        }
+        
+        .condition-good {
+            background: linear-gradient(135deg, #fdcb6e, #e17055);
+            color: white;
+        }
+        
+        .condition-fair {
+            background: linear-gradient(135deg, #fd79a8, #fdcb6e);
+            color: white;
+        }
+        
+        .condition-poor {
+            background: linear-gradient(135deg, #d63031, #fd79a8);
+            color: white;
+        }
+        
+        .forecast-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .forecast-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        
+        .section-header {
+            font-weight: bold;
+            font-size: 16px;
+            color: #2d3436;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .time-range {
+            font-size: 12px;
+            background: #636e72;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+        }
+        
+        .hourly-forecast {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+            gap: 10px;
+        }
+        
+        .hour-item {
+            text-align: center;
+            background: white;
+            border-radius: 8px;
+            padding: 10px 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .hour-time {
+            font-size: 11px;
+            color: #636e72;
+            margin-bottom: 5px;
+        }
+        
+        .hour-value {
+            font-weight: bold;
+            font-size: 14px;
+            color: #2d3436;
+        }
+        
+        .hour-unit {
+            font-size: 10px;
+            color: #636e72;
+        }
+        
+        .wind-direction {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .wind-arrow {
+            font-size: 20px;
+            margin-bottom: 2px;
+        }
+        
+        .theta-diff {
+            font-size: 10px;
+            color: #e17055;
+            font-weight: bold;
+        }
+        
+        .judgment-section {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .judgment-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        
+        .judgment-result {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .judgment-excellent { color: #00b894; }
+        .judgment-good { color: #fdcb6e; }
+        .judgment-fair { color: #fd79a8; }
+        .judgment-poor { color: #d63031; }
+        
+        .judgment-reasons {
+            font-size: 14px;
+            color: #1976d2;
+            line-height: 1.5;
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0984e3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            text-align: center;
+            color: #d63031;
+            background: #ffebee;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px;
+        }
+        
+        @media (max-width: 400px) {
+            .hourly-forecast {
+                grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+            }
+            
+            .hour-item {
+                padding: 8px 3px;
+            }
+            
+            .forecast-tabs {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" onclick="goBack()">← 戻る</button>
+            <h1 id="hoshibaName">干場予報</h1>
+            <div class="hoshiba-info" id="hoshibaInfo">
+                <!-- 干場情報が動的に設定されます -->
+            </div>
+        </div>
+        
+        <div class="forecast-tabs">
+            <button class="tab-btn active" data-day="0">明日</button>
+            <button class="tab-btn" data-day="1">明後日</button>
+            <button class="tab-btn" data-day="2">3日後</button>
+            <button class="tab-btn" data-day="3">4日後</button>
+            <button class="tab-btn" data-day="4">5日後</button>
+            <button class="tab-btn" data-day="5">6日後</button>
+            <button class="tab-btn" data-day="6">7日後</button>
+        </div>
+        
+        <div class="forecast-content">
+            <div id="loading" class="loading-spinner">
+                <div class="spinner"></div>
+            </div>
+            
+            <div id="error" class="error-message" style="display: none;">
+                予報データの取得に失敗しました
+            </div>
+            
+            <!-- 各日の予報 -->
+            <div class="forecast-day active" data-day="0">
+                <div class="overall-condition condition-excellent">
+                    🌟 干せる！（最良条件）
+                </div>
+                
+                <div class="forecast-sections">
+                    <!-- 基本気象条件（午前4時〜午後4時） -->
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            🌡️ 基本気象条件
+                            <span class="time-range">04:00-16:00</span>
+                        </div>
+                        <div class="hourly-forecast" id="basicWeather">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 風向・風速（午前4時〜午前10時） -->
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            💨 風向・風速
+                            <span class="time-range">04:00-10:00</span>
+                        </div>
+                        <div class="hourly-forecast" id="windData">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 日射・雲量等（午前10時〜午後4時） -->
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            ☀️ 日射・雲量
+                            <span class="time-range">10:00-16:00</span>
+                        </div>
+                        <div class="hourly-forecast" id="solarData">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 判定結果 -->
+                <div class="judgment-section">
+                    <div class="judgment-title">🎯 干せるかどうかの判定</div>
+                    <div class="judgment-result judgment-excellent">
+                        干せる！（信頼度: 95%）
+                    </div>
+                    <div class="judgment-reasons">
+                        • 西北西風で湿度が低く保たれる<br>
+                        • 風速が適度で乾燥に最適<br>
+                        • 雲量が少なく日射量が十分<br>
+                        • θ角度差により風向が有利
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 他の日の予報は動的に生成 -->
+            <div class="forecast-day" data-day="1" style="display: none;">
+                <!-- 2日後の予報 -->
+            </div>
+            
+            <!-- 以下同様に7日分 -->
+        </div>
+    </div>
+    
+    <script>
+        // グローバル変数
+        let currentHoshiba = null;
+        let forecastData = null;
+        
+        // URLパラメータから干場情報を取得
+        function getHoshibaFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return {
+                name: urlParams.get('name') || 'H_1021_2473',
+                town: urlParams.get('town') || '利尻富士町',
+                district: urlParams.get('district') || '鬼脇',
+                buraku: urlParams.get('buraku') || '野中',
+                theta: parseFloat(urlParams.get('theta')) || 23.5,
+                lat: parseFloat(urlParams.get('lat')) || 45.1021947,
+                lon: parseFloat(urlParams.get('lon')) || 141.247311
+            };
+        }
+        
+        // 初期化
+        function init() {
+            currentHoshiba = getHoshibaFromURL();
+            
+            // ヘッダー情報を設定
+            document.getElementById('hoshibaName').textContent = currentHoshiba.name;
+            document.getElementById('hoshibaInfo').innerHTML = `
+                ${currentHoshiba.town} ${currentHoshiba.district} ${currentHoshiba.buraku}<br>
+                θ: ${currentHoshiba.theta.toFixed(1)}° | ${currentHoshiba.lat.toFixed(4)}°N, ${currentHoshiba.lon.toFixed(4)}°E
+            `;
+            
+            // タブイベントリスナー
+            setupTabListeners();
+            
+            // 予報データを読み込み
+            loadForecastData();
+        }
+        
+        // タブ切り替え機能
+        function setupTabListeners() {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const day = btn.dataset.day;
+                    switchToDay(day);
+                });
+            });
+        }
+        
+        function switchToDay(day) {
+            // タブの切り替え
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-day="${day}"]`).classList.add('active');
+            
+            // コンテンツの切り替え
+            document.querySelectorAll('.forecast-day').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            // 該当日のデータを表示
+            displayForecastForDay(day);
+        }
+        
+        // 予報データを読み込み
+        async function loadForecastData() {
+            try {
+                document.getElementById('loading').style.display = 'flex';
+                document.getElementById('error').style.display = 'none';
+                
+                // 実際のAPIコール
+                const response = await fetch('http://localhost:5001/api/forecast-detailed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        hoshiba: currentHoshiba,
+                        days: 7
+                    })
+                });
+                
+                if (response.ok) {
+                    forecastData = await response.json();
+                } else {
+                    throw new Error('API Error');
+                }
+                
+            } catch (error) {
+                console.warn('API not available, using mock data');
+                forecastData = generateMockForecastData();
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+            displayForecastForDay(0);
+        }
+        
+        // モック予報データ生成
+        function generateMockForecastData() {
+            const data = { days: [] };
+            
+            for (let day = 0; day < 7; day++) {
+                const date = new Date();
+                date.setDate(date.getDate() + day + 1);
+                
+                const dayData = {
+                    date: date.toISOString().split('T')[0],
+                    overall_condition: day < 3 ? 'excellent' : day < 5 ? 'good' : 'fair',
+                    confidence: Math.max(70, 95 - day * 5),
+                    basic_weather: generateHourlyData(4, 16, 'basic'),
+                    wind_data: generateHourlyData(4, 10, 'wind'),
+                    solar_data: generateHourlyData(10, 16, 'solar'),
+                    judgment: {
+                        result: day < 3 ? '干せる！' : day < 5 ? '条件付きで干せる' : '要注意',
+                        reasons: [
+                            day < 3 ? '西北西風で湿度が低く保たれる' : '南風のため湿度がやや高め',
+                            '風速が適度で乾燥に適している',
+                            day < 4 ? '雲量が少なく日射量が十分' : '曇りがちで日射量が不十分',
+                            'θ角度差により風向が' + (day < 3 ? '有利' : '不利')
+                        ]
+                    }
+                };
+                
+                data.days.push(dayData);
+            }
+            
+            return data;
+        }
+        
+        // 時間別データ生成
+        function generateHourlyData(startHour, endHour, type) {
+            const data = [];
+        
+            for (let hour = startHour; hour <= endHour; hour++) {
+                const hourData = { hour: hour };
+                
+                if (type === 'basic') {
+                    hourData.temperature = 15 + Math.sin((hour - 6) * Math.PI / 12) * 8 + Math.random() * 2;
+                    hourData.humidity = 60 + Math.sin((hour - 12) * Math.PI / 8) * 15 + Math.random() * 5;
+                } else if (type === 'wind') {
+                    hourData.direction = 280 + Math.random() * 40; // WNW中心
+                    hourData.speed = 5 + Math.random() * 4;
+                    hourData.theta_diff = Math.abs(hourData.direction - currentHoshiba.theta);
+                    if (hourData.theta_diff > 180) hourData.theta_diff = 360 - hourData.theta_diff;
+                } else if (type === 'solar') {
+                    hourData.solar = Math.max(0, Math.sin((hour - 6) * Math.PI / 10) * 800 + Math.random() * 100);
+                    hourData.cloud = 20 + Math.random() * 30;
+                    hourData.pressure_velocity = (Math.random() - 0.5) * 0.1;
+                    hourData.ssi = -2 + Math.random() * 6;
+                    hourData.equivalent_potential_temp = 320 + Math.random() * 10;
+                }
+                
+                data.push(hourData);
+            }
+            
+            return data;
+        }
+        
+        // 指定日の予報を表示
+        function displayForecastForDay(dayIndex) {
+            if (!forecastData || !forecastData.days[dayIndex]) {
+                return;
+            }
+            
+            const dayData = forecastData.days[dayIndex];
+            
+            // 既存のコンテンツをクリア
+            let dayContainer = document.querySelector(`.forecast-day[data-day="${dayIndex}"]`);
+            if (!dayContainer) {
+                dayContainer = createDayContainer(dayIndex);
+            }
+            
+            // コンテンツを更新
+            updateDayContent(dayContainer, dayData);
+            
+            // 表示
+            document.querySelectorAll('.forecast-day').forEach(el => el.style.display = 'none');
+            dayContainer.style.display = 'block';
+        }
+        
+        // 日別コンテナを作成
+        function createDayContainer(dayIndex) {
+            const container = document.createElement('div');
+            container.className = 'forecast-day';
+            container.dataset.day = dayIndex;
+            container.innerHTML = `
+                <div class="overall-condition">
+                    <!-- 動的に設定 -->
+                </div>
+                
+                <div class="forecast-sections">
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            🌡️ 基本気象条件
+                            <span class="time-range">04:00-16:00</span>
+                        </div>
+                        <div class="hourly-forecast basic-weather">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                    
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            💨 風向・風速
+                            <span class="time-range">04:00-10:00</span>
+                        </div>
+                        <div class="hourly-forecast wind-data">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                    
+                    <div class="forecast-section">
+                        <div class="section-header">
+                            ☀️ 日射・雲量
+                            <span class="time-range">10:00-16:00</span>
+                        </div>
+                        <div class="hourly-forecast solar-data">
+                            <!-- 動的に生成 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="judgment-section">
+                    <div class="judgment-title">🎯 干せるかどうかの判定</div>
+                    <div class="judgment-result">
+                        <!-- 動的に設定 -->
+                    </div>
+                    <div class="judgment-reasons">
+                        <!-- 動的に設定 -->
+                    </div>
+                </div>
+            `;
+            
+            document.querySelector('.forecast-content').appendChild(container);
+            return container;
+        }
+        
+        // 日別コンテンツを更新
+        function updateDayContent(container, dayData) {
+            // 全体条件
+            const overallEl = container.querySelector('.overall-condition');
+            const conditionClass = `condition-${dayData.overall_condition}`;
+            overallEl.className = `overall-condition ${conditionClass}`;
+            
+            const conditionText = {
+                excellent: '🌟 干せる！（最良条件）',
+                good: '☀️ 干せる（良好条件）',
+                fair: '⚠️ 条件付きで干せる',
+                poor: '❌ 干すのは困難'
+            };
+            overallEl.textContent = conditionText[dayData.overall_condition];
+            
+            // 基本気象条件
+            const basicEl = container.querySelector('.basic-weather');
+            basicEl.innerHTML = '';
+            dayData.basic_weather.forEach(hourData => {
+                const hourEl = document.createElement('div');
+                hourEl.className = 'hour-item';
+                hourEl.innerHTML = `
+                    <div class="hour-time">${hourData.hour}:00</div>
+                    <div class="hour-value">${hourData.temperature.toFixed(1)}<span class="hour-unit">°C</span></div>
+                    <div class="hour-value">${hourData.humidity.toFixed(0)}<span class="hour-unit">%</span></div>
+                `;
+                basicEl.appendChild(hourEl);
+            });
+            
+            // 風向・風速
+            const windEl = container.querySelector('.wind-data');
+            windEl.innerHTML = '';
+            dayData.wind_data.forEach(hourData => {
+                const hourEl = document.createElement('div');
+                hourEl.className = 'hour-item';
+                const windArrow = getWindArrow(hourData.direction);
+                hourEl.innerHTML = `
+                    <div class="hour-time">${hourData.hour}:00</div>
+                    <div class="wind-direction">
+                        <div class="wind-arrow">${windArrow}</div>
+                        <div class="theta-diff">Δ${hourData.theta_diff.toFixed(0)}°</div>
+                    </div>
+                    <div class="hour-value">${hourData.speed.toFixed(1)}<span class="hour-unit">m/s</span></div>
+                `;
+                windEl.appendChild(hourEl);
+            });
+            
+            // 日射・雲量
+            const solarEl = container.querySelector('.solar-data');
+            solarEl.innerHTML = '';
+            dayData.solar_data.forEach(hourData => {
+                const hourEl = document.createElement('div');
+                hourEl.className = 'hour-item';
+                hourEl.innerHTML = `
+                    <div class="hour-time">${hourData.hour}:00</div>
+                    <div class="hour-value">${hourData.solar.toFixed(0)}<span class="hour-unit">W/m²</span></div>
+                    <div class="hour-value">${hourData.cloud.toFixed(0)}<span class="hour-unit">%</span></div>
+                    <div class="hour-value">${hourData.ssi.toFixed(1)}<span class="hour-unit">SSI</span></div>
+                `;
+                solarEl.appendChild(hourEl);
+            });
+            
+            // 判定結果
+            const judgmentResultEl = container.querySelector('.judgment-result');
+            const judgmentClass = `judgment-${dayData.overall_condition}`;
+            judgmentResultEl.className = `judgment-result ${judgmentClass}`;
+            judgmentResultEl.textContent = `${dayData.judgment.result}（信頼度: ${dayData.confidence}%）`;
+            
+            const judgmentReasonsEl = container.querySelector('.judgment-reasons');
+            judgmentReasonsEl.innerHTML = dayData.judgment.reasons.map(reason => `• ${reason}`).join('<br>');
+        }
+        
+        // 風向矢印を取得
+        function getWindArrow(direction) {
+            const arrows = ['↓', '↙', '←', '↖', '↑', '↗', '→', '↘'];
+            const index = Math.round(direction / 45) % 8;
+            return arrows[index];
+        }
+        
+        // 戻るボタン
+        function goBack() {
+            if (document.referrer && document.referrer.includes('hoshiba_map.html')) {
+                history.back();
+            } else {
+                window.location.href = 'hoshiba_map.html';
+            }
+        }
+        
+        // 初期化実行
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場予報システム - Enhanced</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .location-selector {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 25px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .location-info {
+            flex: 1;
+            min-width: 250px;
+        }
+        
+        .location-info h2 {
+            font-size: 1.4em;
+            margin-bottom: 5px;
+        }
+        
+        .location-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .location-controls select {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px;
+            background: white;
+            color: #333;
+            font-size: 0.9em;
+        }
+        
+        .refresh-btn {
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        /* タブ切り替え */
+        .day-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            padding: 0 10px;
+        }
+        
+        .day-tab {
+            padding: 12px 18px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            min-width: 90px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        
+        .day-tab:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .day-tab.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            transform: translateY(-3px);
+        }
+        
+        /* メイン予報パネル */
+        .forecast-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .forecast-date-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+        }
+        
+        .forecast-date {
+            font-size: 1.8em;
+            color: #667eea;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        
+        .days-ahead {
+            font-size: 1em;
+            color: #888;
+            font-weight: 500;
+        }
+        
+        /* 視覚インジケーター */
+        .visual-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border-radius: 15px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+        
+        .summary-card {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 12px;
+            transition: transform 0.3s ease;
+        }
+        
+        .summary-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .summary-icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .summary-value {
+            font-size: 1.6em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .summary-label {
+            font-size: 0.9em;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        /* チャートエリア */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .chart-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f2f5;
+        }
+        
+        .chart-icon {
+            font-size: 1.5em;
+            margin-right: 12px;
+            color: #667eea;
+        }
+        
+        .chart-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .chart-container {
+            height: 280px;
+            position: relative;
+        }
+        
+        /* 判定結果エリア */
+        .judgment-section {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .judgment-main {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .judgment-main::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="20" cy="20" r="1" fill="white" opacity="0.1"/><circle cx="80" cy="40" r="1" fill="white" opacity="0.1"/><circle cx="40" cy="80" r="1" fill="white" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            opacity: 0.3;
+        }
+        
+        .judgment-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .judgment-result {
+            font-size: 2.2em;
+            font-weight: 800;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .judgment-score {
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            opacity: 0.95;
+            font-weight: 600;
+        }
+        
+        .judgment-message {
+            font-size: 1.1em;
+            line-height: 1.7;
+            opacity: 0.9;
+        }
+        
+        .confidence-panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        .confidence-title {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .confidence-item {
+            margin-bottom: 20px;
+        }
+        
+        .confidence-label {
+            font-size: 0.95em;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .confidence-value {
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .confidence-bar {
+            height: 12px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF5722, #FF9800, #4CAF50);
+            border-radius: 6px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        
+        .confidence-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-card {
+                padding: 20px;
+            }
+            
+            .judgment-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .visual-summary {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+                padding: 20px;
+            }
+            
+            .day-tabs {
+                gap: 5px;
+            }
+            
+            .day-tab {
+                min-width: 80px;
+                padding: 10px 12px;
+                font-size: 0.85em;
+            }
+        }
+        
+        /* アニメーション */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .forecast-panel {
+            animation: slideInUp 0.6s ease-out;
+        }
+        
+        /* ローディング */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .spinner {
+            color: white;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .spinner::before {
+            content: '';
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* エラーメッセージ */
+        .error-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #f44336;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            z-index: 10000;
+            animation: slideInRight 0.3s ease;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="header">
+            <h1><i class="fas fa-water"></i> 利尻島昆布干場予報システム</h1>
+            <p>Enhanced Atmospheric Stability Analysis</p>
+        </div>
+        
+        <!-- 地点選択 -->
+        <div class="location-selector">
+            <div class="location-info">
+                <h2 id="locationName">H_2065_1368</h2>
+                <p id="locationCoords">45.2065°N, 141.1368°E</p>
+                <p id="locationDescription">利尻島 昆布干場</p>
+            </div>
+            <div class="location-controls">
+                <select id="locationSelect">
+                    <option value="45.2065,141.1368">H_2065_1368 (テスト地点)</option>
+                    <option value="45.2321,141.2696">H_2321_2696 (鴛泊)</option>
+                    <option value="45.1109,141.2746">H_1109_2745 (鬼脇)</option>
+                    <option value="45.0988,141.2399">H_0988_2398 (仙法志)</option>
+                </select>
+                <button class="refresh-btn" id="refreshBtn">
+                    <i class="fas fa-sync-alt"></i> 更新
+                </button>
+            </div>
+        </div>
+        
+        <!-- 日付タブ -->
+        <div class="day-tabs">
+            <button class="day-tab active" data-day="1">
+                <i class="fas fa-calendar-day"></i> 明日
+            </button>
+            <button class="day-tab" data-day="2">
+                <i class="fas fa-calendar-plus"></i> 明後日
+            </button>
+            <button class="day-tab" data-day="3">3日後</button>
+            <button class="day-tab" data-day="4">4日後</button>
+            <button class="day-tab" data-day="5">5日後</button>
+            <button class="day-tab" data-day="6">6日後</button>
+            <button class="day-tab" data-day="7">7日後</button>
+        </div>
+        
+        <!-- メイン予報パネル -->
+        <div class="forecast-panel">
+            <!-- 日付ヘッダー -->
+            <div class="forecast-date-header">
+                <div class="forecast-date" id="forecastDate">2025年8月13日（火）</div>
+                <div class="days-ahead" id="daysAhead">1日後の予報</div>
+            </div>
+            
+            <!-- 概要表示 -->
+            <div class="visual-summary">
+                <div class="summary-card">
+                    <span class="summary-icon" id="tempIcon">🌡️</span>
+                    <div class="summary-value" id="avgTemp">23°C</div>
+                    <div class="summary-label">平均気温</div>
+                </div>
+                
+                <div class="summary-card">
+                    <span class="summary-icon" id="humidityIcon">💧</span>
+                    <div class="summary-value" id="avgHumidity">75%</div>
+                    <div class="summary-label">平均湿度</div>
+                </div>
+                
+                <div class="summary-card">
+                    <span class="summary-icon" id="windIcon">💨</span>
+                    <div class="summary-value" id="avgWind">8m/s</div>
+                    <div class="summary-label">平均風速</div>
+                </div>
+                
+                <div class="summary-card">
+                    <span class="summary-icon" id="stabilityIcon">⚡</span>
+                    <div class="summary-value" id="stabilityRisk">低</div>
+                    <div class="summary-label">不安定リスク</div>
+                </div>
+            </div>
+            
+            <!-- チャートグリッド -->
+            <div class="charts-grid">
+                <!-- 気温・湿度 -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <i class="fas fa-thermometer-half chart-icon"></i>
+                        <span class="chart-title">気温・湿度推移</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="tempHumidityChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 風速・日射量 -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <i class="fas fa-wind chart-icon"></i>
+                        <span class="chart-title">風速・日射量</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="windRadiationChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 大気安定度 -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <i class="fas fa-bolt chart-icon"></i>
+                        <span class="chart-title">大気安定度</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="stabilityChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 降水確率 -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <i class="fas fa-cloud-rain chart-icon"></i>
+                        <span class="chart-title">降水確率</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="precipitationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 判定結果エリア -->
+        <div class="judgment-section">
+            <div class="judgment-main">
+                <div class="judgment-content">
+                    <div class="judgment-result" id="judgmentResult">
+                        <i class="fas fa-check-circle"></i> 干せる条件
+                    </div>
+                    <div class="judgment-score" id="judgmentScore">
+                        総合スコア: 68/100点
+                    </div>
+                    <div class="judgment-message" id="judgmentMessage">
+                        良好な乾燥条件です。大気は安定しており、降水の可能性は低いです。
+                    </div>
+                </div>
+            </div>
+            
+            <div class="confidence-panel">
+                <div class="confidence-title">
+                    <i class="fas fa-chart-line"></i> 予報信頼度
+                </div>
+                
+                <div class="confidence-item">
+                    <div class="confidence-label">
+                        総合精度
+                        <span class="confidence-value" id="overallAccuracy">85%</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="overallBar" style="width: 85%"></div>
+                    </div>
+                </div>
+                
+                <div class="confidence-item">
+                    <div class="confidence-label">
+                        日数信頼度
+                        <span class="confidence-value" id="daysConfidence">95%</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="daysBar" style="width: 95%"></div>
+                    </div>
+                </div>
+                
+                <div class="confidence-item">
+                    <div class="confidence-label">
+                        大気安定性
+                        <span class="confidence-value" id="stabilityConfidence">90%</span>
+                    </div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="stabilityBar" style="width: 90%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="kelp_forecast_api.js"></script>
+    <script>
+        // Initialize the forecast display
+        let forecastDisplay;
+        
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                forecastDisplay = new ForecastDisplay('http://localhost:8001');
+                await forecastDisplay.initialize();
+                
+                // Location selector
+                document.getElementById('locationSelect').addEventListener('change', function() {
+                    const [lat, lon] = this.value.split(',').map(parseFloat);
+                    const selectedOption = this.options[this.selectedIndex];
+                    const name = selectedOption.text.split(' (')[0];
+                    
+                    forecastDisplay.changeLocation(lat, lon, name);
+                });
+                
+                // Refresh button
+                document.getElementById('refreshBtn').addEventListener('click', function() {
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+                    forecastDisplay.refreshForecasts().finally(() => {
+                        this.innerHTML = '<i class="fas fa-sync-alt"></i> 更新';
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Failed to initialize forecast display:', error);
+                
+                // Show fallback error message
+                document.body.innerHTML = `
+                    <div style="display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column; color: white; text-align: center;">
+                        <h1><i class="fas fa-exclamation-triangle"></i> 予報システムエラー</h1>
+                        <p>予報データの読み込みに失敗しました。</p>
+                        <p>サーバーが起動していることを確認してください。</p>
+                        <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: white; border: none; border-radius: 5px; cursor: pointer;">
+                            <i class="fas fa-redo"></i> 再読み込み
+                        </button>
+                    </div>
+                `;
+            }
+        });
+        
+        // Update page title based on current selection
+        function updatePageTitle(locationName, daysAhead) {
+            document.title = `${locationName} ${daysAhead}日後の予報 - 利尻島昆布干場予報システム`;
+        }
+        
+        // Handle visibility change for auto-refresh
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && forecastDisplay) {
+                // Refresh data when page becomes visible again
+                forecastDisplay.refreshForecasts();
+            }
+        });
+    </script>
+</body>
+</html>
