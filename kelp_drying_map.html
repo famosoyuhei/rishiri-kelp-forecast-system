@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場マップ - 7日間予報システム</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Chart.js for forecast charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 100px);
+            background: white;
+            margin: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+
+        .forecast-panel {
+            width: 400px;
+            background: #f8f9fa;
+            border-left: 1px solid #e9ecef;
+            overflow-y: auto;
+            padding: 20px;
+            display: none;
+        }
+
+        .forecast-panel.active {
+            display: block;
+        }
+
+        .forecast-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .forecast-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #667eea;
+        }
+
+        .forecast-date {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .forecast-data {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .suitability {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .excellent { background: #d4edda; color: #155724; }
+        .good { background: #cce7ff; color: #004085; }
+        .fair { background: #fff3cd; color: #856404; }
+        .poor { background: #f8d7da; color: #721c24; }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px;
+            text-align: center;
+        }
+
+        .chart-container {
+            margin: 20px 0;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom marker styles */
+        .custom-div-icon {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .selected-marker {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f) !important;
+            transform: scale(1.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌊 利尻島昆布干場予報システム</h1>
+        <p>干場を選択して7日間の乾燥適性予報を確認できます</p>
+    </div>
+
+    <div class="instructions">
+        <strong>使い方:</strong> 地図上の🔵マーカーをクリックすると、その干場の詳細な7日間予報が右側に表示されます
+    </div>
+
+    <div class="container">
+        <div id="map"></div>
+
+        <div class="forecast-panel" id="forecastPanel">
+            <div class="forecast-header">
+                <h3 id="selectedSpotName">干場を選択してください</h3>
+                <p id="selectedSpotLocation"></p>
+            </div>
+
+            <div id="forecastContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    予報データを取得中...
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="forecastChart" width="350" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 利尻島の中心座標
+        const RISHIRI_CENTER = [45.178269, 141.228528];
+
+        // マップ初期化
+        const map = L.map('map').setView(RISHIRI_CENTER, 12);
+
+        // OpenStreetMap タイル
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // 現在選択されているマーカー
+        let selectedMarker = null;
+        let selectedSpot = null;
+        let forecastChart = null;
+
+        // 干場データ（実際のhoshiba_spots.csvデータから抜粋）
+        const hoshibaSpots = [
+            { name: "野中干場1", lat: 45.1021947, lon: 141.247311, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "野中干場2", lat: 45.1025111, lon: 141.2483481, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "野中干場3", lat: 45.1034294, lon: 141.2485286, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "南浜干場1", lat: 45.1094479, lon: 141.268727, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "南浜干場2", lat: 45.1089406, lon: 141.2701461, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "南浜干場3", lat: 45.1098663, lon: 141.2701888, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "沓形干場1", lat: 45.1445, lon: 141.2156, town: "利尻町", district: "沓形", buraku: "沓形" },
+            { name: "沓形干場2", lat: 45.1465, lon: 141.2176, town: "利尻町", district: "沓形", buraku: "沓形" },
+            { name: "仙法志干場1", lat: 45.1278, lon: 141.1845, town: "利尻町", district: "仙法志", buraku: "仙法志" },
+            { name: "仙法志干場2", lat: 45.1298, lon: 141.1865, town: "利尻町", district: "仙法志", buraku: "仙法志" },
+            { name: "本泊干場", lat: 45.2023, lon: 141.2234, town: "利尻富士町", district: "本泊", buraku: "本泊" },
+            { name: "鴛泊干場", lat: 45.2178, lon: 141.2345, town: "利尻富士町", district: "鴛泊", buraku: "鴛泊" }
+        ];
+
+        // 干場マーカーを地図に追加
+        function addHoshibaMarkers() {
+            hoshibaSpots.forEach((spot, index) => {
+                const marker = L.circleMarker([spot.lat, spot.lon], {
+                    radius: 8,
+                    fillColor: '#667eea',
+                    color: 'white',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <div style="text-align: center; padding: 10px;">
+                        <strong>${spot.name}</strong><br>
+                        <span style="color: #666;">${spot.town} ${spot.district}</span><br>
+                        <button onclick="selectSpot(${index})" style="
+                            background: #667eea;
+                            color: white;
+                            border: none;
+                            padding: 8px 15px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin-top: 8px;
+                        ">7日間予報を表示</button>
+                    </div>
+                `);
+
+                marker.on('click', () => selectSpot(index));
+                spot.marker = marker;
+            });
+        }
+
+        // 干場選択処理
+        async function selectSpot(index) {
+            const spot = hoshibaSpots[index];
+
+            // 前の選択をリセット
+            if (selectedMarker) {
+                selectedMarker.setStyle({
+                    fillColor: '#667eea',
+                    radius: 8
+                });
+            }
+
+            // 新しい選択をハイライト
+            selectedMarker = spot.marker;
+            selectedMarker.setStyle({
+                fillColor: '#ff6b6b',
+                radius: 12
+            });
+
+            selectedSpot = spot;
+
+            // パネル表示
+            const panel = document.getElementById('forecastPanel');
+            panel.classList.add('active');
+
+            // ヘッダー更新
+            document.getElementById('selectedSpotName').textContent = spot.name;
+            document.getElementById('selectedSpotLocation').textContent = `${spot.town} ${spot.district} ${spot.buraku}`;
+
+            // 予報データ取得
+            await loadForecastData(spot);
+        }
+
+        // 予報データ取得と表示
+        async function loadForecastData(spot) {
+            const forecastContent = document.getElementById('forecastContent');
+            forecastContent.innerHTML = '<div class="loading"><div class="spinner"></div>予報データを取得中...</div>';
+
+            try {
+                // API呼び出し
+                const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    displayForecast(data.forecasts);
+                    updateChart(data.forecasts);
+                } else {
+                    forecastContent.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">予報データの取得に失敗しました</div>';
+                }
+            } catch (error) {
+                console.error('Forecast fetch error:', error);
+                forecastContent.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">ネットワークエラーが発生しました</div>';
+            }
+        }
+
+        // 予報表示
+        function displayForecast(forecasts) {
+            const forecastContent = document.getElementById('forecastContent');
+            let html = '';
+
+            forecasts.forEach(forecast => {
+                const date = new Date(forecast.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                const dayStr = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+                html += `
+                    <div class="forecast-item">
+                        <div class="forecast-date">${dateStr} (${dayStr})</div>
+                        <div class="forecast-data">
+                            <div class="data-item">
+                                <span>最高気温:</span>
+                                <span>${forecast.temperature_max}°C</span>
+                            </div>
+                            <div class="data-item">
+                                <span>湿度:</span>
+                                <span>${forecast.humidity}%</span>
+                            </div>
+                            <div class="data-item">
+                                <span>風速:</span>
+                                <span>${forecast.wind_speed}km/h</span>
+                            </div>
+                            <div class="data-item">
+                                <span>降水量:</span>
+                                <span>${forecast.precipitation}mm</span>
+                            </div>
+                        </div>
+                        <div class="suitability ${forecast.suitability}">
+                            乾燥適性: ${getSuitabilityText(forecast.suitability)} (${forecast.drying_score}点)
+                        </div>
+                    </div>
+                `;
+            });
+
+            forecastContent.innerHTML = html;
+        }
+
+        // 適性テキスト変換
+        function getSuitabilityText(suitability) {
+            const suitabilityMap = {
+                'excellent': '非常に良い',
+                'good': '良い',
+                'fair': '普通',
+                'poor': '悪い'
+            };
+            return suitabilityMap[suitability] || suitability;
+        }
+
+        // チャート更新
+        function updateChart(forecasts) {
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+
+            if (forecastChart) {
+                forecastChart.destroy();
+            }
+
+            const labels = forecasts.map(f => {
+                const date = new Date(f.date);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            forecastChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '乾燥適性スコア',
+                            data: forecasts.map(f => f.drying_score),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: '最高気温 (°C)',
+                            data: forecasts.map(f => f.temperature_max),
+                            borderColor: '#ff6b6b',
+                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: '7日間乾燥適性予報'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: '適性スコア'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: '気温 (°C)'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        }
+                    }
+                }
+            });
+        }
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            addHoshibaMarkers();
+        });
+
+        // グローバル関数として公開（popup内で使用するため）
+        window.selectSpot = selectSpot;
+    </script>
+</body>
+</html>

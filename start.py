@@ -33,6 +33,10 @@ def mobile():
 def hoshiba_map():
     """Serve the complete hoshiba map"""
     return send_file('hoshiba_map_complete.html')
+n@app.route("/drying-map")
+def drying_map():
+    """Serve the interactive kelp drying map"""
+    return send_file("kelp_drying_map.html")
 
 @app.route('/')
 def home():
