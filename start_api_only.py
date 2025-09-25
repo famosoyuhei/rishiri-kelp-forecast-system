@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Rishiri Kelp Forecast System - Production Version with UI
+Rishiri Kelp Forecast System - Production Version
 """
 import os
 import sys
@@ -13,43 +13,16 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# Web UI Routes
-@app.route('/ui')
-def kelp_ui():
-    """Serve the main kelp forecast UI"""
-    return send_file('kelp_forecast_ui.html')
-
-@app.route('/dashboard')
-def dashboard():
-    """Serve the dashboard"""
-    return send_file('dashboard.html')
-
-@app.route('/mobile')
-def mobile():
-    """Serve mobile interface"""
-    return send_file('mobile_forecast_interface.html')
-
-@app.route('/map')
-def hoshiba_map():
-    """Serve the complete hoshiba map"""
-    return send_file('hoshiba_map_complete.html')
-
 @app.route('/')
 def home():
     return {
-        'message': 'Rishiri Kelp Forecast System - Production Version',
+        'message': 'Rishiri Kelp Forecast System - Production Version', 
         'status': 'ok',
         'version': '2.0.0',
         'endpoints': {
             'weather': '/api/weather',
-            'forecast': '/api/forecast',
+            'forecast': '/api/forecast', 
             'health': '/health'
-        },
-        'web_ui': {
-            'main_ui': '/ui',
-            'dashboard': '/dashboard',
-            'mobile': '/mobile',
-            'map': '/map'
         }
     }
 
@@ -63,17 +36,17 @@ def get_weather():
     # Rishiri Island coordinates
     lat = request.args.get('lat', 45.178269)
     lon = request.args.get('lon', 141.228528)
-
+    
     try:
         # Open-Meteo API for current weather
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
-
+        
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-
+        
         data = response.json()
         current = data.get('current_weather', {})
-
+        
         return {
             'location': 'Rishiri Island',
             'coordinates': {'lat': float(lat), 'lon': float(lon)},
@@ -86,7 +59,7 @@ def get_weather():
             'timestamp': datetime.now().isoformat(),
             'status': 'success'
         }
-
+        
     except Exception as e:
         return {
             'error': 'Weather data unavailable',
@@ -99,17 +72,17 @@ def get_forecast():
     """Get kelp drying forecast for Rishiri Island"""
     lat = request.args.get('lat', 45.178269)
     lon = request.args.get('lon', 141.228528)
-
+    
     try:
         # Basic kelp drying conditions analysis
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum&timezone=Asia/Tokyo&forecast_days=7"
-
+        
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-
+        
         data = response.json()
         daily = data.get('daily', {})
-
+        
         # Simple kelp drying suitability calculation
         forecasts = []
         for i in range(min(7, len(daily.get('time', [])))):
@@ -117,7 +90,7 @@ def get_forecast():
             humidity = daily['relative_humidity_2m_mean'][i]
             wind_speed = daily['wind_speed_10m_max'][i]
             precipitation = daily['precipitation_sum'][i]
-
+            
             # Basic suitability score (0-100)
             score = 0
             if temp_max > 15: score += 25
@@ -127,9 +100,9 @@ def get_forecast():
             if wind_speed > 3: score += 15
             if wind_speed > 5: score += 10
             if precipitation < 1: score += 15
-
+            
             suitability = 'excellent' if score >= 80 else 'good' if score >= 60 else 'fair' if score >= 40 else 'poor'
-
+            
             forecasts.append({
                 'date': daily['time'][i],
                 'temperature_max': temp_max,
@@ -139,14 +112,14 @@ def get_forecast():
                 'drying_score': score,
                 'suitability': suitability
             })
-
+        
         return {
             'location': 'Rishiri Island',
             'forecasts': forecasts,
             'timestamp': datetime.now().isoformat(),
             'status': 'success'
         }
-
+        
     except Exception as e:
         return {
             'error': 'Forecast data unavailable',
@@ -167,13 +140,13 @@ def main():
         except (ValueError, TypeError):
             port = 8000
             print(f"WARNING: Invalid PORT '{port_env}', using default 8000", file=sys.stdout)
-
+    
     print(f"Starting Rishiri Kelp Forecast System on port {port}", file=sys.stdout)
     print(f"Environment PORT variable: '{os.environ.get('PORT', 'NOT SET')}'", file=sys.stdout)
-
+    
     app.run(
-        host='0.0.0.0',
-        port=port,
+        host='0.0.0.0', 
+        port=port, 
         debug=False,
         threaded=True
     )
