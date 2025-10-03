@@ -95,27 +95,33 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Project specific
+# Project specific - Kelp Forecast System
 *.log
 *.pkl
-*.json
-!requirements.json
-!manifest.json
+
+# Data files - Keep production CSVs, exclude verification data
+data/user_favorites.json
+data/notification_users.json
+data/edit_locks.json
 backup_*/
 charts/
 visualization_cache/
 visualization_charts/
 temp_*/
 offline_cache/
+archive/temp_data/
 
 # Sensitive configuration files
 *_config.json
 *_credentials.json
+production_config.py
 api_keys.txt
 
-# Large data files
-*.csv
-!sample_data.csv
+# Large verification data files
+*_verification_results.csv
+*_analysis_output.csv
+weather_comparison_*.csv
+amedas_data_*.csv
 
 # OS specific
 .DS_Store

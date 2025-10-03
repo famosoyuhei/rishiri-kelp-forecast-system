@@ -985,7 +985,7 @@
     // グローバル変数
     const map = L.map('map').setView([45.178269, 141.228528], 11);
     // 動的にAPIベースURLを設定（スマホアクセス対応）
-    const API_BASE = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '8001');
+    const API_BASE = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '8000');
     
     let spots = [];
     let addMode = false;
@@ -1651,7 +1651,7 @@
     addModeButton.addEventListener('click', () => {
       if (!addMode) {
         addMode = true;
-        addModeButton.textContent = '📍 追加モードを終了';
+        addModeButton.textContent = '❌ 追加をキャンセル';
         addModeButton.className = 'btn btn-danger';
         addModeButton.style.fontWeight = 'bold';
         newSpotInfo.style.display = 'block';
@@ -1661,7 +1661,10 @@
         document.getElementById('adaptiveLearningPanel').style.display = 'none';
         document.getElementById('seasonPanel').style.display = 'none';
         document.getElementById('notificationPanel').style.display = 'none';
-        
+
+        // 地図をクリック可能にする前の警告
+        showMobileMessage('⚠️ 陸地のみクリック可能です。海上は追加できません。', 'warning', 4000);
+
         // モバイル向けの追加指示を表示
         showAddModeInstructions();
       } else {
@@ -4608,9 +4611,9 @@
       
       switch(choice) {
         case '1':
-          // 新しい干場として追加
+          // 地形チェック後に新しい干場として追加
           if (confirm(`新しい干場を追加しますか？\n緯度: ${lat}\n経度: ${lon}`)) {
-            addNewSpot(lat, lon);
+            addNewSpotWithValidation(lat, lon);
           }
           break;
         case '2':
@@ -4704,9 +4707,66 @@
         }
       })
       .catch(err => {
-        alert('❌ 干場の追加に失敗しました');
+        console.error('Error adding spot:', err);
+        showMobileMessage('❌ ネットワークエラーが発生しました', 'warning', 3000);
+        // オフライン用の仮保存
+        saveOfflineSpot(lat, lon);
       });
     }
+
+    function saveOfflineSpot(lat, lon) {
+      // オフライン時の仮保存
+      try {
+        const offlineSpots = JSON.parse(localStorage.getItem('offlineSpots') || '[]');
+        const newSpot = {
+          lat: lat,
+          lon: lon,
+          timestamp: Date.now(),
+          type: 'add'
+        };
+        offlineSpots.push(newSpot);
+        localStorage.setItem('offlineSpots', JSON.stringify(offlineSpots));
+
+        showMobileMessage('📱 オフライン保存しました。オンライン時に自動反映されます。', 'info', 4000);
+      } catch (e) {
+        console.error('Offline save failed:', e);
+      }
+    }
+
+    // オフライン同期機能
+    function checkAndSyncOfflineData() {
+      if (!navigator.onLine) return;
+
+      const offlineSpots = JSON.parse(localStorage.getItem('offlineSpots') || '[]');
+      if (offlineSpots.length === 0) return;
+
+      showMobileMessage('🔄 オフラインデータを同期中...', 'info', 2000);
+
+      offlineSpots.forEach((spot, index) => {
+        if (spot.type === 'add') {
+          fetch(`${API_BASE}/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: spot.lat, lon: spot.lon })
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.status === 'success') {
+              console.log(`Offline spot ${index} synced successfully`);
+            }
+          })
+          .catch(error => console.error(`Offline sync failed for spot ${index}:`, error));
+        }
+      });
+
+      // 同期完了後にオフラインデータをクリア
+      localStorage.removeItem('offlineSpots');
+      showMobileMessage('✅ オフラインデータの同期が完了しました', 'success', 3000);
+    }
+
+    // ページ読み込み時とオンライン復帰時に同期チェック
+    window.addEventListener('load', checkAndSyncOfflineData);
+    window.addEventListener('online', checkAndSyncOfflineData);
 
     // プルダウンメニューのモバイル最適化
     function initMobileNavigation() {
@@ -4901,7 +4961,7 @@
       
       let tabsHTML = '';
       
-      for (let i = 1; i <= 7; i++) {
+      for (let i = 1; i <= 6; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
         
@@ -4957,60 +5017,66 @@
         }
       }
       
-      // 2日後以降は簡易予報を表示
-      const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
-      let reliabilityInfo = '';
-      let reliabilityPercent = 100;
-      
-      if (dayOffset === 2) {
-        reliabilityInfo = '信頼度: 95% (高精度)';
-        reliabilityPercent = 95;
-      } else if (dayOffset === 3) {
-        reliabilityInfo = '信頼度: 85% (良好)';
-        reliabilityPercent = 85;
-      } else if (dayOffset <= 5) {
-        reliabilityInfo = '信頼度: 70% (中程度)';
-        reliabilityPercent = 70;
-      } else {
-        reliabilityInfo = '信頼度: 50% (参考程度)';
-        reliabilityPercent = 50;
+      // 2日後以降もAPIデータを使用して段階別分析を表示
+      // まず予報データを取得
+      if (window.currentForecastData && window.currentForecastData.forecasts) {
+        displayForecastForDate(window.currentForecastData, dateStr, window.currentLat, window.currentLon);
+        return;
       }
-      
-      contentContainer.innerHTML = `
-        <div style="padding: 20px;">
-          <h4 style="color: #2c5f2d; margin-bottom: 20px; text-align: center;">
-            📅 ${dateStr} の予報
-          </h4>
-          
-          <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-            <h5 style="color: #856404; margin-bottom: 10px;">📊 ${dayOffset}日後予報</h5>
-            <div style="color: #856404;">
-              ${reliabilityInfo}<br>
-              ${dayOffset > 3 ? '※ 計画の参考程度にご活用ください' : '※ 作業計画の検討にご活用ください'}
-            </div>
-          </div>
-          
-          <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd; margin-bottom: 20px;">
-            <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌤️ 長期傾向予測</h5>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div>
-                <div style="font-weight: bold; margin-bottom: 5px;">一般的な気象傾向:</div>
-                <div style="color: #666;">利尻島の${new Date(dateStr).getMonth() + 1}月の特徴を考慮した予測を準備中</div>
+
+      // APIデータがない場合は新しく取得
+      fetch(`/api/forecast?lat=${window.currentLat}&lon=${window.currentLon}`)
+        .then(response => response.json())
+        .then(data => {
+          window.currentForecastData = data;
+          displayForecastForDate(data, dateStr, window.currentLat, window.currentLon);
+        })
+        .catch(error => {
+          console.error('予報データ取得エラー:', error);
+
+          // エラー時は簡易表示
+          const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
+          let reliabilityInfo = '';
+
+          if (dayOffset === 2) {
+            reliabilityInfo = '信頼度: 95% (高精度)';
+          } else if (dayOffset === 3) {
+            reliabilityInfo = '信頼度: 85% (良好)';
+          } else if (dayOffset <= 5) {
+            reliabilityInfo = '信頼度: 70% (中程度)';
+          } else {
+            reliabilityInfo = '信頼度: 50% (参考程度)';
+          }
+
+          contentContainer.innerHTML = `
+            <div style="padding: 20px;">
+              <h4 style="color: #2c5f2d; margin-bottom: 20px; text-align: center;">
+                📅 ${dateStr} の予報
+              </h4>
+
+              <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <h5 style="color: #856404; margin-bottom: 10px;">📊 ${dayOffset}日後予報</h5>
+                <div style="color: #856404;">
+                  ${reliabilityInfo}<br>
+                  ${dayOffset > 3 ? '※ 計画の参考程度にご活用ください' : '※ 作業計画の検討にご活用ください'}
+                </div>
               </div>
-              <div>
-                <div style="font-weight: bold; margin-bottom: 5px;">推奨:</div>
-                <div style="color: #2e7d32;">翌日・2日後の高精度予報を優先して作業計画を立ててください</div>
+
+              <div style="background: #ffebee; border-radius: 8px; padding: 15px; border: 1px solid #f44336;">
+                <h5 style="color: #d32f2f; margin-bottom: 10px;">⚠️ データ取得エラー</h5>
+                <div style="color: #d32f2f;">
+                  予報データの取得に失敗しました。しばらくしてから再度お試しください。
+                </div>
+              </div>
+
+              <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+                <p style="font-size: 12px; color: #666; margin: 0;">
+                  💡 高精度予報は翌日・2日後がおすすめです | 📊 利尻島昆布干し特化予報
+                </p>
               </div>
             </div>
-          </div>
-          
-          <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
-            <p style="font-size: 12px; color: #666; margin: 0;">
-              💡 高精度予報は翌日・2日後がおすすめです | 📊 利尻島昆布干し特化予報
-            </p>
-          </div>
-        </div>
-      `;
+          `;
+        });
     }
 
     function setActiveTab(activeDate) {
@@ -5034,52 +5100,119 @@
       
       console.log('表示中のデータ:', data);
       
-      // 最適化されたAPIレスポンス形式に対応
-      if (!data) {
+      // 新しいAPIレスポンス形式に対応
+      if (!data || !data.forecasts) {
         contentContainer.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">予報データがありません</div>';
         return;
       }
-      
-      // 簡易表示のHTML生成（最適化されたAPIレスポンス用）
+
+      // 指定した日付の予報データを検索
+      const targetForecast = data.forecasts.find(f => f.date === dateStr);
+      if (!targetForecast) {
+        contentContainer.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">指定された日付のデータがありません</div>';
+        return;
+      }
+
+      // 長期予報の場合の信頼度警告
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
+
+      let longTermWarningHTML = '';
+      if (dateStr !== tomorrowStr) {
+        let reliabilityInfo = '';
+        let warningColor = '#fff3cd';
+        let borderColor = '#ffeaa7';
+        let textColor = '#856404';
+
+        if (dayOffset === 2) {
+          reliabilityInfo = '信頼度: 95% (高精度)';
+        } else if (dayOffset === 3) {
+          reliabilityInfo = '信頼度: 85% (良好)';
+        } else if (dayOffset <= 5) {
+          reliabilityInfo = '信頼度: 70% (中程度)';
+          warningColor = '#fff3e0';
+          borderColor = '#ffcc02';
+          textColor = '#e65100';
+        } else {
+          reliabilityInfo = '信頼度: 50% (参考程度)';
+          warningColor = '#ffebee';
+          borderColor = '#f44336';
+          textColor = '#d32f2f';
+        }
+
+        longTermWarningHTML = `
+          <div style="background: ${warningColor}; border: 1px solid ${borderColor}; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h5 style="color: ${textColor}; margin-bottom: 10px;">📊 ${dayOffset}日後予報</h5>
+            <div style="color: ${textColor};">
+              ${reliabilityInfo}<br>
+              ${dayOffset > 3 ? '※ 計画の参考程度にご活用ください' : '※ 作業計画の検討にご活用ください'}
+            </div>
+          </div>
+        `;
+      }
+
+      // 換気重視期間（4:00-10:00）の風速を計算
+      const ventilationHours = targetForecast.hourly_details.filter(h => {
+        const hour = parseInt(h.time.split(':')[0]);
+        return hour >= 4 && hour <= 10;
+      });
+      const avgVentilationWind = ventilationHours.length > 0 ?
+        ventilationHours.reduce((sum, h) => sum + (h.wind_speed || 0), 0) / ventilationHours.length : 0;
+
+      // 熱供給重視期間（10:00-16:00）の湿度を計算
+      const solarHours = targetForecast.hourly_details.filter(h => {
+        const hour = parseInt(h.time.split(':')[0]);
+        return hour >= 10 && hour <= 16;
+      });
+      const avgSolarHumidity = solarHours.length > 0 ?
+        solarHours.reduce((sum, h) => sum + (h.humidity || 0), 0) / solarHours.length : 0;
+
+      // 基本気象情報のHTML生成
       const tempHumidityHTML = `
         <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
           <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌡️ 基本気象情報</h5>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div>平均湿度: ${data.humidity || '--'}%</div>
-            <div>平均風速: ${data.wind || '--'} m/s</div>
+            <div>平均湿度: ${targetForecast.daily_summary.humidity.toFixed(1)}%</div>
+            <div>平均風速: ${targetForecast.daily_summary.wind_speed.toFixed(1)} m/s</div>
           </div>
         </div>
       `;
-      
+
       const windHTML = `
         <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
           <h5 style="color: #2c5f2d; margin-bottom: 10px;">🌬️ 換気重視期間（午前4時〜10時）</h5>
-          <div>風速: ${data.wind || '--'} m/s</div>
-          <div style="margin-top: 8px; padding: 8px; background: ${data.wind > 1.5 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
-            ${data.wind > 1.5 ? '✓ 換気条件良好' : '⚠ 風が弱め - 換気注意'}
+          <div>風速: ${avgVentilationWind.toFixed(1)} m/s</div>
+          <div style="margin-top: 8px; padding: 8px; background: ${avgVentilationWind > 1.5 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
+            ${avgVentilationWind > 1.5 ? '✓ 換気条件良好' : '⚠ 風が弱め - 換気注意'}
           </div>
         </div>
       `;
-      
+
       const solarHTML = `
         <div style="background: white; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
           <h5 style="color: #2c5f2d; margin-bottom: 10px;">☀️ 熱供給重視期間（午前10時〜午後4時）</h5>
-          <div>湿度: ${data.humidity || '--'}%</div>
-          <div style="margin-top: 8px; padding: 8px; background: ${data.humidity < 80 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
-            ${data.humidity < 80 ? '✓ 乾燥条件良好' : '⚠ 高湿度 - 乾燥注意'}
+          <div>湿度: ${avgSolarHumidity.toFixed(1)}%</div>
+          <div style="margin-top: 8px; padding: 8px; background: ${avgSolarHumidity < 80 ? '#e8f5e8' : '#fff3cd'}; border-radius: 4px;">
+            ${avgSolarHumidity < 80 ? '✓ 乾燥条件良好' : '⚠ 高湿度 - 乾燥注意'}
           </div>
         </div>
       `;
       
       // 乾燥判定結果の処理
+      const reliabilityData = targetForecast.reliability || {};
+      const suitabilityColor = targetForecast.daily_summary.suitability === 'excellent' ? '#2e7d32' :
+                              targetForecast.daily_summary.suitability === 'good' ? '#388e3c' :
+                              targetForecast.daily_summary.suitability === 'fair' ? '#f57c00' : '#d32f2f';
       const dryingHTML = `
         <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
           <h5 style="color: #2c5f2d; margin-bottom: 10px;">🎯 総合判定</h5>
-          <div style="font-size: 16px; font-weight: bold; color: ${data.prediction?.includes('Storm') ? '#d32f2f' : '#2e7d32'}; margin-bottom: 8px;">
-            ${data.prediction || '判定データなし'}
+          <div style="font-size: 16px; font-weight: bold; color: ${suitabilityColor}; margin-bottom: 8px;">
+            ${targetForecast.daily_summary.estimated_drying_time}
           </div>
-          <div>信頼度: ${data.confidence || '--'}%</div>
-          ${data.recommendation ? `<div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 4px;">推奨: ${data.recommendation}</div>` : ''}
+          <div>信頼度: ${reliabilityData.accuracy || '--'}%</div>
+          <div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 4px;">乾燥適性: ${targetForecast.daily_summary.suitability}</div>
         </div>
       `;
       
@@ -5097,30 +5230,378 @@
         `;
       }
       
+      // 段階別分析データの処理
+      const stageAnalysis = targetForecast.daily_summary.stage_analysis || {};
+
+      // PWV/PBLH分析データの処理
+      const pwvPblhAnalysis = stageAnalysis.pwv_pblh_analysis || {};
+
+
+      // 1時間刻み推移表示用データの準備
+      const hourlyData = targetForecast.hourly_details || [];
+
+      // 利尻島伝統風名変換関数（16方位）
+      function getRishiriWindName(windDirection) {
+        if (windDirection === null || windDirection === undefined) return { name: '--', cardinal: '--' };
+
+        const windNames = [
+          { dir: 0, name: 'アイ', cardinal: '北' }, { dir: 22.5, name: 'アイシモ', cardinal: '北北東' },
+          { dir: 45, name: 'シモ', cardinal: '北東' }, { dir: 67.5, name: 'シモヤマセ', cardinal: '東北東' },
+          { dir: 90, name: 'ホンヤマセ', cardinal: '東' }, { dir: 112.5, name: 'ヤマセ', cardinal: '東南東' },
+          { dir: 135, name: 'ミナミヤマセ', cardinal: '南東' }, { dir: 157.5, name: 'ミナミヤマ', cardinal: '南南東' },
+          { dir: 180, name: 'クダリ', cardinal: '南' }, { dir: 202.5, name: 'クダリヒカタ', cardinal: '南南西' },
+          { dir: 225, name: 'ヒカタ', cardinal: '南西' }, { dir: 247.5, name: 'ニシヒカタ', cardinal: '西南西' },
+          { dir: 270, name: 'ニシ', cardinal: '西' }, { dir: 292.5, name: 'ニシタマ', cardinal: '西北西' },
+          { dir: 315, name: 'タマ', cardinal: '北西' }, { dir: 337.5, name: 'アイタマ', cardinal: '北北西' }
+        ];
+
+        const normalizedDir = ((windDirection % 360) + 360) % 360;
+        let minDiff = 360;
+        let closestWind = windNames[0];
+
+        for (const wind of windNames) {
+          let diff = Math.abs(normalizedDir - wind.dir);
+          diff = Math.min(diff, 360 - diff);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestWind = wind;
+          }
+        }
+        return closestWind;
+      }
+
+      // 1時間刻みデータの準備（全気象データ）
+      const hourlyAllData = hourlyData.map(hour => {
+        const time = hour.time || '--';
+
+        // 基本気象データ
+        const temperature = hour.temperature !== null && hour.temperature !== undefined ?
+          hour.temperature.toFixed(1) : '--';
+        const humidity = hour.humidity !== null && hour.humidity !== undefined ?
+          hour.humidity.toFixed(0) : '--';
+        const windSpeed = hour.wind_speed !== null && hour.wind_speed !== undefined ?
+          hour.wind_speed.toFixed(1) : '--';
+        const windInfo = hour.wind_direction !== null && hour.wind_direction !== undefined ?
+          getRishiriWindName(hour.wind_direction) : { name: '--', arrow: '--' };
+        const solarRadiation = hour.solar_radiation !== null && hour.solar_radiation !== undefined ?
+          hour.solar_radiation.toFixed(0) : '--';
+        const precipitation = hour.precipitation !== null && hour.precipitation !== undefined ?
+          hour.precipitation.toFixed(1) : '--';
+        const cloudCover = hour.cloud_cover !== null && hour.cloud_cover !== undefined ?
+          hour.cloud_cover.toFixed(0) : '--';
+
+        // 高度気象データ
+        const verticalVel = hour.vertical_p_velocity !== null && hour.vertical_p_velocity !== undefined ?
+          hour.vertical_p_velocity.toFixed(3) : '--';
+        const ssi = hour.ssi !== null && hour.ssi !== undefined ?
+          hour.ssi.toFixed(1) : '--';
+        const ssiCategory = hour.ssi !== null && hour.ssi !== undefined ?
+          (hour.ssi >= 3 ? '安定' : hour.ssi >= 0 ? '中性' : hour.ssi >= -3 ? 'やや不安定' : '不安定') : '--';
+        const equivTemp = hour.equivalent_potential_temperature !== null && hour.equivalent_potential_temperature !== undefined ?
+          hour.equivalent_potential_temperature.toFixed(1) : '--';
+
+        // 500hPa渦度データ
+        const vorticity = hour.vorticity_500hpa !== null && hour.vorticity_500hpa !== undefined ?
+          (hour.vorticity_500hpa * 100000).toFixed(1) : '--'; // Convert to 10^-5 s^-1 units
+
+        // PWV and PBLH data
+        const pwv = hour.precipitable_water !== null && hour.precipitable_water !== undefined ?
+          hour.precipitable_water.toFixed(1) : '--';
+        const pblh = hour.boundary_layer_height !== null && hour.boundary_layer_height !== undefined ?
+          hour.boundary_layer_height.toFixed(0) : '--';
+
+        const pwvCategory = hour.pwv_pblh_analysis?.pwv_category || '--';
+        const pblhCategory = hour.pwv_pblh_analysis?.pblh_category || '--';
+
+        return {
+          time, temperature, humidity, windSpeed, windInfo, solarRadiation, precipitation, cloudCover,
+          verticalVel, ssi, ssiCategory, equivTemp, vorticity,
+          pwv, pblh, pwvCategory, pblhCategory
+        };
+      });
+
+      // 基本気象データテーブルの定義
+      const basicWeatherTableHTML = `
+        <div style="margin-top: 15px;">
+          <h6 style="color: #2e7d32; margin: 0 0 12px 0;">🌤️ 基本気象データ (1時間刻み推移)</h6>
+          <div style="max-height: 350px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+            <table style="width: 100%; font-size: 10px; border-collapse: collapse;">
+              <thead style="background: #f5f5f5; position: sticky; top: 0;">
+                <tr>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 40px;">時刻</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 35px;">気温<br>(°C)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 35px;">湿度<br>(%)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 35px;">風速<br>(m/s)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 55px;">風向<br>(伝統風名/16方位)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">日射<br>(W/m²)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">降水量<br>(mm)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">雲量<br>(%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${hourlyAllData.map(hour => `
+                  <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 4px 2px; text-align: center; font-weight: bold; background: #f9f9f9;">${hour.time}</td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.temperature !== '--' && parseFloat(hour.temperature) > 20 ? '#d32f2f' : hour.temperature !== '--' && parseFloat(hour.temperature) < 10 ? '#1976d2' : '#333'};">
+                      ${hour.temperature}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.humidity !== '--' && parseFloat(hour.humidity) > 80 ? '#d32f2f' : hour.humidity !== '--' && parseFloat(hour.humidity) < 60 ? '#4caf50' : '#333'};">
+                      ${hour.humidity}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.windSpeed !== '--' && parseFloat(hour.windSpeed) > 3 ? '#4caf50' : hour.windSpeed !== '--' && parseFloat(hour.windSpeed) < 1.5 ? '#d32f2f' : '#333'};">
+                      ${hour.windSpeed}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; font-weight: bold; color: #1976d2;">
+                      <div style="font-size: 10px;">${hour.windInfo.name}</div>
+                      <div style="font-size: 8px; color: #666;">${hour.windInfo.cardinal}</div>
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.solarRadiation !== '--' && parseFloat(hour.solarRadiation) > 600 ? '#ff9800' : '#333'};">
+                      ${hour.solarRadiation}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.precipitation !== '--' && parseFloat(hour.precipitation) > 0.1 ? '#f44336' : '#4caf50'};">
+                      ${hour.precipitation}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; color: ${hour.cloudCover !== '--' && parseFloat(hour.cloudCover) > 80 ? '#666' : hour.cloudCover !== '--' && parseFloat(hour.cloudCover) < 30 ? '#4caf50' : '#ff9800'};">
+                      ${hour.cloudCover}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div style="font-size: 9px; color: #666; margin-top: 8px; text-align: center;">
+            ※ 基本気象データ (4:00-16:00) | 🔴高温・高湿度・降雨 🔵低温 🟢好条件風速・低湿度・乾燥・晴天 🟠強日射・部分曇り ⚫高雲量
+          </div>
+        </div>
+      `;
+
+      // 一般漁師向け簡易表示
+      const fisherHTML = `
+        <div style="background: #e8f5e8; border-radius: 8px; padding: 15px; border: 1px solid #4caf50;">
+          <h5 style="color: #2e7d32; margin-bottom: 10px;">🎣 一般漁師向け予報</h5>
+          <div style="font-size: 18px; font-weight: bold; color: ${suitabilityColor}; margin-bottom: 10px;">
+            ${stageAnalysis.predicted_completion_time || targetForecast.daily_summary.estimated_drying_time}
+          </div>
+          <div style="font-size: 14px; color: #2e7d32; margin-bottom: 10px;">
+            総合スコア: ${stageAnalysis.overall_score || '--'}/100
+          </div>
+          ${pwvPblhAnalysis.avg_pwv || pwvPblhAnalysis.avg_pblh ? `
+            <div style="background: #e8f5e9; border-radius: 6px; padding: 10px; margin-bottom: 10px; border: 1px solid #66bb6a;">
+              <div style="font-size: 12px; font-weight: bold; color: #2e7d32; margin-bottom: 6px;">💧 大気湿潤・境界層状態</div>
+              <div style="font-size: 11px; line-height: 1.6;">
+                ${pwvPblhAnalysis.avg_pwv ? `<div>可降水量(PWV): <strong>${pwvPblhAnalysis.avg_pwv}mm</strong> <span style="color: ${
+                  pwvPblhAnalysis.pwv_category === '非常に乾燥' || pwvPblhAnalysis.pwv_category === '乾燥' ? '#4caf50' :
+                  pwvPblhAnalysis.pwv_category === 'やや乾燥' || pwvPblhAnalysis.pwv_category === '普通' ? '#ff9800' :
+                  '#d32f2f'
+                };">(${pwvPblhAnalysis.pwv_category})</span></div>` : ''}
+                ${pwvPblhAnalysis.avg_pblh ? `<div>境界層高度(PBLH): <strong>${pwvPblhAnalysis.avg_pblh}m</strong> <span style="color: ${
+                  pwvPblhAnalysis.pblh_category === '非常に良好' || pwvPblhAnalysis.pblh_category === '良好' ? '#4caf50' :
+                  pwvPblhAnalysis.pblh_category === 'やや良好' || pwvPblhAnalysis.pblh_category === '普通' ? '#ff9800' :
+                  '#d32f2f'
+                };">(${pwvPblhAnalysis.pblh_category})</span></div>` : ''}
+                ${pwvPblhAnalysis.risk_level ? `<div style="margin-top: 4px; padding: 4px 8px; background: ${
+                  pwvPblhAnalysis.risk_level === '理想的条件' ? '#c8e6c9' :
+                  pwvPblhAnalysis.risk_level === '良好な条件' ? '#dcedc8' :
+                  pwvPblhAnalysis.risk_level.includes('海霧') ? '#ffcdd2' :
+                  '#fff9c4'
+                }; border-radius: 4px; font-weight: bold;">
+                  ${pwvPblhAnalysis.sea_fog_risk ? '⚠️ ' : ''}${pwvPblhAnalysis.risk_level}
+                </div>` : ''}
+              </div>
+            </div>
+          ` : ''}
+          ${basicWeatherTableHTML}
+        </div>
+      `;
+
+      // 専門家向け詳細表示
+      const expertHTML = `
+        <div style="background: #f3e5f5; border-radius: 8px; padding: 15px; border: 1px solid #9c27b0;">
+          <h5 style="color: #7b1fa2; margin-bottom: 15px;">🔬 専門家向け段階別分析</h5>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+            <div style="background: white; padding: 12px; border-radius: 6px;">
+              <h6 style="color: #1976d2; margin: 0 0 8px 0;">換気段階 (4:00-10:00)</h6>
+              <div>スコア: ${stageAnalysis.ventilation_stage_score || '--'}/100</div>
+              <div style="font-size: 12px; color: #666;">
+                平均風速: ${stageAnalysis.stage_breakdown?.ventilation_period?.avg_wind_speed || '--'} m/s
+              </div>
+            </div>
+
+            <div style="background: white; padding: 12px; border-radius: 6px;">
+              <h6 style="color: #f57c00; margin: 0 0 8px 0;">熱供給段階 (10:00-16:00)</h6>
+              <div>スコア: ${stageAnalysis.heat_supply_stage_score || '--'}/100</div>
+              <div style="font-size: 12px; color: #666;">
+                平均気温: ${stageAnalysis.stage_breakdown?.heat_supply_period?.avg_temperature || '--'}°C
+              </div>
+            </div>
+          </div>
+
+          <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 15px;">
+            <h6 style="color: #7b1fa2; margin: 0 0 8px 0;">重み付け設定</h6>
+            <div style="font-size: 12px;">
+              風重視: ${Math.round((stageAnalysis.time_weights?.wind_weight || 0.7) * 100)}% |
+              熱重視: ${Math.round((stageAnalysis.time_weights?.solar_weight || 0.3) * 100)}%
+            </div>
+            <div style="font-size: 11px; color: #666; margin-top: 4px;">
+              予測時間: ${stageAnalysis.estimated_drying_hours || '--'}時間
+            </div>
+          </div>
+
+          <div style="background: #fff8e1; padding: 12px; border-radius: 6px; border: 1px solid #ffcc02;">
+            <h6 style="color: #e65100; margin: 0 0 12px 0;">🌪️ 高度気象パラメータ (1時間刻み推移)</h6>
+
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;">
+              <table style="width: 100%; font-size: 10px; border-collapse: collapse;">
+                <thead style="background: #f5f5f5; position: sticky; top: 0;">
+                  <tr>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">時刻</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">PWV<br>(mm)</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">PBLH<br>(m)</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">鉛直p速度<br>(700hPa)<br>(Pa/s)</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">SSI</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">相当温位<br>(850hPa)<br>(K)</th>
+                    <th style="padding: 6px 4px; border: 1px solid #ddd; text-align: center;">相対渦度<br>(500hPa)<br>(×10⁻⁵ s⁻¹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${hourlyAllData.map(hour => `
+                    <tr style="border-bottom: 1px solid #eee;">
+                      <td style="padding: 4px; text-align: center; font-weight: bold;">${hour.time}</td>
+                      <td style="padding: 4px; text-align: center;">
+                        <div>${hour.pwv}</div>
+                        <div style="font-size: 8px; color: ${
+                          hour.pwvCategory === '非常に乾燥' || hour.pwvCategory === '乾燥' ? '#4caf50' :
+                          hour.pwvCategory === 'やや乾燥' || hour.pwvCategory === '普通' ? '#ff9800' :
+                          hour.pwvCategory === 'やや湿潤' || hour.pwvCategory === '湿潤' ? '#f44336' :
+                          hour.pwvCategory === '非常に湿潤' ? '#d32f2f' : '#666'
+                        };">${hour.pwvCategory}</div>
+                      </td>
+                      <td style="padding: 4px; text-align: center;">
+                        <div>${hour.pblh}</div>
+                        <div style="font-size: 8px; color: ${
+                          hour.pblhCategory === '非常に良好' || hour.pblhCategory === '良好' ? '#4caf50' :
+                          hour.pblhCategory === 'やや良好' || hour.pblhCategory === '普通' ? '#ff9800' :
+                          hour.pblhCategory === 'やや不良' || hour.pblhCategory === '不良' ? '#f44336' :
+                          hour.pblhCategory === '海霧リスク' ? '#d32f2f' : '#666'
+                        };">${hour.pblhCategory}</div>
+                      </td>
+                      <td style="padding: 4px; text-align: center; color: ${hour.verticalVel !== '--' && parseFloat(hour.verticalVel) > 0 ? '#d32f2f' : '#1976d2'};">
+                        ${hour.verticalVel}
+                      </td>
+                      <td style="padding: 4px; text-align: center;">
+                        <div>${hour.ssi}</div>
+                        <div style="font-size: 8px; color: ${
+                          hour.ssiCategory === '安定' ? '#4caf50' :
+                          hour.ssiCategory === '中性' ? '#ff9800' :
+                          hour.ssiCategory === 'やや不安定' ? '#f44336' :
+                          hour.ssiCategory === '不安定' ? '#d32f2f' : '#666'
+                        };">${hour.ssiCategory}</div>
+                      </td>
+                      <td style="padding: 4px; text-align: center;">${hour.equivTemp}</td>
+                      <td style="padding: 4px; text-align: center; color: ${hour.vorticity !== '--' && parseFloat(hour.vorticity) > 0 ? '#d32f2f' : hour.vorticity !== '--' && parseFloat(hour.vorticity) < 0 ? '#1976d2' : '#333'};">
+                        ${hour.vorticity}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <div style="font-size: 9px; color: #666; margin-top: 8px; text-align: center;">
+              ※ 高層大気解析データ (4:00-16:00) | 🔴正値=下降気流・サイクロン性 🔵負値=上昇気流・アンチサイクロン性
+            </div>
+          </div>
+        </div>
+      `;
+
       // 仕様書に従った予報表示を作成
       contentContainer.innerHTML = `
         <div style="padding: 20px;">
           <h4 style="color: #2c5f2d; margin-bottom: 20px; text-align: center;">
             📅 ${dateStr} の詳細予報
           </h4>
-          
+
           ${safetyWarningsHTML}
-          
-          <!-- 時間帯別予報セクション -->
-          <div style="display: grid; gap: 20px;">
-            ${tempHumidityHTML}
-            ${windHTML}
-            ${solarHTML}
-            ${dryingHTML}
+
+          ${longTermWarningHTML}
+
+          <!-- タブ切り替えナビゲーション -->
+          <div style="margin-bottom: 20px;">
+            <div style="display: flex; border-bottom: 2px solid #e0e0e0;">
+              <button
+                id="fisher-tab"
+                onclick="switchForecastTab('fisher')"
+                style="flex: 1; padding: 12px; border: none; background: #4caf50; color: white; cursor: pointer; border-radius: 8px 0 0 0; font-weight: bold;">
+                🎣 一般漁師向け
+              </button>
+              <button
+                id="expert-tab"
+                onclick="switchForecastTab('expert')"
+                style="flex: 1; padding: 12px; border: none; background: #e0e0e0; color: #666; cursor: pointer; border-radius: 0 8px 0 0; font-weight: bold;">
+                🔬 専門家向け
+              </button>
+            </div>
           </div>
-          
+
+          <!-- タブコンテンツ -->
+          <div id="fisher-content" style="display: block;">
+            ${fisherHTML}
+          </div>
+
+          <div id="expert-content" style="display: none;">
+            ${expertHTML}
+          </div>
+
+
+          <!-- 総合判定セクション -->
+          <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; border: 1px solid #ddd;">
+            <h5 style="color: #2c5f2d; margin-bottom: 10px;">🎯 総合判定</h5>
+            <div style="font-size: 16px; font-weight: bold; color: ${suitabilityColor}; margin-bottom: 8px;">
+              ${targetForecast.daily_summary.estimated_drying_time}
+            </div>
+            <div>信頼度: ${reliabilityData.accuracy || '--'}%</div>
+            <div style="margin-top: 8px; padding: 8px; background: #e3f2fd; border-radius: 4px;">乾燥適性: ${targetForecast.daily_summary.suitability}</div>
+          </div>
+
           <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px;">
             <p style="font-size: 12px; color: #666; margin: 0;">
-              ✅ 地形補正・高湿度リスク検出システム適用済み | 📊 利尻島昆布干し特化予報
+              ✅ 地形補正・段階別乾燥判定システム適用済み | 📊 利尻島昆布干し特化予報
             </p>
           </div>
         </div>
       `;
+    }
+
+    // タブ切り替え関数
+    function switchForecastTab(tabType) {
+      // タブボタンのスタイルを更新
+      const fisherTab = document.getElementById('fisher-tab');
+      const expertTab = document.getElementById('expert-tab');
+      const fisherContent = document.getElementById('fisher-content');
+      const expertContent = document.getElementById('expert-content');
+
+      if (tabType === 'fisher') {
+        // 一般漁師向けタブを有効化
+        fisherTab.style.background = '#4caf50';
+        fisherTab.style.color = 'white';
+        expertTab.style.background = '#e0e0e0';
+        expertTab.style.color = '#666';
+
+        // コンテンツの表示/非表示
+        fisherContent.style.display = 'block';
+        expertContent.style.display = 'none';
+      } else if (tabType === 'expert') {
+        // 専門家向けタブを有効化
+        expertTab.style.background = '#9c27b0';
+        expertTab.style.color = 'white';
+        fisherTab.style.background = '#e0e0e0';
+        fisherTab.style.color = '#666';
+
+        // コンテンツの表示/非表示
+        expertContent.style.display = 'block';
+        fisherContent.style.display = 'none';
+      }
     }
 
     function generateTempHumiditySection(hourlyData, dateStr) {

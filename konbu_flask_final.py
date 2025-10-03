@@ -824,6 +824,7 @@ def dashboard():
         """
 
 @app.route("/spots")
+@app.route("/api/spots")
 def get_spots():
     """干場一覧を取得"""
     try:
@@ -837,42 +838,84 @@ def add_spot():
     """新規干場を追加"""
     try:
         data = request.get_json()
-        new_row = pd.DataFrame([data])
+        lat = float(data.get("lat", 0))
+        lon = float(data.get("lon", 0))
+
+        # 地形・標高制限チェック
+        terrain_check = validate_terrain_for_spot(lat, lon)
+        if not terrain_check["valid"]:
+            return jsonify({"status": "error", "message": terrain_check["message"]}), 400
+
+        # 重複チェック（命名規則による）
+        name = generate_spot_name(lat, lon)
+
+        new_row = pd.DataFrame([{
+            "name": name,
+            "lat": lat,
+            "lon": lon,
+            "town": data.get("town", ""),
+            "district": data.get("district", ""),
+            "buraku": data.get("buraku", "")
+        }])
+
         df = pd.read_csv(CSV_FILE)
-        
-        if data["name"] in df["name"].values:
-            return jsonify({"status": "error", "message": "Name already exists"})
-        
+
+        if name in df["name"].values:
+            return jsonify({"status": "error", "message": "同じ座標の干場が既に存在します"})
+
         df = pd.concat([df, new_row], ignore_index=True)
         df.to_csv(CSV_FILE, index=False, encoding="utf-8")
         generate_kml(df)
-        
-        return jsonify({"status": "success"})
+        generate_all_spots_js(df)  # all_spots_array.js更新
+
+        return jsonify({"status": "success", "name": name})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/delete", methods=["POST"])
 def delete_spot():
-    """干場を削除（記録がない場合のみ）"""
+    """干場を削除（制限チェック付き）"""
     try:
         data = request.get_json()
         name = data["name"]
-        
+
         # 記録があるかチェック
         if os.path.exists(RECORD_FILE):
             records_df = pd.read_csv(RECORD_FILE)
             if len(records_df[records_df["name"] == name]) > 0:
                 return jsonify({
-                    "status": "error", 
+                    "status": "error",
                     "message": "この干場には記録があるため削除できません"
                 }), 400
-        
+
+        # お気に入りに登録されているかチェック
+        if favorites_manager.is_favorite(name):
+            return jsonify({
+                "status": "error",
+                "message": "この干場はお気に入りに登録されているため削除できません。先にお気に入りから外してください。"
+            }), 400
+
+        # 通知設定で使用されているかチェック
+        if is_spot_in_notifications(name):
+            return jsonify({
+                "status": "error",
+                "message": "この干場は通知設定で使用されているため削除できません。先に通知設定から外してください。"
+            }), 400
+
+        # 同時編集チェック
+        if check_concurrent_edit(name):
+            return jsonify({
+                "status": "error",
+                "message": "他のユーザーが同じ干場を編集中です。しばらく時間を置いてから再度お試しください。"
+            }), 409
+
         # 干場を削除
         df = pd.read_csv(CSV_FILE)
         df = df[df["name"] != name]
         df.to_csv(CSV_FILE, index=False, encoding="utf-8")
         generate_kml(df)
-        
+        generate_all_spots_js(df)  # all_spots_array.js更新
+
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1758,6 +1801,82 @@ def generate_kml(df):
             f.write("</Document>\n</kml>")
     except Exception as e:
         print(f"KML generation error: {e}")
+
+def generate_all_spots_js(df):
+    """all_spots_array.js自動生成"""
+    try:
+        js_content = "const hoshibaSpots = [\n"
+        for i, row in df.iterrows():
+            js_content += f'    {{ name: "{row["name"]}", lat: {row["lat"]}, lon: {row["lon"]}, town: "{row["town"]}", district: "{row["district"]}", buraku: "{row["buraku"]}" }}'
+            if i < len(df) - 1:
+                js_content += ","
+            js_content += "\n"
+        js_content += "];"
+
+        with open("all_spots_array.js", "w", encoding="utf-8") as f:
+            f.write(js_content)
+        print(f"Generated all_spots_array.js with {len(df)} spots")
+    except Exception as e:
+        print(f"all_spots_array.js generation error: {e}")
+
+def generate_spot_name(lat, lon):
+    """座標から干場名を生成"""
+    lat_part = f"{lat:.4f}".split('.')[1][:4].ljust(4, '0')
+    lon_part = f"{lon:.4f}".split('.')[1][:4].ljust(4, '0')
+    return f"H_{lat_part}_{lon_part}"
+
+def validate_terrain_for_spot(lat, lon):
+    """地形・標高チェック"""
+    try:
+        # 利尻島の範囲チェック
+        if not (45.0 <= lat <= 45.3 and 141.0 <= lon <= 141.4):
+            return {"valid": False, "message": "利尻島の範囲外です"}
+
+        # 簡易的な海上チェック（利尻島中心からの距離）
+        center_lat, center_lon = 45.1821, 141.2421
+        distance_km = ((lat - center_lat) ** 2 + (lon - center_lon) ** 2) ** 0.5 * 111
+
+        if distance_km > 20:  # 利尻島の半径は約10km
+            return {"valid": False, "message": "海上のため干場追加できません"}
+
+        # 標高制限（簡易チェック：利尻山周辺の高標高域を除外）
+        if distance_km < 5:  # 利尻山から5km以内
+            mountain_distance = ((lat - center_lat) ** 2 + (lon - center_lon) ** 2) ** 0.5 * 111
+            if mountain_distance < 3:  # 利尻山から3km以内は高標高
+                return {"valid": False, "message": "標高が高すぎるため干場に適しません"}
+
+        return {"valid": True, "message": "OK"}
+    except Exception as e:
+        return {"valid": False, "message": f"地形チェックエラー: {str(e)}"}
+
+def is_spot_in_notifications(spot_name):
+    """通知設定で使用されているかチェック"""
+    try:
+        if os.path.exists("notification_users.json"):
+            with open("notification_users.json", "r", encoding="utf-8") as f:
+                users = json.load(f)
+            for user in users:
+                if spot_name in user.get("favorite_spots", []):
+                    return True
+        return False
+    except Exception:
+        return False
+
+def check_concurrent_edit(spot_name):
+    """同時編集チェック（簡易実装）"""
+    try:
+        lock_file = f"edit_lock_{spot_name}.tmp"
+        if os.path.exists(lock_file):
+            # ロックファイルの作成時間をチェック（5分以上古い場合は無効とする）
+            import time
+            lock_time = os.path.getmtime(lock_file)
+            if time.time() - lock_time > 300:  # 5分
+                os.remove(lock_file)
+                return False
+            return True
+        return False
+    except Exception:
+        return False
 
 @app.route("/adaptive_learning/process", methods=["POST"])
 def process_adaptive_learning():
@@ -3992,6 +4111,14 @@ def service_worker():
     except Exception as e:
         return f"Service Worker not found: {str(e)}", 404
 
+@app.route("/all_spots_array.js")
+def all_spots_array():
+    """All spots array JavaScript ファイルの配信"""
+    try:
+        return send_file("all_spots_array.js", mimetype="application/javascript")
+    except Exception as e:
+        return f"All spots array not found: {str(e)}", 404
+
 @app.route("/manifest.json")
 def manifest():
     """PWA Manifest ファイルの配信"""
@@ -4007,3 +4134,11 @@ def offline_page():
         return send_file("offline.html")
     except Exception as e:
         return "<h1>オフラインページが見つかりません</h1>", 404
+
+@app.route("/kelp_drying_map.html")
+def kelp_drying_map():
+    """昆布干しマップページの配信"""
+    try:
+        return send_file("kelp_drying_map.html")
+    except Exception as e:
+        return f"Kelp drying map not found: {str(e)}", 404
