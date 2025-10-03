@@ -1,65 +1,90 @@
-# 🚀 本格デプロイメントガイド - 利尻島昆布干場予報システム
+# 🚀 本番デプロイメントガイド - 利尻島昆布干場予報システム v2.1.0
 
 ## 📋 デプロイメント完了チェックリスト
 
-### ✅ 準備完了項目
+### ✅ システム準備状況（v2.1.0）
 
-- [x] **Railway デプロイ設定** - `railway.toml`, `Procfile`, `runtime.txt`
-- [x] **環境変数設定** - `.env.example` テンプレート作成
-- [x] **HTTPS & セキュリティ** - `security.py` セキュリティマネージャ
-- [x] **モニタリング設定** - `monitoring.py` 統合監視システム
-- [x] **プロダクション設定** - `config.py` 環境別設定
-- [x] **WSGI エントリーポイント** - `wsgi.py` 本番用アプリケーション
-- [x] **自動デプロイスクリプト** - `deploy.py` 完全自動化
-- [x] **CI/CD パイプライン** - GitHub Actions ワークフロー
-- [x] **Docker サポート** - `Dockerfile` コンテナ化対応
+- [x] **メインアプリケーション** - `start.py` (1,034行、実装率97%)
+- [x] **実測データ閾値** - H_1631_1434基準（21件記録検証済み）
+- [x] **13 APIエンドポイント** - 天気・予報・地形・分析・検証
+- [x] **331干場データベース** - `hoshiba_spots.csv` 完全統合
+- [x] **PWAオフライン対応** - Service Worker完全実装
+- [x] **削除制限機能** - 4条件制限（記録・お気に入り・通知・ロック）
+- [x] **風向角度差表示** - 気象風向とθ値の角度差計算
+- [x] **WSGI エントリーポイント** - `wsgi.py` 本番用
+- [x] **環境別設定** - `config.py` (Development/Production/Testing)
+- [x] **依存関係管理** - `requirements.txt` 完全版
 
-## 🌊 即座実行: Railway デプロイ
+## 🎯 デプロイ構成オプション
 
-### Step 1: Railway アカウント設定
-
+### 最小構成（開発・テスト環境）
 ```bash
-# Railway CLI インストール
-npm install -g @railway/cli
-
-# ログイン
-railway login
-
-# プロジェクト作成
-railway init
+start.py
+wsgi.py
+config.py
+hoshiba_spots.csv
+requirements.txt
+/ui/ (HTMLファイル5個 + JSファイル4個)
 ```
 
-### Step 2: 環境変数設定
+### 推奨構成（本番環境）
+```bash
+上記 +
+hoshiba_records.csv
+/data/*.json (設定ファイル)
+DEPLOYMENT.md
+PROJECT_STRUCTURE.md
+THRESHOLD_UPDATE_SUMMARY.md
+```
 
-Railway ダッシュボードで以下を設定:
+## 🌊 クイックデプロイ: Render.com
+
+### Step 1: リポジトリ準備
 
 ```bash
+# Gitリポジトリが最新か確認
+git status
+git log --oneline -3
+
+# 必要に応じてプッシュ
+git push origin main
+```
+
+### Step 2: Render.com 設定
+
+1. **新規Webサービス作成**
+   - Repository: このGitリポジトリを選択
+   - Name: `rishiri-kelp-forecast`
+   - Environment: `Python 3`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn wsgi:app`
+
+2. **環境変数設定**
+```bash
 FLASK_ENV=production
-SECRET_KEY=your_secure_secret_key_here
-OPENAI_API_KEY=your_openai_key
-WEATHER_API_KEY=your_weather_key
+SECRET_KEY=your_secure_random_key_min_32_chars
+PORT=8000
 ```
 
 ### Step 3: デプロイ実行
 
-```bash
-# 自動デプロイスクリプト実行
-python deploy.py
-
-# または手動デプロイ
-railway up
-```
+Render.comが自動的に:
+1. 依存関係をインストール
+2. Gunicornでアプリケーション起動
+3. HTTPS証明書を自動設定
+4. URLを発行: `https://rishiri-kelp-forecast.onrender.com`
 
 ## 🔧 詳細設定手順
 
-### 1. 必須環境変数
+### 1. 環境変数設定
 
-| 変数名 | 必須度 | 説明 |
-|--------|--------|------|
-| `SECRET_KEY` | 必須 | Flask セッション暗号化キー |
-| `FLASK_ENV` | 必須 | production に設定 |
-| `OPENAI_API_KEY` | オプション | ChatGPT 統合用 |
-| `WEATHER_API_KEY` | オプション | 外部天気API用 |
+| 変数名 | 必須度 | デフォルト値 | 説明 |
+|--------|--------|------------|------|
+| `FLASK_ENV` | 推奨 | `development` | `production`に設定 |
+| `SECRET_KEY` | 推奨 | `dev-secret-key...` | セッション暗号化キー（本番では必ず変更） |
+| `PORT` | オプション | `8000` | アプリケーションポート |
+
+**注意**: このシステムは外部APIキー不要で動作します（Open-Meteo APIは無料・認証不要）
 
 ### 2. セキュリティ設定
 
@@ -87,18 +112,37 @@ railway up
 ### ヘルスチェックエンドポイント
 
 - `GET /health` - 基本ヘルスチェック
-- `GET /ready` - 準備状態確認
-- `GET /metrics` - システムメトリクス
-- `GET /health/detailed` - 詳細ヘルスチェック
+- `GET /` - システム情報（バージョン、API一覧、機能一覧）
+
+### APIエンドポイント確認（v2.1.0）
+
+デプロイ後、以下のエンドポイントが正常動作するか確認:
+
+```bash
+# システム情報
+curl https://your-app.onrender.com/
+
+# ヘルスチェック
+curl https://your-app.onrender.com/health
+
+# 7日間予報（サンプル干場）
+curl "https://your-app.onrender.com/api/forecast?lat=45.242&lon=141.242&name=神居"
+
+# 干場リスト
+curl https://your-app.onrender.com/api/spots
+
+# 地形情報
+curl https://your-app.onrender.com/api/terrain/神居
+```
 
 ### ログ監視
 
 ```bash
-# Railway でログ確認
-railway logs
+# Render.com でログ確認
+Dashboard → Logs タブ
 
-# リアルタイムログ
-railway logs --follow
+# または CLI
+render logs -f
 ```
 
 ## 🔗 外部サービス連携
@@ -247,31 +291,69 @@ railway scale --memory 1GB
 
 ---
 
-## 🎯 デプロイ後の確認項目
+## 🎯 デプロイ後の確認項目（v2.1.0）
 
 ### 即座確認 (5分以内)
 
-- [ ] https://your-app.railway.app にアクセス可能
-- [ ] ヘルスチェック OK (`/health`)
-- [ ] PWA インストール可能
-- [ ] 基本機能動作確認
+- [ ] `GET /` でシステム情報表示（バージョン2.1.0確認）
+- [ ] `GET /health` でヘルスチェックOK
+- [ ] `GET /api/spots` で331干場リスト取得
+- [ ] `GET /ui` で干場マップ表示
+- [ ] `GET /drying-map` で乾燥予報マップ表示
 
-### 1時間以内確認
+### API機能確認 (30分以内)
 
-- [ ] モニタリング設定確認
-- [ ] ログ出力確認
-- [ ] パフォーマンス測定
-- [ ] セキュリティスキャン
+- [ ] `GET /api/forecast` で7日間予報取得（風向角度差含む）
+- [ ] `GET /api/terrain/<spot_name>` で地形情報取得
+- [ ] `GET /api/analysis/spot-differences` で干場間差異分析
+- [ ] `POST /add` で干場追加テスト
+- [ ] `POST /delete` で削除制限動作確認（4条件チェック）
 
-### 24時間以内確認
+### PWA・オフライン確認 (1時間以内)
 
-- [ ] アップタイム監視設定
-- [ ] バックアップ動作確認
-- [ ] 利尻島からのアクセステスト
-- [ ] モバイル PWA 動作確認
+- [ ] `GET /service-worker.js` でService Worker配信確認
+- [ ] Chrome DevToolsでPWAインストール可能確認
+- [ ] オフライン時の動作確認
+- [ ] キャッシュ動作確認
+
+### データ整合性確認
+
+- [ ] `hoshiba_spots.csv` 読み込み確認（331地点）
+- [ ] `hoshiba_records.csv` が存在する場合は読み込み確認
+- [ ] 実測閾値判定の動作確認（降水0mm、湿度≤94%、風速≥2.0m/s）
+- [ ] 風向θ角度差計算の動作確認
+
+### パフォーマンス確認
+
+- [ ] API応答時間 < 500ms
+- [ ] 7日間予報API応答時間 < 1秒
+- [ ] 静的ファイル配信確認（HTML/JS/CSS）
 
 ---
 
-**🌊 利尻島の昆布漁師の皆様に最高のサービスを提供する準備が整いました！**
+## 📝 デプロイ完了レポート
 
-*デプロイが完了したら、利尻島の現地でのテストを実施し、漁師の皆様からのフィードバックを収集して継続的に改善していきましょう。*
+デプロイ完了後、以下の情報を記録:
+
+```
+デプロイ日時: ____年__月__日 __:__
+デプロイ先URL: https://________________
+バージョン: 2.1.0
+実装率: 97%
+干場数: 331地点
+APIエンドポイント数: 13個
+
+動作確認結果:
+- [ ] システム情報表示: OK / NG
+- [ ] 7日間予報: OK / NG
+- [ ] PWAインストール: OK / NG
+- [ ] オフライン動作: OK / NG
+```
+
+---
+
+**🌊 利尻島の昆布干し作業を科学的データでサポート 🌊**
+
+**Version 2.1.0 - 実測データ基準の高精度予報システム**
+
+*H_1631_1434の21件実測記録に基づく検証済み閾値により、信頼性の高い乾燥可否判定を提供します。*
