@@ -106,7 +106,7 @@ def calculate_wind_angle_difference(wind_direction, spot_theta):
 @app.route('/ui')
 def kelp_ui():
     """Serve the main kelp forecast UI"""
-    return send_file('kelp_forecast_ui.html')
+    return send_file('kelp_drying_map.html')
 
 @app.route('/dashboard')
 def dashboard():
