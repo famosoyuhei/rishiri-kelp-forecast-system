@@ -5292,14 +5292,19 @@
     function generateDateTabs() {
       const tabsContainer = document.getElementById('dateTabsContainer');
       const today = new Date();
-      
+
       let tabsHTML = '';
-      
+
       for (let i = 1; i <= 6; i++) {
         const date = new Date(today);
         date.setDate(today.getDate() + i);
-        
-        const dateStr = date.toISOString().split('T')[0];
+
+        // Fix: Use local date string instead of UTC to avoid timezone offset issues
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+
         const displayDate = `${date.getMonth() + 1}/${date.getDate()}`;
         const dayName = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
         
