@@ -1695,17 +1695,13 @@ def calculate_stage_based_drying_assessment(hourly_data, day_number):
 
         heat_supply_score = sum(heat_supply_scores) / len(heat_supply_scores) if heat_supply_scores else 0
 
-        # Time-weighted integration based on day number
-        # Early forecast: wind 70%, solar 30%
-        # Late forecast: wind 40%, solar 60%
-        if day_number <= 2:
-            # Early forecast - more weight on ventilation
-            wind_weight = 0.7
-            solar_weight = 0.3
-        else:
-            # Late forecast - more weight on heat supply
-            wind_weight = 0.4
-            solar_weight = 0.6
+        # Fixed stage-based weighting (based on H_1631_1434 actual data analysis)
+        # Ventilation stage (morning 4:00-10:00): 60% - Initial surface drying is critical
+        # Heat supply stage (afternoon 10:00-16:00): 40% - Internal moisture evaporation
+        # Rationale: Early-stage wind conditions cannot be compensated later;
+        #            surface hardening prevents internal drying
+        wind_weight = 0.6
+        solar_weight = 0.4
 
         overall_score = ventilation_score * wind_weight + heat_supply_score * solar_weight
 
