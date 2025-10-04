@@ -5374,7 +5374,12 @@
           console.error('予報データ取得エラー:', error);
 
           // エラー時は簡易表示
-          const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const [year, month, day] = dateStr.split('-').map(Number);
+          const targetDate = new Date(year, month - 1, day);
+          targetDate.setHours(0, 0, 0, 0);
+          const dayOffset = Math.round((targetDate - today) / (1000 * 60 * 60 * 24));
           let reliabilityInfo = '';
 
           if (dayOffset === 2) {
@@ -5453,10 +5458,23 @@
       }
 
       // 長期予報の場合の信頼度警告
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
-      const dayOffset = Math.ceil((new Date(dateStr) - tomorrow) / (1000 * 60 * 60 * 24)) + 1;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Parse dateStr as local date
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const targetDate = new Date(year, month - 1, day);
+      targetDate.setHours(0, 0, 0, 0);
+
+      // Calculate days from today
+      const dayOffset = Math.round((targetDate - today) / (1000 * 60 * 60 * 24));
+
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      const tomorrowYear = tomorrow.getFullYear();
+      const tomorrowMonth = String(tomorrow.getMonth() + 1).padStart(2, '0');
+      const tomorrowDay = String(tomorrow.getDate()).padStart(2, '0');
+      const tomorrowStr = `${tomorrowYear}-${tomorrowMonth}-${tomorrowDay}`;
 
       let longTermWarningHTML = '';
       if (dateStr !== tomorrowStr) {
