@@ -985,7 +985,10 @@
     // グローバル変数
     const map = L.map('map').setView([45.178269, 141.228528], 11);
     // 動的にAPIベースURLを設定（スマホアクセス対応）
-    const API_BASE = window.location.protocol + '//' + window.location.hostname + ':' + (window.location.port || '8000');
+    // 本番環境ではポート番号を含めない（Render.comは標準HTTPS）
+    const API_BASE = window.location.port
+        ? window.location.protocol + '//' + window.location.hostname + ':' + window.location.port
+        : window.location.protocol + '//' + window.location.hostname;
     
     let spots = [];
     let addMode = false;
