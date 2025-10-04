@@ -1,0 +1,129 @@
+{
+  "amedas_location": {
+    "name": "kutsugata",
+    "lat": 45.17838175240001,
+    "lon": 141.13956196938796,
+    "amedas_id": "11151"
+  },
+  "search_radius_meters": 500,
+  "spots_count": 13,
+  "spots": [
+    {
+      "name": "H_1782_1394",
+      "lat": 45.1782154,
+      "lon": 141.1394976,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 19.17328681722466
+    },
+    {
+      "name": "H_1795_1393",
+      "lat": 45.1795069,
+      "lon": 141.1393681,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 126.0301373278242
+    },
+    {
+      "name": "H_1795_1395",
+      "lat": 45.1795258,
+      "lon": 141.1395881,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 127.22877553733363
+    },
+    {
+      "name": "H_1790_1377",
+      "lat": 45.1790034,
+      "lon": 141.1377481,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 158.08640779963173
+    },
+    {
+      "name": "H_1798_1396",
+      "lat": 45.1798377,
+      "lon": 141.139647,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 162.0311133337105
+    },
+    {
+      "name": "H_1799_1392",
+      "lat": 45.1799133,
+      "lon": 141.1392124,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 172.490369742317
+    },
+    {
+      "name": "H_1788_1372",
+      "lat": 45.1788408,
+      "lon": 141.1372921,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 185.09252288097179
+    },
+    {
+      "name": "H_1804_1404",
+      "lat": 45.1804171,
+      "lon": 141.1404971,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 237.8931308504963
+    },
+    {
+      "name": "H_1762_1377",
+      "lat": 45.1762629,
+      "lon": 141.1377278,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 276.0057115970976
+    },
+    {
+      "name": "H_1811_1399",
+      "lat": 45.1811051,
+      "lon": 141.1399778,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 304.57135316046146
+    },
+    {
+      "name": "H_1817_1402",
+      "lat": 45.1817422,
+      "lon": 141.1402608,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 377.6579057045325
+    },
+    {
+      "name": "H_1818_1416",
+      "lat": 45.1818894,
+      "lon": 141.141604,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "泉町",
+      "distance_to_amedas": 421.5948908675981
+    },
+    {
+      "name": "H_1745_1387",
+      "lat": 45.1745589,
+      "lon": 141.1387238,
+      "town": "利尻町",
+      "district": "沓形",
+      "buraku": "神居",
+      "distance_to_amedas": 430.1289500900476
+    }
+  ]
+}

@@ -34,6 +34,7 @@ from notification_system import NotificationSystem
 from system_monitor import SystemMonitor
 from backup_system import BackupSystem
 from favorites_manager import FavoritesManager
+from forecast_accuracy_validator import ForecastAccuracyValidator
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False  # UTF-8 encoding for Japanese characters
@@ -473,6 +474,7 @@ notification_system = NotificationSystem()
 system_monitor = SystemMonitor()
 backup_system = BackupSystem()
 favorites_manager = FavoritesManager()
+forecast_validator = ForecastAccuracyValidator()
 sea_fog_engine = SeaFogPredictionEngine() if SeaFogPredictionEngine else None
 sea_fog_viz = SeaFogVisualization() if SeaFogVisualization else None
 advanced_prediction = AdvancedPredictionEngine() if AdvancedPredictionEngine else None
@@ -2334,6 +2336,81 @@ def manage_backup_config():
             else:
                 return jsonify({"status": "error", "message": "設定の保存に失敗しました"})
                 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Forecast Accuracy Validation Endpoints
+@app.route("/forecast_accuracy/validate", methods=["POST"])
+def validate_forecast_accuracy():
+    """特定日の予報精度を検証"""
+    try:
+        data = request.get_json()
+        target_date_str = data.get("target_date")  # YYYYMMDD format
+
+        if not target_date_str:
+            return jsonify({"error": "target_date is required"}), 400
+
+        target_date = datetime.datetime.strptime(target_date_str, "%Y%m%d")
+        result = forecast_validator.validate_forecast_accuracy(target_date)
+
+        if result:
+            return utf8_jsonify(result)
+        else:
+            return jsonify({"error": "No validation data available"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/forecast_accuracy/report", methods=["POST"])
+def generate_accuracy_report():
+    """期間の予報精度レポートを生成"""
+    try:
+        data = request.get_json()
+        start_date_str = data.get("start_date")  # YYYYMMDD
+        end_date_str = data.get("end_date")  # YYYYMMDD
+
+        if not start_date_str or not end_date_str:
+            return jsonify({"error": "start_date and end_date are required"}), 400
+
+        start_date = datetime.datetime.strptime(start_date_str, "%Y%m%d")
+        end_date = datetime.datetime.strptime(end_date_str, "%Y%m%d")
+
+        report = forecast_validator.generate_accuracy_report(start_date, end_date)
+
+        return utf8_jsonify(report)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/forecast_accuracy/save_forecast", methods=["POST"])
+def save_daily_forecast():
+    """毎日の予報データを保存（予報精度検証用）"""
+    try:
+        data = request.get_json()
+        date_str = data.get("date")  # YYYYMMDD
+        spot_name = data.get("spot_name")
+        forecast_data = data.get("forecast_data")
+
+        if not all([date_str, spot_name, forecast_data]):
+            return jsonify({"error": "date, spot_name, and forecast_data are required"}), 400
+
+        date = datetime.datetime.strptime(date_str, "%Y%m%d")
+        forecast_validator.save_daily_forecast(date, spot_name, forecast_data)
+
+        return jsonify({"status": "success", "message": "Forecast data saved"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/forecast_accuracy/nearby_spots", methods=["GET"])
+def get_nearby_spots():
+    """アメダス沓形周辺500m以内の干場を取得"""
+    try:
+        return utf8_jsonify({
+            "amedas_location": forecast_validator.amedas_location,
+            "spots_count": len(forecast_validator.nearby_spots),
+            "spots": forecast_validator.nearby_spots
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
