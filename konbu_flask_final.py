@@ -4048,7 +4048,32 @@ if __name__ == '__main__':
             print("Parallel forecast system initialized successfully")
     except Exception as e:
         print(f"Warning: Failed to initialize parallel forecast system: {e}")
-    
+
+    # Initialize and start AMeDAS auto-fetcher scheduler
+    try:
+        from amedas_auto_fetcher import AmedasAutoFetcher
+        import schedule
+        import threading
+
+        amedas_fetcher = AmedasAutoFetcher()
+
+        # Schedule daily fetch at 16:00 JST
+        schedule.every().day.at("16:00").do(amedas_fetcher.run_daily_fetch)
+
+        def run_amedas_scheduler():
+            """AMeDAS scheduler thread"""
+            while True:
+                schedule.run_pending()
+                time.sleep(60)  # Check every minute
+
+        # Start scheduler in background thread
+        scheduler_thread = threading.Thread(target=run_amedas_scheduler, daemon=True)
+        scheduler_thread.start()
+
+        print("AMeDAS auto-fetcher scheduler started (16:00 JST daily)")
+    except Exception as e:
+        print(f"Warning: Failed to initialize AMeDAS scheduler: {e}")
+
     app.run(host="0.0.0.0", port=8001, debug=True)
 
 # Offline functionality endpoints
