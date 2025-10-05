@@ -107,10 +107,11 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
     # 利尻山の座標（θ値計算用）
     RISHIRI_SAN_LAT = 45.1821
     RISHIRI_SAN_LON = 141.2421
-    
-    # 干場のθ値を計算（簡易計算）
-    delta_lat = lat - RISHIRI_SAN_LAT
-    delta_lon = lon - RISHIRI_SAN_LON
+
+    # 干場→山頂方向のベクトル角度を計算
+    # （干場を始点、利尻山頂を終点とするベクトル）
+    delta_lat = RISHIRI_SAN_LAT - lat
+    delta_lon = RISHIRI_SAN_LON - lon
     hoshiba_theta = math.degrees(math.atan2(delta_lat, delta_lon))
     if hoshiba_theta < 0:
         hoshiba_theta += 360
