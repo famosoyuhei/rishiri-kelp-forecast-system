@@ -162,7 +162,7 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
                 
                 # 鉛直速度（簡易推定）
                 if hour_data["wind_speed"] is not None:
-                    hour_data["vertical_velocity"] = hour_data["wind_speed"] * 0.1 * math.sin(math.radians(hour_data["wind_theta_diff"] or 0))
+                    hour_data["vertical_velocity"] = hour_data["wind_speed"] * 0.1 * math.sin(math.radians(hour_data["wind_mountain_angle_diff"] or 0))
                 else:
                     hour_data["vertical_velocity"] = 0
             else:

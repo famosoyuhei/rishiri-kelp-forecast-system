@@ -297,7 +297,7 @@ def get_forecast():
             for h in range(start_hour, min(end_hour, len(hourly.get('temperature_2m', [])))):
                 if h < len(hourly['temperature_2m']):
                     wind_dir = hourly['wind_direction_10m'][h] if hourly['wind_direction_10m'][h] else None
-                    wind_angle_diff = calculate_wind_angle_difference(wind_dir, spot_theta) if wind_dir is not None else None
+                    wind_mountain_angle_diff = calculate_wind_angle_difference(wind_dir, spot_theta) if wind_dir is not None else None
 
                     hour_data = {
                         'time': f"{h % 24:02d}:00",
@@ -305,7 +305,8 @@ def get_forecast():
                         'humidity': hourly['relative_humidity_2m'][h] if hourly['relative_humidity_2m'][h] else None,
                         'wind_speed': hourly['wind_speed_10m'][h] / 3.6 if hourly['wind_speed_10m'][h] else None,  # Convert km/h to m/s
                         'wind_direction': wind_dir,
-                        'wind_angle_diff': wind_angle_diff,  # 風向とθ値との角度差（仕様書 line 95）
+                        'wind_angle_diff': wind_mountain_angle_diff,  # 後方互換性のため
+                        'wind_mountain_angle_diff': wind_mountain_angle_diff,  # 風向と山頂方位角の角度差
                         'cloud_cover': hourly['cloud_cover'][h] if hourly['cloud_cover'][h] else None,
                         'solar_radiation': hourly['direct_radiation'][h] if hourly['direct_radiation'][h] else None,
                         'pressure': hourly['pressure_msl'][h] if hourly['pressure_msl'][h] else None,
