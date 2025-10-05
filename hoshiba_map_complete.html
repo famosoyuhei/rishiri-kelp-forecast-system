@@ -2412,7 +2412,7 @@
         <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
           <h3 style="color: #2c3e50; margin-bottom: 20px; text-align: center;">🌤️ 詳細気象条件 (時間帯別)</h3>
           <div style="font-size: 12px; color: #666; text-align: center; margin-bottom: 15px;">
-            干場θ値: ${detailedHourly.hoshiba_theta?.toFixed(1)}°
+            山頂方位角: ${detailedHourly.mountain_azimuth?.toFixed(1)}°
           </div>
       `;
 
@@ -2457,31 +2457,31 @@
       detailedHourly.morning_4_10?.forEach(hour => {
         const windDir = hour.wind_direction?.toFixed(0) || '--';
         const windSpeed = hour.wind_speed?.toFixed(1) || '--';
-        const angleDiff = hour.wind_theta_diff?.toFixed(0) || '--';
+        const angleDiff = hour.wind_mountain_angle_diff?.toFixed(0) || '--';
 
-        // 山向き/山から風の判定（利尻山中心からの風向）
+        // 山向き/山から風の判定（干場→山頂方向と風向の角度差）
         let mountainEffect = '';
         let effectColor = '#666';
-        if (hour.wind_theta_diff !== null && hour.wind_theta_diff !== undefined) {
-          // θ値と風向の関係から判定
-          // 角度差が小さい（0-30°）= 山から風（山背風）→ 晴れやすい
+        if (hour.wind_mountain_angle_diff !== null && hour.wind_mountain_angle_diff !== undefined) {
+          // 山頂方位角と風向の関係から判定
+          // 角度差が小さい（0-30°）= 山向き風 → 曇りやすい（上昇気流）
           // 角度差が90°付近 = 横風 → 中立
-          // 角度差が大きい（150-180°）= 山向き風 → 曇りやすい
-          if (hour.wind_theta_diff < 30) {
-            mountainEffect = '山背風（晴）';
-            effectColor = '#4caf50';
-          } else if (hour.wind_theta_diff < 60) {
-            mountainEffect = '斜め山背（やや晴）';
-            effectColor = '#8bc34a';
-          } else if (hour.wind_theta_diff < 120) {
-            mountainEffect = '横風（中立）';
-            effectColor = '#ff9800';
-          } else if (hour.wind_theta_diff < 150) {
-            mountainEffect = '斜め山向き（やや曇）';
-            effectColor = '#ff5722';
-          } else {
+          // 角度差が大きい（150-180°）= 山背風 → 晴れやすい（下降気流）
+          if (hour.wind_mountain_angle_diff < 30) {
             mountainEffect = '山向き風（曇）';
             effectColor = '#f44336';
+          } else if (hour.wind_mountain_angle_diff < 60) {
+            mountainEffect = '斜め山向き（やや曇）';
+            effectColor = '#ff5722';
+          } else if (hour.wind_mountain_angle_diff < 120) {
+            mountainEffect = '横風（中立）';
+            effectColor = '#ff9800';
+          } else if (hour.wind_mountain_angle_diff < 150) {
+            mountainEffect = '斜め山背（やや晴）';
+            effectColor = '#8bc34a';
+          } else {
+            mountainEffect = '山背風（晴）';
+            effectColor = '#4caf50';
           }
         }
 

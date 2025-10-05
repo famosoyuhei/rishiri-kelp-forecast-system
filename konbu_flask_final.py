@@ -104,23 +104,23 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
     """時間帯別詳細予報を生成"""
     import math
     
-    # 利尻山の座標（θ値計算用）
+    # 利尻山の座標（山頂方位角計算用）
     RISHIRI_SAN_LAT = 45.1821
     RISHIRI_SAN_LON = 141.2421
 
-    # 干場→山頂方向のベクトル角度を計算
-    # （干場を始点、利尻山頂を終点とするベクトル）
+    # 干場→山頂方向の方位角を計算
+    # （干場を始点、利尻山頂を終点とするベクトルの方位角）
     delta_lat = RISHIRI_SAN_LAT - lat
     delta_lon = RISHIRI_SAN_LON - lon
-    hoshiba_theta = math.degrees(math.atan2(delta_lat, delta_lon))
-    if hoshiba_theta < 0:
-        hoshiba_theta += 360
-    
+    mountain_azimuth = math.degrees(math.atan2(delta_lat, delta_lon))
+    if mountain_azimuth < 0:
+        mountain_azimuth += 360
+
     result = {
         "work_hours_4_16": [],  # 午前4時〜午後4時（全指標）
         "morning_4_10": [],     # 午前4時〜10時（風重視期間70%）
         "afternoon_10_16": [],  # 午前10時〜午後4時（日射重視期間60%）
-        "hoshiba_theta": hoshiba_theta
+        "mountain_azimuth": mountain_azimuth  # 干場→山頂方向の方位角
     }
     
     # 明日のデータを抽出（0時から開始として計算）
@@ -142,14 +142,14 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
             if hour_data["wind_direction"] is not None:
                 hour_data["wind_name_rishiri"] = get_rishiri_wind_name(hour_data["wind_direction"])
             
-            # 風向とθ値の角度差を計算
+            # 風向と山頂方位角の角度差を計算
             if hour_data["wind_direction"] is not None:
-                angle_diff = abs(hour_data["wind_direction"] - hoshiba_theta)
+                angle_diff = abs(hour_data["wind_direction"] - mountain_azimuth)
                 if angle_diff > 180:
                     angle_diff = 360 - angle_diff
-                hour_data["wind_theta_diff"] = angle_diff
+                hour_data["wind_mountain_angle_diff"] = angle_diff
             else:
-                hour_data["wind_theta_diff"] = None
+                hour_data["wind_mountain_angle_diff"] = None
             
             # 気象指標の計算（簡易版）
             if hour_data["temperature"] is not None and hour_data["humidity"] is not None:
