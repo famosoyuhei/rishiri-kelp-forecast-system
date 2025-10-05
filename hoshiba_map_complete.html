@@ -2458,12 +2458,40 @@
         const windDir = hour.wind_direction?.toFixed(0) || '--';
         const windSpeed = hour.wind_speed?.toFixed(1) || '--';
         const angleDiff = hour.wind_theta_diff?.toFixed(0) || '--';
+
+        // 山向き/山から風の判定（利尻山中心からの風向）
+        let mountainEffect = '';
+        let effectColor = '#666';
+        if (hour.wind_theta_diff !== null && hour.wind_theta_diff !== undefined) {
+          // θ値と風向の関係から判定
+          // 角度差が小さい（0-30°）= 山から風（山背風）→ 晴れやすい
+          // 角度差が90°付近 = 横風 → 中立
+          // 角度差が大きい（150-180°）= 山向き風 → 曇りやすい
+          if (hour.wind_theta_diff < 30) {
+            mountainEffect = '山背風（晴）';
+            effectColor = '#4caf50';
+          } else if (hour.wind_theta_diff < 60) {
+            mountainEffect = '斜め山背（やや晴）';
+            effectColor = '#8bc34a';
+          } else if (hour.wind_theta_diff < 120) {
+            mountainEffect = '横風（中立）';
+            effectColor = '#ff9800';
+          } else if (hour.wind_theta_diff < 150) {
+            mountainEffect = '斜め山向き（やや曇）';
+            effectColor = '#ff5722';
+          } else {
+            mountainEffect = '山向き風（曇）';
+            effectColor = '#f44336';
+          }
+        }
+
         html += `
           <div style="text-align: center; padding: 8px; border: 1px solid #eee; border-radius: 4px;">
             <div style="font-weight: bold; color: #333; margin-bottom: 3px;">${hour.hour}時</div>
             <div style="color: #2e7d32;">風向: ${windDir}°</div>
             <div style="color: #1976d2;">風速: ${windSpeed}m/s</div>
-            <div style="color: #f57c00;">角度差: ${angleDiff}°</div>
+            <div style="color: #f57c00; font-size: 9px;">θ差: ${angleDiff}°</div>
+            <div style="color: ${effectColor}; font-weight: bold; font-size: 9px; margin-top: 2px;">${mountainEffect}</div>
           </div>
         `;
       });
