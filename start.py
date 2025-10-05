@@ -236,6 +236,16 @@ def get_forecast():
     # Calculate spot theta for wind angle difference calculation
     spot_theta = calculate_spot_theta(lat, lon)
 
+    # Calculate mountain azimuth (spot→peak direction)
+    import math
+    RISHIRI_SAN_LAT = 45.1821
+    RISHIRI_SAN_LON = 141.2421
+    delta_lat = RISHIRI_SAN_LAT - lat
+    delta_lon = RISHIRI_SAN_LON - lon
+    mountain_azimuth = math.degrees(math.atan2(delta_lat, delta_lon))
+    if mountain_azimuth < 0:
+        mountain_azimuth += 360
+
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
         # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
@@ -297,7 +307,14 @@ def get_forecast():
             for h in range(start_hour, min(end_hour, len(hourly.get('temperature_2m', [])))):
                 if h < len(hourly['temperature_2m']):
                     wind_dir = hourly['wind_direction_10m'][h] if hourly['wind_direction_10m'][h] else None
-                    wind_mountain_angle_diff = calculate_wind_angle_difference(wind_dir, spot_theta) if wind_dir is not None else None
+                    # Calculate angle difference between wind direction and mountain azimuth
+                    if wind_dir is not None:
+                        angle_diff = abs(wind_dir - mountain_azimuth)
+                        if angle_diff > 180:
+                            angle_diff = 360 - angle_diff
+                        wind_mountain_angle_diff = angle_diff
+                    else:
+                        wind_mountain_angle_diff = None
 
                     hour_data = {
                         'time': f"{h % 24:02d}:00",
@@ -414,6 +431,7 @@ def get_forecast():
             'location': 'Rishiri Island',
             'coordinates': {'lat': lat, 'lon': lon},
             'spot_theta': round(spot_theta, 1),  # 干場の極座標θ（仕様書 lines 72-73）
+            'mountain_azimuth': round(mountain_azimuth, 1),  # 干場→山頂方位角
             'forecasts': forecasts,
             'timestamp': datetime.now().isoformat(),
             'status': 'success'
