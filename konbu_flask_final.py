@@ -1516,10 +1516,10 @@ def forecast():
                 "detailed_hourly": detailed_hourly,  # 仕様書準拠の時間別詳細予報
                 "hourly_wind_names": [  # 利尻島伝統風名（全作業時間4-16時）
                     {
-                        "hour": h.get("hour", 8), 
+                        "hour": h.get("hour", 8),
                         "wind_name": h.get("wind_name_rishiri", get_rishiri_wind_name(h.get("wind_direction", 180))),
                         "wind_direction": h.get("wind_direction", 180),
-                        "wind_theta_diff": h.get("wind_theta_diff", 90),
+                        "wind_mountain_angle_diff": h.get("wind_mountain_angle_diff", None),
                         "wind_importance": h.get("wind_importance", 0.5),
                         "solar_importance": h.get("solar_importance", 0.5),
                         "solar_radiation": h.get("solar_radiation", 0),
