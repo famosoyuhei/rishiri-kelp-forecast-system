@@ -601,7 +601,21 @@
         </p>
     </div>
 
-    <div class="filter-controls">
+    
+    <!-- 統合海洋予報セクション -->
+    <div class="ocean-forecast-section" style="margin: 20px 0; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <h3 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">
+            🌊 統合海洋予報 - 連続作業可能時間
+        </h3>
+        <p style="color: #666; font-size: 14px; margin: 10px 0;">
+            海水温・海霧・降水リスクを統合した実用的な作業時間予報
+        </p>
+        <div id="oceanForecastContainer">
+            <p style="text-align: center; color: #999;">読み込み中...</p>
+        </div>
+    </div>
+
+<div class="filter-controls">
         <h4>📍 エリア絞り込み</h4>
 
         <div class="filter-breadcrumb" id="filterBreadcrumb">
@@ -667,6 +681,30 @@
 
             <div class="forecast-tabs" id="forecastTabs" style="display: none;">
                 <!-- Dynamic tabs will be inserted here -->
+            </div>
+
+            <!-- 等値線マップ表示セクション -->
+            <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="showContourMap('500hpa')" id="contour500Btn" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        500hPa 渦度
+                    </button>
+                    <button onclick="showContourMap('700hpa')" id="contour700Btn" style="flex: 1; padding: 8px; background: #e9ecef; color: #333; border: none; border-radius: 5px; cursor: pointer;">
+                        700hPa 鉛直流
+                    </button>
+                </div>
+
+                <div id="contourMapContainer" style="text-align: center;">
+                    <img id="contourMapImage" src="" alt="等値線マップ" style="max-width: 100%; border-radius: 5px;">
+                    <p id="contourMapCaption" style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;"></p>
+                </div>
+
+                <div id="calibrationInfo" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #555;">
+                    <strong>予報補正情報:</strong>
+                    <div id="calibrationDetails"></div>
+                </div>
             </div>
 
             <div id="forecastContent">
@@ -2304,6 +2342,95 @@
             currentRecordSpotIndex = null;
         }
 
+        // ============================================================
+        // 等値線マップ表示機能
+        // ============================================================
+
+        let currentContourType = '500hpa';
+        let currentContourTime = 0;
+        let calibrationData = null;
+
+        // 予報補正情報を取得
+        async function loadCalibrationData() {
+            try {
+                const response = await fetch('/api/forecast_calibration');
+                calibrationData = await response.json();
+                updateCalibrationDisplay();
+            } catch (error) {
+                console.error('補正情報の取得に失敗:', error);
+            }
+        }
+
+        // 補正情報の表示を更新
+        function updateCalibrationDisplay() {
+            if (!calibrationData) return;
+
+            const detailsDiv = document.getElementById('calibrationDetails');
+            const weights = calibrationData.weights;
+
+            detailsDiv.innerHTML = `
+                <div style="margin-top: 8px;">
+                    <div style="margin-bottom: 5px;">
+                        <strong>500hPa 渦度:</strong>
+                        信頼度 ${(weights.vorticity_500hPa * 100).toFixed(0)}%
+                        ${weights.vorticity_500hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
+                    </div>
+                    <div>
+                        <strong>700hPa 鉛直流:</strong>
+                        信頼度 ${(weights.omega_700hPa * 100).toFixed(0)}%
+                        ${weights.omega_700hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 等値線マップの種類を切り替え
+        function showContourMap(type) {
+            currentContourType = type;
+
+            // ボタンのスタイルを更新
+            document.getElementById('contour500Btn').style.background = type === '500hpa' ? '#667eea' : '#e9ecef';
+            document.getElementById('contour500Btn').style.color = type === '500hpa' ? 'white' : '#333';
+            document.getElementById('contour700Btn').style.background = type === '700hpa' ? '#667eea' : '#e9ecef';
+            document.getElementById('contour700Btn').style.color = type === '700hpa' ? 'white' : '#333';
+
+            // マップ画像を更新
+            updateContourImage();
+        }
+
+        // 等値線マップ画像を更新
+        function updateContourImage() {
+            const img = document.getElementById('contourMapImage');
+            const caption = document.getElementById('contourMapCaption');
+
+            const timeStr = `t${String(currentContourTime).padStart(4, '0')}`;
+
+            if (currentContourType === '500hpa') {
+                img.src = `/api/contour/contour_500hpa_${timeStr}.png`;
+                caption.textContent = '500hPa 高度場・相対渦度（2024年8月）';
+            } else {
+                img.src = `/api/contour/contour_700hpa_omega_${timeStr}.png`;
+                caption.textContent = '700hPa 高度場・鉛直P速度（2024年8月）';
+            }
+        }
+
+        // 干場選択時に等値線マップを表示
+        const originalSelectSpot = selectSpot;
+        selectSpot = function(spotId) {
+            originalSelectSpot(spotId);
+
+            // 等値線マップセクションを表示
+            document.getElementById('contourMapSection').style.display = 'block';
+
+            // 初回ロード時
+            if (!calibrationData) {
+                loadCalibrationData();
+            }
+
+            // 最初のマップを表示
+            showContourMap('500hpa');
+        };
+
         // グローバル関数として公開（popup内で使用するため）
         window.selectSpot = selectSpot;
         window.toggleFavorite = toggleFavorite;
@@ -2314,6 +2441,10 @@
         window.showRecordForm = showRecordForm;
         window.submitRecord = submitRecord;
         window.closeRecordForm = closeRecordForm;
+        window.showContourMap = showContourMap;
     </script>
+
+    <!-- 統合海洋予報JavaScript -->
+    <script src="/ocean_forecast_integration.js"></script>
 </body>
 </html>
