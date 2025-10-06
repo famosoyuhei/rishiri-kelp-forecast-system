@@ -17,10 +17,16 @@ from openai import OpenAI
 import joblib
 import numpy as np
 # from konbu_specialized_forecast import KonbuForecastSystem  # Replaced with inline implementation
-from adaptive_learning_system import AdaptiveLearningSystem
+try:
+    from adaptive_learning_system import AdaptiveLearningSystem
+except ImportError:
+    AdaptiveLearningSystem = None
 from terrain_database import RishiriTerrainDatabase
 from atmospheric_stability_enhanced import AtmosphericStabilityAnalyzer, enhanced_kelp_drying_forecast
-from parallel_forecast_optimizer import EnhancedKelpForecastSystem
+try:
+    from parallel_forecast_optimizer import EnhancedKelpForecastSystem
+except ImportError:
+    EnhancedKelpForecastSystem = None
 try:
     from sea_fog_prediction import SeaFogPredictionEngine
     from sea_fog_visualization import SeaFogVisualization
