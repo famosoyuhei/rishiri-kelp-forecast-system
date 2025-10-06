@@ -1,0 +1,27 @@
+{
+  "analysis_date": "2025-10-06T21:11:46.013118",
+  "comparison_period": "June 1 - August 31",
+  "n_days": 92,
+  "sst_2024_statistics": {
+    "mean_C": 17.59353256225586,
+    "std_C": 3.7732036113739014,
+    "min_C": 10.895660400390625,
+    "max_C": 23.382232666015625
+  },
+  "sst_2025_statistics": {
+    "mean_C": 19.281482696533203,
+    "std_C": 4.716644287109375,
+    "min_C": 10.922760009765625,
+    "max_C": 24.849029541015625
+  },
+  "year_over_year_change": {
+    "mean_sst_diff_C": 1.6879510879516602,
+    "std_sst_diff_C": 1.2828266620635986,
+    "max_warming_C": 4.57080078125,
+    "max_cooling_C": -0.70263671875,
+    "june_mean_diff_C": 0.4794352352619171,
+    "july_mean_diff_C": 1.7999542951583862,
+    "august_mean_diff_C": 2.7454793453216553
+  },
+  "conclusion": "Year-over-year SST change: +1.69 C. Significant warming detected."
+}

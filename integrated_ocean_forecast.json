@@ -1,0 +1,135 @@
+{
+  "forecast_generated": "2025-10-06T21:35:41.658659",
+  "location": "Kutsugata (45.2422N, 141.1088E)",
+  "thresholds": {
+    "sst_high_rain_C": 24.0,
+    "sst_moderate_rain_C": 19.0,
+    "fog_risk_threshold_C": 2.0
+  },
+  "forecasts": [
+    {
+      "day": 1,
+      "date": "2025-08-25",
+      "sst_C": 24.2,
+      "dewpoint_C": 21.5,
+      "precipitation_forecast_mm": 3.0,
+      "risk_score": 60,
+      "risk_factors": {
+        "precipitation": "HIGH",
+        "sst_rain_potential": "CRITICAL",
+        "fog_risk": "MODERATE",
+        "fog_index": 2.7100000381469727
+      },
+      "recommendation": "NOT_SUITABLE",
+      "label": "Not Suitable",
+      "message": "High risk of heavy rain or sea fog. Kelp drying should be avoided."
+    },
+    {
+      "day": 2,
+      "date": "2025-08-26",
+      "sst_C": 24.6,
+      "dewpoint_C": 23.1,
+      "precipitation_forecast_mm": 3.0,
+      "risk_score": 70,
+      "risk_factors": {
+        "precipitation": "HIGH",
+        "sst_rain_potential": "CRITICAL",
+        "fog_risk": "HIGH",
+        "fog_index": 1.5199999809265137
+      },
+      "recommendation": "NOT_SUITABLE",
+      "label": "Not Suitable",
+      "message": "High risk of heavy rain or sea fog. Kelp drying should be avoided."
+    },
+    {
+      "day": 3,
+      "date": "2025-08-27",
+      "sst_C": 24.0,
+      "dewpoint_C": 17.4,
+      "precipitation_forecast_mm": 1.0,
+      "risk_score": 25,
+      "risk_factors": {
+        "precipitation": "MODERATE",
+        "sst_rain_potential": "MODERATE",
+        "fog_risk": "LOW",
+        "fog_index": 6.570000171661377
+      },
+      "recommendation": "FAIR",
+      "label": "Fair",
+      "message": "Some risk present. Kelp drying possible with monitoring."
+    },
+    {
+      "day": 4,
+      "date": "2025-08-28",
+      "sst_C": 23.3,
+      "dewpoint_C": 13.5,
+      "precipitation_forecast_mm": 1.0,
+      "risk_score": 25,
+      "risk_factors": {
+        "precipitation": "MODERATE",
+        "sst_rain_potential": "MODERATE",
+        "fog_risk": "LOW",
+        "fog_index": 9.819999694824219
+      },
+      "recommendation": "FAIR",
+      "label": "Fair",
+      "message": "Some risk present. Kelp drying possible with monitoring."
+    },
+    {
+      "day": 5,
+      "date": "2025-08-29",
+      "sst_C": 24.2,
+      "dewpoint_C": 14.7,
+      "precipitation_forecast_mm": 3.0,
+      "risk_score": 50,
+      "risk_factors": {
+        "precipitation": "HIGH",
+        "sst_rain_potential": "CRITICAL",
+        "fog_risk": "LOW",
+        "fog_index": 9.460000038146973
+      },
+      "recommendation": "CAUTION",
+      "label": "Caution",
+      "message": "Moderate risk of precipitation or fog. Limited drying time recommended."
+    },
+    {
+      "day": 6,
+      "date": "2025-08-30",
+      "sst_C": 23.8,
+      "dewpoint_C": 17.8,
+      "precipitation_forecast_mm": 1.0,
+      "risk_score": 25,
+      "risk_factors": {
+        "precipitation": "MODERATE",
+        "sst_rain_potential": "MODERATE",
+        "fog_risk": "LOW",
+        "fog_index": 5.989999771118164
+      },
+      "recommendation": "FAIR",
+      "label": "Fair",
+      "message": "Some risk present. Kelp drying possible with monitoring."
+    },
+    {
+      "day": 7,
+      "date": "2025-08-31",
+      "sst_C": 23.7,
+      "dewpoint_C": 21.1,
+      "precipitation_forecast_mm": 1.0,
+      "risk_score": 35,
+      "risk_factors": {
+        "precipitation": "MODERATE",
+        "sst_rain_potential": "MODERATE",
+        "fog_risk": "MODERATE",
+        "fog_index": 2.569999933242798
+      },
+      "recommendation": "FAIR",
+      "label": "Fair",
+      "message": "Some risk present. Kelp drying possible with monitoring."
+    }
+  ],
+  "summary": {
+    "suitable_days": 0,
+    "unsuitable_days": 2,
+    "total_days": 7
+  }
+}

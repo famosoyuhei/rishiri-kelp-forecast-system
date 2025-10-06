@@ -1,0 +1,18 @@
+{
+  "analysis_date": "2025-10-06T21:23:50.479767",
+  "precipitation_2024": {
+    "total_mm": 70.4045295715332,
+    "mean_daily_mm": 0.7652666257775348,
+    "rainy_days": 22,
+    "max_daily_mm": 8.559703826904297
+  },
+  "precipitation_2025": {
+    "total_mm": 57.802677154541016,
+    "mean_daily_mm": 0.628289969071098,
+    "rainy_days": 15,
+    "max_daily_mm": 8.61358642578125
+  },
+  "ezo_tsuyu_periods_2024": [],
+  "ezo_tsuyu_periods_2025": [],
+  "conclusion": "2025 shows 0 Ezo Tsuyu periods vs 0 in 2024. Total precipitation increased by -12.6 mm."
+}
