@@ -242,9 +242,14 @@ def get_forecast():
     RISHIRI_SAN_LON = 141.2421
     delta_lat = RISHIRI_SAN_LAT - lat
     delta_lon = RISHIRI_SAN_LON - lon
-    mountain_azimuth = math.degrees(math.atan2(delta_lat, delta_lon))
+    # atan2(dy, dx) gives mathematical angle (East=0°, counterclockwise)
+    # Convert to azimuth (North=0°, clockwise): azimuth = 90° - math_angle
+    math_angle = math.degrees(math.atan2(delta_lat, delta_lon))
+    mountain_azimuth = 90 - math_angle
     if mountain_azimuth < 0:
         mountain_azimuth += 360
+    elif mountain_azimuth >= 360:
+        mountain_azimuth -= 360
 
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer

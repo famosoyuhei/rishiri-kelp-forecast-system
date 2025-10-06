@@ -112,9 +112,14 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
     # （干場を始点、利尻山頂を終点とするベクトルの方位角）
     delta_lat = RISHIRI_SAN_LAT - lat
     delta_lon = RISHIRI_SAN_LON - lon
-    mountain_azimuth = math.degrees(math.atan2(delta_lat, delta_lon))
+    # atan2(dy, dx) gives mathematical angle (East=0°, counterclockwise)
+    # Convert to azimuth (North=0°, clockwise): azimuth = 90° - math_angle
+    math_angle = math.degrees(math.atan2(delta_lat, delta_lon))
+    mountain_azimuth = 90 - math_angle
     if mountain_azimuth < 0:
         mountain_azimuth += 360
+    elif mountain_azimuth >= 360:
+        mountain_azimuth -= 360
 
     result = {
         "work_hours_4_16": [],  # 午前4時〜午後4時（全指標）
