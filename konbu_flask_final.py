@@ -4253,6 +4253,14 @@ def kelp_drying_map():
     except Exception as e:
         return f"Kelp drying map not found: {str(e)}", 404
 
+@app.route("/ocean_forecast_integration.js")
+def ocean_forecast_js():
+    """統合海洋予報JavaScriptの配信"""
+    try:
+        return send_file("ocean_forecast_integration.js", mimetype='application/javascript')
+    except Exception as e:
+        return f"JavaScript file not found: {str(e)}", 404
+
 @app.route("/api/contour/<filename>")
 def get_contour_image(filename):
     """等値線マップ画像の配信"""
