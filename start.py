@@ -308,8 +308,10 @@ def get_forecast():
                 if h < len(hourly['temperature_2m']):
                     wind_dir = hourly['wind_direction_10m'][h] if hourly['wind_direction_10m'][h] else None
                     # Calculate angle difference between wind direction and mountain azimuth
+                    # Wind direction = where wind comes FROM, so wind blows TOWARD (wind_dir + 180°)
                     if wind_dir is not None:
-                        angle_diff = abs(wind_dir - mountain_azimuth)
+                        wind_toward = (wind_dir + 180) % 360  # Direction wind is blowing toward
+                        angle_diff = abs(wind_toward - mountain_azimuth)
                         if angle_diff > 180:
                             angle_diff = 360 - angle_diff
                         wind_mountain_angle_diff = angle_diff

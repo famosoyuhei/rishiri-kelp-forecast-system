@@ -143,8 +143,10 @@ def generate_detailed_hourly_forecast(hourly_data, lat, lon):
                 hour_data["wind_name_rishiri"] = get_rishiri_wind_name(hour_data["wind_direction"])
             
             # 風向と山頂方位角の角度差を計算
+            # 風向 = 風が吹いてくる方向なので、風が向かう方向は wind_direction + 180°
             if hour_data["wind_direction"] is not None:
-                angle_diff = abs(hour_data["wind_direction"] - mountain_azimuth)
+                wind_toward = (hour_data["wind_direction"] + 180) % 360
+                angle_diff = abs(wind_toward - mountain_azimuth)
                 if angle_diff > 180:
                     angle_diff = 360 - angle_diff
                 hour_data["wind_mountain_angle_diff"] = angle_diff
