@@ -4287,7 +4287,9 @@ def get_forecast_calibration():
 def get_ocean_integrated_forecast():
     """統合海洋予報データの取得（SST大雨リスク）"""
     try:
-        with open("integrated_ocean_forecast.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "integrated_ocean_forecast.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             ocean_data = json.load(f)
         return utf8_jsonify(ocean_data)
     except FileNotFoundError:
@@ -4299,7 +4301,9 @@ def get_ocean_integrated_forecast():
 def get_fog_dissipation_forecast():
     """海霧消散予測データの取得"""
     try:
-        with open("fog_dissipation_forecast.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "fog_dissipation_forecast.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             fog_data = json.load(f)
         return utf8_jsonify(fog_data)
     except FileNotFoundError:
@@ -4311,7 +4315,9 @@ def get_fog_dissipation_forecast():
 def get_viable_drying_hours():
     """連続作業可能時間予報の取得"""
     try:
-        with open("viable_drying_hours_forecast.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "viable_drying_hours_forecast.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             drying_data = json.load(f)
         return utf8_jsonify(drying_data)
     except FileNotFoundError:
@@ -4323,7 +4329,9 @@ def get_viable_drying_hours():
 def get_sst_precipitation_correlation():
     """SST-降水量相関解析データの取得"""
     try:
-        with open("sst_precipitation_correlation_results.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "sst_precipitation_correlation_results.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             correlation_data = json.load(f)
         return utf8_jsonify(correlation_data)
     except FileNotFoundError:
@@ -4335,7 +4343,9 @@ def get_sst_precipitation_correlation():
 def get_ezo_tsuyu_analysis():
     """蝦夷梅雨解析データの取得"""
     try:
-        with open("ezo_tsuyu_analysis_results.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "ezo_tsuyu_analysis_results.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             ezo_tsuyu_data = json.load(f)
         return utf8_jsonify(ezo_tsuyu_data)
     except FileNotFoundError:
@@ -4347,7 +4357,9 @@ def get_ezo_tsuyu_analysis():
 def get_sst_comparison():
     """SST年間比較データの取得（2024 vs 2025）"""
     try:
-        with open("sst_comparison_2024_vs_2025_results.json", "r", encoding="utf-8") as f:
+        import os
+        json_path = os.path.join(os.path.dirname(__file__), "sst_comparison_2024_vs_2025_results.json")
+        with open(json_path, "r", encoding="utf-8") as f:
             sst_comparison_data = json.load(f)
         return utf8_jsonify(sst_comparison_data)
     except FileNotFoundError:
