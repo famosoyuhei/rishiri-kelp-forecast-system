@@ -5698,10 +5698,37 @@
         const pwvCategory = hour.pwv_pblh_analysis?.pwv_category || '--';
         const pblhCategory = hour.pwv_pblh_analysis?.pblh_category || '--';
 
+        // 風向-山頂角度差データ
+        const windMountainAngleDiff = hour.wind_mountain_angle_diff !== null && hour.wind_mountain_angle_diff !== undefined ?
+          hour.wind_mountain_angle_diff.toFixed(0) : '--';
+
+        // 山岳効果判定
+        let mountainEffect = '--';
+        let mountainEffectColor = '#666';
+        if (hour.wind_mountain_angle_diff !== null && hour.wind_mountain_angle_diff !== undefined) {
+          if (hour.wind_mountain_angle_diff < 30) {
+            mountainEffect = '山向き風（曇）';
+            mountainEffectColor = '#f44336';
+          } else if (hour.wind_mountain_angle_diff < 60) {
+            mountainEffect = '斜め山向き（やや曇）';
+            mountainEffectColor = '#ff5722';
+          } else if (hour.wind_mountain_angle_diff < 120) {
+            mountainEffect = '横風（中立）';
+            mountainEffectColor = '#ff9800';
+          } else if (hour.wind_mountain_angle_diff < 150) {
+            mountainEffect = '斜め山背（やや晴）';
+            mountainEffectColor = '#8bc34a';
+          } else {
+            mountainEffect = '山背風（晴）';
+            mountainEffectColor = '#4caf50';
+          }
+        }
+
         return {
           time, temperature, humidity, windSpeed, windInfo, solarRadiation, precipitation, cloudCover,
           verticalVel, ssi, ssiCategory, equivTemp, vorticity,
-          pwv, pblh, pwvCategory, pblhCategory
+          pwv, pblh, pwvCategory, pblhCategory,
+          windMountainAngleDiff, mountainEffect, mountainEffectColor
         };
       });
 
@@ -5718,6 +5745,8 @@
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 35px;">湿度<br>(%)</th>
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 35px;">風速<br>(m/s)</th>
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 55px;">風向<br>(伝統風名/16方位)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">風-山<br>角度差<br>(°)</th>
+                  <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 60px;">山岳<br>効果</th>
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">日射<br>(W/m²)</th>
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">降水量<br>(mm)</th>
                   <th style="padding: 6px 3px; border: 1px solid #ddd; text-align: center; min-width: 45px;">雲量<br>(%)</th>
@@ -5739,6 +5768,12 @@
                     <td style="padding: 4px 2px; text-align: center; font-weight: bold; color: #1976d2;">
                       <div style="font-size: 10px;">${hour.windInfo.name}</div>
                       <div style="font-size: 8px; color: #666;">${hour.windInfo.cardinal}</div>
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; font-weight: bold; color: #f57c00;">
+                      ${hour.windMountainAngleDiff}
+                    </td>
+                    <td style="padding: 4px 2px; text-align: center; font-weight: bold; font-size: 9px; color: ${hour.mountainEffectColor};">
+                      ${hour.mountainEffect}
                     </td>
                     <td style="padding: 4px 2px; text-align: center; color: ${hour.solarRadiation !== '--' && parseFloat(hour.solarRadiation) > 600 ? '#ff9800' : '#333'};">
                       ${hour.solarRadiation}
