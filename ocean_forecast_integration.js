@@ -1,8 +1,11 @@
 // 統合海洋予報の表示機能
-// kelp_drying_map.html の <script> セクションに追加
+// 干場選択時に呼び出される
 
 async function loadOceanIntegratedForecast() {
     try {
+        // 統合海洋予報セクションを表示
+        document.getElementById('oceanForecastSection').style.display = 'block';
+
         const response = await fetch('/api/viable_drying_hours');
         if (!response.ok) {
             throw new Error('Ocean forecast data not available');
@@ -131,11 +134,5 @@ function getDayOfWeek(dateStr) {
     return days[date.getDay()];
 }
 
-// ページ読み込み時に統合海洋予報を取得
-document.addEventListener('DOMContentLoaded', function() {
-    // 既存の初期化処理の後に追加
-    loadOceanIntegratedForecast();
-
-    // 5分ごとに更新
-    setInterval(loadOceanIntegratedForecast, 5 * 60 * 1000);
-});
+// 統合海洋予報は干場選択時に自動的に読み込まれます
+// kelp_drying_map.html の selectSpot() 関数から呼び出されます
