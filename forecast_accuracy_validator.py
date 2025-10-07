@@ -46,7 +46,7 @@ class ForecastAccuracyValidator:
             with open(self.nearby_spots_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 self.nearby_spots = data['spots']
-                self.amedas_location = data['amedas_location']
+                self.amedas_location = data['amedas_info']
                 logging.info(f"Loaded {len(self.nearby_spots)} nearby spots")
         except Exception as e:
             logging.error(f"Failed to load nearby spots: {e}")
