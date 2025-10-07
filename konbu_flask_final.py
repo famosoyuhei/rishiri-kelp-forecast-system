@@ -4325,18 +4325,14 @@ def get_forecast_calibration():
             calibration_data = json.load(f)
         return utf8_jsonify(calibration_data)
     except FileNotFoundError:
-        # Return placeholder data structure instead of 404
+        # Return placeholder data structure that matches what the UI expects
         placeholder_data = {
-            "calibration_factors": {
-                "vorticity_500hPa": {"weight": 0.0, "description": "補正データなし"},
-                "omega_700hPa": {"weight": 0.0, "description": "補正データなし"},
-                "thermal_wind_850hPa": {"weight": 0.0, "description": "補正データなし"}
+            "weights": {
+                "vorticity_500hPa": 0.0,
+                "omega_700hPa": 0.0
             },
-            "model_performance": {
-                "overall_accuracy": 0.0,
-                "description": "補正データが利用できません"
-            },
-            "data_available": False
+            "data_available": False,
+            "message": "補正データが利用できません"
         }
         return utf8_jsonify(placeholder_data)
     except Exception as e:
