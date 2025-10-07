@@ -4054,7 +4054,7 @@ if __name__ == '__main__':
     print(f"Personal Notifications: {'Available' if personal_notifications else 'Not available'}")
     print(f"Data Visualization: {'Available' if data_visualization else 'Not available'}")
     print(f"Advanced Prediction: {'Available' if advanced_prediction else 'Not available'}")
-    print(f"Map Interface: hoshiba_map_complete.html")
+    print(f"Map Interface: kelp_drying_map.html")
     print(f"Dashboard Interface: dashboard.html")
     print(f"Meteorologist Dashboard: meteorologist_dashboard.html")
     print(f"Access: http://localhost:8001")
