@@ -817,15 +817,15 @@ except:
 
 @app.route("/")
 def index():
-    """メインページ - 完全版地図を表示"""
+    """メインページ - 統合版地図を表示"""
     try:
-        with open("hoshiba_map_complete.html", "r", encoding="utf-8") as f:
+        with open("kelp_drying_map.html", "r", encoding="utf-8") as f:
             html_content = f.read()
         return html_content
     except:
         return """
         <h1>利尻島昆布干場予報システム</h1>
-        <p>hoshiba_map_complete.html が見つかりません</p>
+        <p>kelp_drying_map.html が見つかりません</p>
         <p><a href="/spots">干場一覧API</a></p>
         <p><a href="/konbu_forecast_test">昆布予報テスト</a></p>
         <p><a href="/dashboard">統合ダッシュボード</a></p>
