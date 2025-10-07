@@ -1839,19 +1839,6 @@
             html += `
                                 </tr>
                                 <tr>
-                                    <td class="time-cell">📐 角度差(°)</td>
-            `;
-
-            // 風向-山頂角度差行
-            hourlyData.forEach(hour => {
-                if (hour.temperature !== null) {
-                    html += `<td>${hour.wind_mountain_angle_diff !== undefined && hour.wind_mountain_angle_diff !== null ? hour.wind_mountain_angle_diff.toFixed(1) : '--'}</td>`;
-                }
-            });
-
-            html += `
-                                </tr>
-                                <tr>
                                     <td class="time-cell">☀️ 日射(W/m²)</td>
             `;
 
@@ -1864,7 +1851,9 @@
 
             html += `
                                 </tr>
-                                <tr>
+
+                                <!-- 専門家向け項目 -->
+                                <tr class="expert-row">
                                     <td class="time-cell">☁️ 雲量(%)</td>
             `;
 
@@ -1877,8 +1866,19 @@
 
             html += `
                                 </tr>
+                                <tr class="expert-row">
+                                    <td class="time-cell">📐 風向-山頂角差(°)</td>
+            `;
 
-                                <!-- 専門家向け項目 -->
+            // 風向-山頂角度差行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.wind_mountain_angle_diff !== undefined && hour.wind_mountain_angle_diff !== null ? hour.wind_mountain_angle_diff.toFixed(1) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
                                 <tr class="expert-row">
                                     <td class="time-cell">⬆️ 鉛直速度(Pa/s)</td>
             `;
