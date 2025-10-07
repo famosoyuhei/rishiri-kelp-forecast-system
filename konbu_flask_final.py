@@ -20,13 +20,19 @@ import numpy as np
 try:
     from adaptive_learning_system import AdaptiveLearningSystem
 except ImportError:
-    AdaptiveLearningSystem = None
+    # Create dummy class if module not available
+    class AdaptiveLearningSystem:
+        def process_new_records(self): return False
+        def retrain_model(self): return False
+        def get_data_quality_summary(self): return {}
 from terrain_database import RishiriTerrainDatabase
 from atmospheric_stability_enhanced import AtmosphericStabilityAnalyzer, enhanced_kelp_drying_forecast
 try:
     from parallel_forecast_optimizer import EnhancedKelpForecastSystem
 except ImportError:
-    EnhancedKelpForecastSystem = None
+    # Create dummy class if module not available
+    class EnhancedKelpForecastSystem:
+        def optimize_forecast(self, *args, **kwargs): return None
 try:
     from sea_fog_prediction import SeaFogPredictionEngine
     from sea_fog_visualization import SeaFogVisualization
