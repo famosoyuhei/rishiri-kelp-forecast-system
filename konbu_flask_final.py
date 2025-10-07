@@ -4273,6 +4273,15 @@ def ocean_forecast_js():
     except Exception as e:
         return f"JavaScript file not found: {str(e)}", 404
 
+@app.route("/rishiri_wind_names.js")
+def rishiri_wind_names_js():
+    """利尻島風名称JavaScriptの配信"""
+    try:
+        return send_file("rishiri_wind_names.js", mimetype='application/javascript')
+    except Exception as e:
+        # Return empty object if file not found
+        return "const RISHIRI_WIND_NAMES = {}; function getRishiriWindDetails(dir) { return { name: '---', description: '方角データなし' }; }", 200, {'Content-Type': 'application/javascript'}
+
 @app.route("/api/contour/<filename>")
 def get_contour_image(filename):
     """等値線マップ画像の配信"""
@@ -4281,11 +4290,28 @@ def get_contour_image(filename):
         if filename.startswith("contour_") and filename.endswith(".png"):
             import os
             file_path = os.path.join(os.path.dirname(__file__), filename)
-            return send_file(file_path)
+            if os.path.exists(file_path):
+                return send_file(file_path)
+            else:
+                # Return placeholder response instead of 404
+                from flask import Response
+                import io
+                from PIL import Image, ImageDraw, ImageFont
+
+                # Create a placeholder image
+                img = Image.new('RGB', (800, 600), color='white')
+                d = ImageDraw.Draw(img)
+                d.text((250, 280), "Contour data not available", fill=(128, 128, 128))
+                d.text((300, 310), "等値線データなし", fill=(128, 128, 128))
+
+                # Save to bytes
+                img_io = io.BytesIO()
+                img.save(img_io, 'PNG')
+                img_io.seek(0)
+
+                return Response(img_io.getvalue(), mimetype='image/png')
         else:
             return "Invalid filename", 400
-    except FileNotFoundError:
-        return f"Contour image not found: {filename}", 404
     except Exception as e:
         return f"Error loading contour image: {str(e)}", 500
 
@@ -4299,9 +4325,22 @@ def get_forecast_calibration():
             calibration_data = json.load(f)
         return utf8_jsonify(calibration_data)
     except FileNotFoundError:
-        return jsonify({"error": "Forecast calibration data not available"}), 404
+        # Return placeholder data structure instead of 404
+        placeholder_data = {
+            "calibration_factors": {
+                "vorticity_500hPa": {"weight": 0.0, "description": "補正データなし"},
+                "omega_700hPa": {"weight": 0.0, "description": "補正データなし"},
+                "thermal_wind_850hPa": {"weight": 0.0, "description": "補正データなし"}
+            },
+            "model_performance": {
+                "overall_accuracy": 0.0,
+                "description": "補正データが利用できません"
+            },
+            "data_available": False
+        }
+        return utf8_jsonify(placeholder_data)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "data_available": False}), 500
 
 @app.route("/api/ocean_integrated_forecast")
 def get_ocean_integrated_forecast():
