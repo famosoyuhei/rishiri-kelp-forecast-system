@@ -1689,6 +1689,7 @@
                             <div>💧 ${hour.humidity ? hour.humidity.toFixed(0) : '--'}%</div>
                             <div>💨 ${hour.wind_speed ? hour.wind_speed.toFixed(1) : '--'}m/s</div>
                             <div>🌬️ ${hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).name + '（' + getRishiriWindDetails(hour.wind_direction).cardinal + '）' : '--'}</div>
+                            <div>📐 ${hour.wind_mountain_angle_diff !== undefined && hour.wind_mountain_angle_diff !== null ? hour.wind_mountain_angle_diff.toFixed(1) + '°' : '--'}</div>
                             <div>☀️ ${hour.solar_radiation ? Math.round(hour.solar_radiation) : '--'}W/m²</div>
                             <div>☁️ ${hour.cloud_cover ? hour.cloud_cover.toFixed(0) : '--'}%</div>
                             <div class="expert-only">⬆️ ${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}Pa/s</div>
