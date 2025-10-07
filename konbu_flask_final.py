@@ -5492,3 +5492,138 @@ def get_forecast():
             'message': str(e),
             'status': 'error'
         }, 503
+
+
+# ============================================================================
+# 予報精度検証システム API Endpoints
+# ============================================================================
+
+@app.route("/api/forecast_accuracy/summary", methods=["GET"])
+def get_forecast_accuracy_summary():
+    """予報精度サマリーを取得"""
+    try:
+        from forecast_accuracy_db import get_accuracy_summary
+        from datetime import datetime, timedelta
+
+        # クエリパラメータ
+        days_ahead = request.args.get('days_ahead', type=int)
+        period_days = request.args.get('period_days', default=30, type=int)
+
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=period_days)
+
+        summary = get_accuracy_summary(
+            days_ahead=days_ahead,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat()
+        )
+
+        if summary:
+            return jsonify({
+                "status": "success",
+                "period": {
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "days": period_days
+                },
+                "days_ahead": days_ahead if days_ahead else "all",
+                "summary": summary
+            })
+        else:
+            return jsonify({
+                "status": "no_data",
+                "message": "指定期間のデータがありません"
+            }), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/forecast_accuracy/report", methods=["GET"])
+def get_forecast_accuracy_report():
+    """詳細な予報精度レポートを取得"""
+    try:
+        from accuracy_reporter import generate_accuracy_report
+
+        period_days = request.args.get('period_days', default=30, type=int)
+
+        report = generate_accuracy_report(period_days=period_days)
+
+        return jsonify({
+            "status": "success",
+            "report": report
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/forecast_accuracy/collect", methods=["POST"])
+def collect_forecast_data_manually():
+    """手動で予報データを収集"""
+    try:
+        from daily_forecast_collector import collect_daily_forecasts
+
+        # バックグラウンドで実行するのが望ましいが、簡易実装として同期実行
+        collect_daily_forecasts()
+
+        return jsonify({
+            "status": "success",
+            "message": "予報データ収集を開始しました"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/forecast_accuracy/amedas", methods=["POST"])
+def fetch_amedas_data_manually():
+    """手動でアメダスデータを取得"""
+    try:
+        from amedas_data_fetcher import fetch_and_save_amedas
+
+        fetch_and_save_amedas()
+
+        return jsonify({
+            "status": "success",
+            "message": "アメダスデータ取得完了"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/forecast_accuracy/analyze", methods=["POST"])
+def analyze_forecast_accuracy_manually():
+    """手動で精度分析を実行"""
+    try:
+        from accuracy_analyzer import analyze_all_forecasts
+
+        analyze_all_forecasts()
+
+        return jsonify({
+            "status": "success",
+            "message": "精度分析完了"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/forecast_accuracy/spots", methods=["GET"])
+def get_validation_spots():
+    """検証対象13干場の情報を取得"""
+    try:
+        import json
+        with open('kutsugata_nearby_spots.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        return jsonify({
+            "status": "success",
+            "amedas_info": data['amedas_info'],
+            "spots": data['spots'],
+            "validation_criteria": data['validation_criteria']
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

@@ -146,6 +146,82 @@
             border: 1px solid #e9ecef;
         }
 
+        /* 一般/専門家向けタブ */
+        .view-mode-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .view-mode-tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 500;
+            color: #6c757d;
+            transition: all 0.3s;
+        }
+
+        .view-mode-tab:hover {
+            color: #667eea;
+        }
+
+        .view-mode-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        /* 時間別予報テーブル */
+        .hourly-table-container {
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        .hourly-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .hourly-table th {
+            background: #667eea;
+            color: white;
+            padding: 10px 5px;
+            text-align: center;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .hourly-table td {
+            padding: 8px 5px;
+            text-align: center;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .hourly-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .hourly-table .time-cell {
+            font-weight: bold;
+            color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .hourly-table .expert-row {
+            display: none;
+        }
+
+        .hourly-table.show-expert .expert-row {
+            display: table-row;
+        }
+
+        /* 旧スタイル（後方互換性のため残す） */
         .hourly-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -1650,7 +1726,7 @@
                                 <strong>🕒 予測乾燥時間:</strong> ${forecast.daily_summary.estimated_drying_time}
                             </div>
 
-                            ${generateHourlyDetails(forecast.hourly_details)}
+                            ${generateHourlyDetails(forecast.hourly_details, forecast.day_number)}
 
                             <div class="feedback-section">
                                 <small style="color: #666; margin-bottom: 5px; display: block;">実際の乾燥状況をフィードバック:</small>
@@ -1669,43 +1745,210 @@
             forecastContent.innerHTML = contentHtml;
         }
 
-        function generateHourlyDetails(hourlyData) {
+        function generateHourlyDetails(hourlyData, dayIndex = 0) {
             if (!hourlyData || hourlyData.length === 0) {
                 return '<div class="hourly-section"><h4>時間別詳細データなし</h4></div>';
             }
 
+            const tabId = `hourly-view-${dayIndex}`;
+
             let html = `
                 <div class="hourly-section">
                     <h4>📊 時間別詳細 (4:00-16:00)</h4>
-                    <div class="hourly-grid">
+
+                    <!-- 一般/専門家向けタブ -->
+                    <div class="view-mode-tabs">
+                        <button class="view-mode-tab active" onclick="switchViewMode('${tabId}', 'general')">
+                            🌤️ 一般漁師向け
+                        </button>
+                        <button class="view-mode-tab" onclick="switchViewMode('${tabId}', 'expert')">
+                            🌪️ 気象専門家向け
+                        </button>
+                    </div>
+
+                    <div class="hourly-table-container">
+                        <table class="hourly-table" id="${tabId}">
+                            <thead>
+                                <tr>
+                                    <th>時刻</th>
             `;
 
+            // 時刻列の生成
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
-                    html += `
-                        <div class="hourly-item">
-                            <div class="hourly-time">${hour.time}</div>
-                            <div>🌡️ ${hour.temperature ? hour.temperature.toFixed(1) : '--'}°C</div>
-                            <div>💧 ${hour.humidity ? hour.humidity.toFixed(0) : '--'}%</div>
-                            <div>💨 ${hour.wind_speed ? hour.wind_speed.toFixed(1) : '--'}m/s</div>
-                            <div>🌬️ ${hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).name + '（' + getRishiriWindDetails(hour.wind_direction).cardinal + '）' : '--'}</div>
-                            <div>📐 ${hour.wind_mountain_angle_diff !== undefined && hour.wind_mountain_angle_diff !== null ? hour.wind_mountain_angle_diff.toFixed(1) + '°' : '--'}</div>
-                            <div>☀️ ${hour.solar_radiation ? Math.round(hour.solar_radiation) : '--'}W/m²</div>
-                            <div>☁️ ${hour.cloud_cover ? hour.cloud_cover.toFixed(0) : '--'}%</div>
-                            <div class="expert-only">⬆️ ${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}Pa/s</div>
-                            <div class="expert-only">📊 ${hour.ssi !== undefined && hour.ssi !== null ? hour.ssi.toFixed(1) + ' (' + getSSICategory(hour.ssi) + ')' : '--'}</div>
-                            <div class="expert-only">🌡️ ${hour.equivalent_potential_temperature !== undefined && hour.equivalent_potential_temperature !== null ? hour.equivalent_potential_temperature.toFixed(1) + 'K' : '--'}</div>
-                        </div>
-                    `;
+                    html += `<th>${hour.time}</th>`;
                 }
             });
 
             html += `
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- 一般漁師向け項目 -->
+                                <tr>
+                                    <td class="time-cell">🌡️ 気温(°C)</td>
+            `;
+
+            // 気温行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.temperature ? hour.temperature.toFixed(1) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">💧 湿度(%)</td>
+            `;
+
+            // 湿度行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.humidity ? hour.humidity.toFixed(0) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">💨 風速(m/s)</td>
+            `;
+
+            // 風速行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.wind_speed ? hour.wind_speed.toFixed(1) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">🌬️ 風向</td>
+            `;
+
+            // 風向行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    const windName = hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).name : '--';
+                    html += `<td title="${hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).description : ''}">${windName}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">📐 角度差(°)</td>
+            `;
+
+            // 風向-山頂角度差行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.wind_mountain_angle_diff !== undefined && hour.wind_mountain_angle_diff !== null ? hour.wind_mountain_angle_diff.toFixed(1) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">☀️ 日射(W/m²)</td>
+            `;
+
+            // 日射量行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.solar_radiation ? Math.round(hour.solar_radiation) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr>
+                                    <td class="time-cell">☁️ 雲量(%)</td>
+            `;
+
+            // 雲量行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.cloud_cover ? hour.cloud_cover.toFixed(0) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+
+                                <!-- 専門家向け項目 -->
+                                <tr class="expert-row">
+                                    <td class="time-cell">⬆️ 鉛直速度(Pa/s)</td>
+            `;
+
+            // 鉛直p速度行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr class="expert-row">
+                                    <td class="time-cell">📊 SSI</td>
+            `;
+
+            // SSI行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    const ssiValue = hour.ssi !== undefined && hour.ssi !== null ? hour.ssi.toFixed(1) : '--';
+                    const ssiCategory = hour.ssi !== undefined && hour.ssi !== null ? getSSICategory(hour.ssi) : '';
+                    html += `<td title="${ssiCategory}">${ssiValue}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr class="expert-row">
+                                    <td class="time-cell">🌡️ 相当温位(K)</td>
+            `;
+
+            // 相当温位行
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `<td>${hour.equivalent_potential_temperature !== undefined && hour.equivalent_potential_temperature !== null ? hour.equivalent_potential_temperature.toFixed(1) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
 
             return html;
+        }
+
+        // タブ切り替え関数
+        function switchViewMode(tableId, mode) {
+            const table = document.getElementById(tableId);
+            const tabs = document.querySelectorAll(`button[onclick*="${tableId}"]`);
+
+            // タブのアクティブ状態を更新
+            tabs.forEach(tab => {
+                if (tab.onclick.toString().includes(`'${mode}'`)) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+
+            // テーブルの表示切替
+            if (mode === 'expert') {
+                table.classList.add('show-expert');
+            } else {
+                table.classList.remove('show-expert');
+            }
         }
 
         function getReliabilityClass(reliability) {
