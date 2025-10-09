@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Rishiri Kelp Forecast System - Production Version with UI
+Version: 2.2.0 (Emagram Integration)
 """
 import os
 import sys
