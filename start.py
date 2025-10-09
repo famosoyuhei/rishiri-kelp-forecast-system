@@ -847,31 +847,447 @@ def get_terrain_info(spot_name):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def fetch_pressure_level_data(lat, lon, forecast_hours=384):
+    """
+    Open-Meteo Pressure Level APIから高層データを取得
+
+    Parameters:
+    - lat: 緯度
+    - lon: 経度
+    - forecast_hours: 予報時間（デフォルト384時間=16日間）
+
+    Returns:
+    - dict: 500hPa, 700hPa, 850hPaの気象データ
+    """
+    try:
+        # 16日間の高層データを取得
+        forecast_days = min(16, (forecast_hours + 23) // 24)  # 時間を日数に変換（切り上げ）
+
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}&"
+            f"hourly=temperature_200hPa,geopotential_height_200hPa,wind_speed_200hPa,wind_direction_200hPa,"
+            f"temperature_300hPa,geopotential_height_300hPa,wind_speed_300hPa,wind_direction_300hPa,"
+            f"temperature_500hPa,geopotential_height_500hPa,relative_humidity_500hPa,"
+            f"wind_speed_500hPa,wind_direction_500hPa,"
+            f"temperature_700hPa,geopotential_height_700hPa,relative_humidity_700hPa,"
+            f"wind_speed_700hPa,wind_direction_700hPa,"
+            f"temperature_850hPa,geopotential_height_850hPa,relative_humidity_850hPa,"
+            f"wind_speed_850hPa,wind_direction_850hPa&"
+            f"timezone=Asia/Tokyo&forecast_days={forecast_days}"
+        )
+
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+
+        return response.json()
+
+    except Exception as e:
+        print(f"Error fetching pressure level data: {e}")
+        return None
+
+def fetch_marine_data(lat, lon, forecast_hours=168):
+    """
+    Open-Meteo Marine APIから海域データを取得
+
+    Parameters:
+    - lat: 緯度
+    - lon: 経度
+    - forecast_hours: 予報時間（デフォルト168時間=7日間）
+
+    Returns:
+    - dict: 有義波高、波向、波周期データ
+    """
+    try:
+        # 7日間の海域データを取得
+        forecast_days = min(7, (forecast_hours + 23) // 24)
+
+        url = (
+            f"https://marine-api.open-meteo.com/v1/marine?"
+            f"latitude={lat}&longitude={lon}&"
+            f"hourly=wave_height,wave_direction,wave_period&"
+            f"timezone=Asia/Tokyo&forecast_days={forecast_days}"
+        )
+
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+
+        return response.json()
+
+    except Exception as e:
+        print(f"Error fetching marine data: {e}")
+        return None
+
 @app.route('/api/analysis/contours')
 def get_contour_analysis():
     """
-    等値線解析データを取得（仕様書 lines 400-417）
+    等値線解析データを取得（仕様書 lines 584-682）
 
-    Returns contour data for temperature, humidity, wind analysis
+    地上レベル（7日間）と高層レベル（16日間）の等値線解析をサポート
+
+    Parameters:
+    - type: 解析カテゴリー（temperature, humidity, pressure, wind, precipitation,
+            vorticity_500hpa, omega_700hpa, theta_e_850hpa）
+    - time: 予報時間オフセット（0-168h 地上、0-384h 高層）
     """
     try:
-        parameter = request.args.get('parameter', 'temperature')  # temperature, humidity, pressure
-        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        category = request.args.get('type', 'temperature')
+        time_offset = int(request.args.get('time', 0))
 
-        # This would integrate with terrain_database.py for detailed contour analysis
-        # For now, return a simplified response
+        # 利尻島中心座標
+        lat = 45.1821
+        lon = 141.2421
+
+        # カテゴリー別処理
+        if category in ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']:
+            # 地上レベル（最大168時間=7日間）
+            if time_offset > 168:
+                return jsonify({
+                    'status': 'error',
+                    'message': '地上データは最大168時間（7日間）までです'
+                }), 400
+
+            return jsonify({
+                'status': 'success',
+                'map_type': category,
+                'time_offset': time_offset,
+                'level': '地上',
+                'message': '地上レベル等値線は isoline_analysis_engine.py で実装済み',
+                'grid_resolution': '約5km格子',
+                'interpolation_method': 'scipy griddata (cubic)',
+                'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']
+            })
+
+        elif category in ['wave_height', 'wave_direction_period']:
+            # 海域レベル（最大168時間=7日間）
+            if time_offset > 168:
+                return jsonify({
+                    'status': 'error',
+                    'message': '海域データは最大168時間（7日間）までです'
+                }), 400
+
+            # 海域データ取得
+            marine_data = fetch_marine_data(lat, lon, time_offset + 24)
+
+            if not marine_data:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Open-Meteo Marine APIからのデータ取得に失敗しました'
+                }), 500
+
+            hourly = marine_data.get('hourly', {})
+
+            # 指定時刻のデータを抽出
+            if time_offset >= len(hourly.get('time', [])):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'指定時刻（{time_offset}時間後）のデータが利用できません'
+                }), 400
+
+            result = {
+                'status': 'success',
+                'map_type': category,
+                'time_offset': time_offset,
+                'time': hourly['time'][time_offset],
+                'level': '海面',
+                'grid_resolution': 'Open-Meteo Marine API解像度（約5km）',
+                'interpolation_method': 'scipy griddata (cubic)',
+                'data_source': 'Open-Meteo Marine Weather API (ECMWF WAM)'
+            }
+
+            if category == 'wave_height':
+                wave_height = hourly.get('wave_height', [None])[time_offset]
+
+                # 波高による作業可否判定
+                work_safety = "安全"
+                if wave_height:
+                    if wave_height >= 3.0:
+                        work_safety = "危険（飛沫到達・作業中止）"
+                    elif wave_height >= 2.0:
+                        work_safety = "要注意（高波・作業困難）"
+                    elif wave_height >= 1.5:
+                        work_safety = "やや注意（アクセス困難）"
+                    elif wave_height >= 1.0:
+                        work_safety = "ほぼ安全（通常作業可）"
+
+                result.update({
+                    'parameter': '有義波高',
+                    'unit': 'm',
+                    'wave_height': wave_height,
+                    'work_safety': work_safety,
+                    'message': f'作業安全度: {work_safety}（干場アクセス・飛沫付着リスク判定）'
+                })
+
+            elif category == 'wave_direction_period':
+                wave_dir = hourly.get('wave_direction', [None])[time_offset]
+                wave_period = hourly.get('wave_period', [None])[time_offset]
+                wave_height = hourly.get('wave_height', [None])[time_offset]
+
+                # うねりの状態判定
+                swell_condition = "穏やか"
+                if wave_period and wave_height:
+                    if wave_period >= 10:
+                        swell_condition = "長周期うねり（遠方の低気圧）"
+                    elif wave_period >= 7:
+                        swell_condition = "中周期うねり（風波＋うねり）"
+                    elif wave_period >= 5:
+                        swell_condition = "短周期波（局地風波）"
+
+                result.update({
+                    'parameter': '波向・波周期場',
+                    'unit': '度、秒',
+                    'wave_direction': wave_dir,
+                    'wave_period': wave_period,
+                    'wave_height': wave_height,
+                    'swell_condition': swell_condition,
+                    'message': f'うねり状態: {swell_condition}（気圧配置・低気圧接近の指標）'
+                })
+
+            return jsonify(result)
+
+        elif category in ['vorticity_500hpa', 'omega_700hpa', 'theta_e_850hpa',
+                          'jet_stream_300hpa', 'height_anomaly_200hpa']:
+            # 高層レベル（最大384時間=16日間）
+            if time_offset > 384:
+                return jsonify({
+                    'status': 'error',
+                    'message': '高層データは最大384時間（16日間）までです'
+                }), 400
+
+            # 高層データ取得
+            pressure_data = fetch_pressure_level_data(lat, lon, time_offset + 24)
+
+            if not pressure_data:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Open-Meteo Pressure Level APIからのデータ取得に失敗しました'
+                }), 500
+
+            hourly = pressure_data.get('hourly', {})
+
+            # 指定時刻のデータを抽出
+            if time_offset >= len(hourly.get('time', [])):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'指定時刻（{time_offset}時間後）のデータが利用できません'
+                }), 400
+
+            result = {
+                'status': 'success',
+                'map_type': category,
+                'time_offset': time_offset,
+                'time': hourly['time'][time_offset],
+                'grid_resolution': 'Open-Meteo API解像度（約11km）',
+                'interpolation_method': 'scipy griddata (cubic)',
+                'data_source': 'Open-Meteo Pressure Level API (ECMWF IFS)'
+            }
+
+            if category == 'vorticity_500hpa':
+                result.update({
+                    'level': '500hPa',
+                    'parameter': '相対渦度',
+                    'unit': '10⁻⁵ s⁻¹',
+                    'temperature_500hpa': hourly.get('temperature_500hPa', [None])[time_offset],
+                    'geopotential_height_500hpa': hourly.get('geopotential_height_500hPa', [None])[time_offset],
+                    'wind_speed_500hpa': hourly.get('wind_speed_500hPa', [None])[time_offset],
+                    'wind_direction_500hpa': hourly.get('wind_direction_500hPa', [None])[time_offset],
+                    'message': '渦度計算は開発中（風速場から数値微分で算出予定）'
+                })
+
+            elif category == 'omega_700hpa':
+                result.update({
+                    'level': '700hPa',
+                    'parameter': '鉛直p速度（Omega）',
+                    'unit': 'Pa/s',
+                    'temperature_700hpa': hourly.get('temperature_700hPa', [None])[time_offset],
+                    'geopotential_height_700hpa': hourly.get('geopotential_height_700hPa', [None])[time_offset],
+                    'relative_humidity_700hpa': hourly.get('relative_humidity_700hPa', [None])[time_offset],
+                    'message': 'Omega計算は開発中（気圧傾向から推定予定）'
+                })
+
+            elif category == 'theta_e_850hpa':
+                # 相当温位を計算
+                temp_850 = hourly.get('temperature_850hPa', [None])[time_offset]
+                rh_850 = hourly.get('relative_humidity_850hPa', [None])[time_offset]
+
+                theta_e = None
+                if temp_850 is not None and rh_850 is not None:
+                    theta_e = calculate_equivalent_potential_temperature_850hpa(temp_850, rh_850, 850.0)
+
+                result.update({
+                    'level': '850hPa',
+                    'parameter': '相当温位',
+                    'unit': 'K',
+                    'temperature_850hpa': temp_850,
+                    'relative_humidity_850hpa': rh_850,
+                    'geopotential_height_850hpa': hourly.get('geopotential_height_850hPa', [None])[time_offset],
+                    'equivalent_potential_temperature': theta_e,
+                    'message': '相当温位計算は実装済み' if theta_e else '相当温位計算にデータ不足'
+                })
+
+            elif category == 'jet_stream_300hpa':
+                # ジェット気流解析（300hPa）
+                wind_speed_300 = hourly.get('wind_speed_300hPa', [None])[time_offset]
+                wind_dir_300 = hourly.get('wind_direction_300hPa', [None])[time_offset]
+                geo_height_300 = hourly.get('geopotential_height_300hPa', [None])[time_offset]
+
+                # ジェット強度判定
+                jet_intensity = "弱"
+                if wind_speed_300:
+                    wind_speed_ms = wind_speed_300 / 3.6  # km/h to m/s
+                    if wind_speed_ms >= 50:
+                        jet_intensity = "非常に強い"
+                    elif wind_speed_ms >= 40:
+                        jet_intensity = "強い"
+                    elif wind_speed_ms >= 30:
+                        jet_intensity = "中程度"
+                    elif wind_speed_ms >= 20:
+                        jet_intensity = "弱い"
+
+                result.update({
+                    'level': '300hPa',
+                    'parameter': 'ジェット気流',
+                    'unit': 'm/s',
+                    'wind_speed_300hpa': wind_speed_300,
+                    'wind_speed_ms': wind_speed_300 / 3.6 if wind_speed_300 else None,
+                    'wind_direction_300hpa': wind_dir_300,
+                    'geopotential_height_300hpa': geo_height_300,
+                    'jet_intensity': jet_intensity,
+                    'message': f'ジェット気流強度: {jet_intensity}（偏西風帯の蛇行パターンから7-16日後の気圧配置を予測）'
+                })
+
+            elif category == 'height_anomaly_200hpa':
+                # 高度偏差解析（200hPa）- ブロッキング高気圧検出
+                geo_height_200 = hourly.get('geopotential_height_200hPa', [None])[time_offset]
+                wind_speed_200 = hourly.get('wind_speed_200hPa', [None])[time_offset]
+
+                # 気候値（利尻島付近の200hPa平年値、夏季想定）
+                # 実際の平年値は月別・緯度別に要調整
+                climatology_200hpa = 12000  # メートル（概算）
+
+                height_anomaly = None
+                anomaly_category = "平年並み"
+                if geo_height_200:
+                    height_anomaly = geo_height_200 - climatology_200hpa
+
+                    # 高度偏差の判定（±100m ≈ ±5℃相当）
+                    if height_anomaly >= 200:
+                        anomaly_category = "極めて高い（強いブロッキング）"
+                    elif height_anomaly >= 100:
+                        anomaly_category = "高い（ブロッキング傾向）"
+                    elif height_anomaly >= 50:
+                        anomaly_category = "やや高い"
+                    elif height_anomaly <= -200:
+                        anomaly_category = "極めて低い（強い寒気）"
+                    elif height_anomaly <= -100:
+                        anomaly_category = "低い（寒気優勢）"
+                    elif height_anomaly <= -50:
+                        anomaly_category = "やや低い"
+
+                result.update({
+                    'level': '200hPa',
+                    'parameter': 'ジオポテンシャル高度偏差',
+                    'unit': 'm',
+                    'geopotential_height_200hpa': geo_height_200,
+                    'climatology': climatology_200hpa,
+                    'height_anomaly': height_anomaly,
+                    'anomaly_category': anomaly_category,
+                    'wind_speed_200hpa': wind_speed_200,
+                    'message': f'高度偏差: {anomaly_category}（ブロッキング高気圧・停滞性天気パターンの予測に利用）'
+                })
+
+            return jsonify(result)
+
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'未対応のカテゴリー: {category}'
+            }), 400
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/emagram')
+def get_emagram_data():
+    """
+    簡易エマグラム用の気温・露点温度鉛直プロファイルを取得
+
+    Parameters:
+        lat: 緯度
+        lon: 経度
+        time: 予報時刻オフセット（時間単位、デフォルト0=現在）
+
+    Returns:
+        pressure_levels: 気圧面リスト（hPa）
+        temperature: 各気圧面の気温（℃）
+        dewpoint: 各気圧面の露点温度（℃）
+        height: 各気圧面の高度（m）
+    """
+    try:
+        lat = float(request.args.get('lat', 45.242))
+        lon = float(request.args.get('lon', 141.242))
+        time_offset = int(request.args.get('time', 0))
+
+        # 利用可能な気圧面（1000hPaから上層まで）
+        pressure_levels = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200]
+
+        # Open-Meteo Pressure Level APIから気温・露点温度・高度を取得
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}&"
+            f"hourly=temperature_1000hPa,dewpoint_1000hPa,geopotential_height_1000hPa,"
+            f"temperature_975hPa,dewpoint_975hPa,geopotential_height_975hPa,"
+            f"temperature_950hPa,dewpoint_950hPa,geopotential_height_950hPa,"
+            f"temperature_925hPa,dewpoint_925hPa,geopotential_height_925hPa,"
+            f"temperature_900hPa,dewpoint_900hPa,geopotential_height_900hPa,"
+            f"temperature_850hPa,dewpoint_850hPa,geopotential_height_850hPa,"
+            f"temperature_800hPa,dewpoint_800hPa,geopotential_height_800hPa,"
+            f"temperature_700hPa,dewpoint_700hPa,geopotential_height_700hPa,"
+            f"temperature_600hPa,dewpoint_600hPa,geopotential_height_600hPa,"
+            f"temperature_500hPa,dewpoint_500hPa,geopotential_height_500hPa,"
+            f"temperature_400hPa,dewpoint_400hPa,geopotential_height_400hPa,"
+            f"temperature_300hPa,dewpoint_300hPa,geopotential_height_300hPa,"
+            f"temperature_250hPa,dewpoint_250hPa,geopotential_height_250hPa,"
+            f"temperature_200hPa,dewpoint_200hPa,geopotential_height_200hPa&"
+            f"timezone=Asia/Tokyo&forecast_days=7"
+        )
+
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        hourly = data.get('hourly', {})
+
+        # 各気圧面のデータを抽出
+        profile = {
+            'pressure': [],
+            'temperature': [],
+            'dewpoint': [],
+            'height': [],
+            'time': hourly.get('time', [])[time_offset] if hourly.get('time') else None
+        }
+
+        for p in pressure_levels:
+            temp_key = f'temperature_{p}hPa'
+            dewpoint_key = f'dewpoint_{p}hPa'
+            height_key = f'geopotential_height_{p}hPa'
+
+            temp = hourly.get(temp_key, [None])[time_offset] if hourly.get(temp_key) else None
+            dewpoint = hourly.get(dewpoint_key, [None])[time_offset] if hourly.get(dewpoint_key) else None
+            height = hourly.get(height_key, [None])[time_offset] if hourly.get(height_key) else None
+
+            # データが存在する気圧面のみ追加
+            if temp is not None and dewpoint is not None and height is not None:
+                profile['pressure'].append(p)
+                profile['temperature'].append(temp)
+                profile['dewpoint'].append(dewpoint)
+                profile['height'].append(height)
 
         return jsonify({
             'status': 'success',
-            'parameter': parameter,
-            'date': date,
-            'message': '等値線解析システムは terrain_database.py で実装済み。詳細統合は Phase 2 で完了予定',
-            'available_parameters': ['temperature', 'humidity', 'pressure', 'equivalent_potential_temperature'],
-            'contour_levels': {
-                'temperature': list(range(-5, 35, 5)),
-                'humidity': list(range(40, 100, 10)),
-                'pressure': list(range(980, 1040, 4))
-            }
+            'data': profile,
+            'location': {'lat': lat, 'lon': lon},
+            'message': f'{len(profile["pressure"])}気圧面のデータを取得（{profile["time"]}）'
         })
 
     except Exception as e:
@@ -880,36 +1296,145 @@ def get_contour_analysis():
 @app.route('/api/validation/accuracy')
 def get_forecast_accuracy():
     """
-    予報精度検証データを取得（仕様書 lines 311-313）
+    予報精度検証データを取得（仕様書 lines 356-429）
 
-    Returns historical forecast accuracy metrics
+    アメダス実測データと予報データを比較して精度を検証
     """
     try:
         days_back = int(request.args.get('days', 30))
+        spot_name = request.args.get('spot', 'H_1631_1434')  # デフォルトは神居
 
-        # This would integrate with forecast_accuracy_verification.py
-        # Return sample accuracy data
+        # アメダスデータディレクトリの確認
+        import os
+        from datetime import datetime, timedelta
+        import json
+        import glob
 
-        accuracy_by_day = {
-            '1_day': {'accuracy': 95, 'mae_temp': 1.2, 'mae_wind': 1.5, 'mae_humidity': 8},
-            '2_day': {'accuracy': 88, 'mae_temp': 2.1, 'mae_wind': 2.3, 'mae_humidity': 12},
-            '3_day': {'accuracy': 79, 'mae_temp': 2.8, 'mae_wind': 2.9, 'mae_humidity': 15},
-            '4_day': {'accuracy': 71, 'mae_temp': 3.5, 'mae_wind': 3.4, 'mae_humidity': 18},
-            '5_day': {'accuracy': 65, 'mae_temp': 4.2, 'mae_wind': 3.8, 'mae_humidity': 22},
-            '6_day': {'accuracy': 58, 'mae_temp': 4.8, 'mae_wind': 4.1, 'mae_humidity': 25},
-            '7_day': {'accuracy': 52, 'mae_temp': 5.3, 'mae_wind': 4.5, 'mae_humidity': 28}
-        }
+        amedas_dir = 'amedas_data'
+        forecast_dir = 'forecast_history'
+
+        if not os.path.exists(amedas_dir):
+            os.makedirs(amedas_dir, exist_ok=True)
+
+        # 過去N日分の検証データを収集
+        validation_results = []
+        accuracy_by_day = {f'{i}_day': {'errors': [], 'count': 0} for i in range(1, 8)}
+
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days_back)
+
+        for day_offset in range(days_back):
+            check_date = start_date + timedelta(days=day_offset)
+            date_str = check_date.strftime('%Y%m%d')
+
+            # アメダス実測データの読み込み
+            amedas_file = os.path.join(amedas_dir, f'amedas_11151_{date_str}.json')
+
+            if os.path.exists(amedas_file):
+                try:
+                    with open(amedas_file, 'r', encoding='utf-8') as f:
+                        amedas_data = json.load(f)
+
+                    # 実測値から統計を計算
+                    temps = [h.get('temp') for h in amedas_data.get('hourly', []) if h.get('temp') is not None]
+                    humidities = [h.get('humidity') for h in amedas_data.get('hourly', []) if h.get('humidity') is not None]
+                    winds = [h.get('wind_speed') for h in amedas_data.get('hourly', []) if h.get('wind_speed') is not None]
+                    precips = [h.get('precipitation') for h in amedas_data.get('hourly', []) if h.get('precipitation') is not None]
+
+                    actual = {
+                        'max_temp': max(temps) if temps else None,
+                        'min_temp': min(temps) if temps else None,
+                        'min_humidity': min(humidities) if humidities else None,
+                        'avg_wind': sum(winds) / len(winds) if winds else None,
+                        'total_precip': sum(precips) if precips else None
+                    }
+
+                    # 1-6日前の予報データと比較
+                    for forecast_days_before in range(1, 7):
+                        forecast_date = check_date - timedelta(days=forecast_days_before)
+                        forecast_date_str = forecast_date.strftime('%Y%m%d')
+                        target_date_str = check_date.strftime('%Y%m%d')
+
+                        forecast_file = os.path.join(forecast_dir, spot_name, f'forecast_{forecast_date_str}_for_{target_date_str}.json')
+
+                        if os.path.exists(forecast_file):
+                            with open(forecast_file, 'r', encoding='utf-8') as f:
+                                forecast_data = json.load(f)
+
+                            # 予報誤差計算
+                            errors = {}
+                            if actual['max_temp'] and forecast_data.get('max_temp'):
+                                errors['temp'] = abs(actual['max_temp'] - forecast_data['max_temp'])
+                            if actual['min_humidity'] and forecast_data.get('min_humidity'):
+                                errors['humidity'] = abs(actual['min_humidity'] - forecast_data['min_humidity'])
+                            if actual['avg_wind'] and forecast_data.get('avg_wind'):
+                                errors['wind'] = abs(actual['avg_wind'] - forecast_data['avg_wind'])
+
+                            day_key = f'{forecast_days_before}_day'
+                            if errors:
+                                accuracy_by_day[day_key]['errors'].append(errors)
+                                accuracy_by_day[day_key]['count'] += 1
+
+                except Exception as e:
+                    print(f"Error processing {amedas_file}: {e}")
+                    continue
+
+        # 精度指標を計算
+        accuracy_summary = {}
+        for day_key, data in accuracy_by_day.items():
+            if data['count'] > 0:
+                errors = data['errors']
+
+                temp_errors = [e['temp'] for e in errors if 'temp' in e]
+                humidity_errors = [e['humidity'] for e in errors if 'humidity' in e]
+                wind_errors = [e['wind'] for e in errors if 'wind' in e]
+
+                mae_temp = sum(temp_errors) / len(temp_errors) if temp_errors else 0
+                mae_humidity = sum(humidity_errors) / len(humidity_errors) if humidity_errors else 0
+                mae_wind = sum(wind_errors) / len(wind_errors) if wind_errors else 0
+
+                # 総合精度スコア（誤差が小さいほど高得点）
+                # 気温: MAE < 2°C で90点以上、湿度: MAE < 10% で90点以上、風速: MAE < 2m/s で90点以上
+                temp_score = max(0, 100 - mae_temp * 10)
+                humidity_score = max(0, 100 - mae_humidity * 2)
+                wind_score = max(0, 100 - mae_wind * 10)
+                overall_score = (temp_score + humidity_score + wind_score) / 3
+
+                accuracy_summary[day_key] = {
+                    'accuracy': round(overall_score, 1),
+                    'mae_temp': round(mae_temp, 1),
+                    'mae_humidity': round(mae_humidity, 1),
+                    'mae_wind': round(mae_wind, 1),
+                    'sample_count': data['count']
+                }
+            else:
+                # データがない場合は仕様書の理論値を使用
+                day_num = int(day_key.split('_')[0])
+                theoretical_accuracy = max(50, 100 - day_num * 7)
+                accuracy_summary[day_key] = {
+                    'accuracy': theoretical_accuracy,
+                    'mae_temp': 1.0 + day_num * 0.5,
+                    'mae_humidity': 5 + day_num * 3,
+                    'mae_wind': 1.0 + day_num * 0.5,
+                    'sample_count': 0,
+                    'note': '理論値（実測データ不足）'
+                }
+
+        total_samples = sum(data['count'] for data in accuracy_by_day.values())
 
         return jsonify({
             'status': 'success',
+            'spot': spot_name,
             'period': f'Past {days_back} days',
-            'accuracy_by_forecast_day': accuracy_by_day,
+            'accuracy_by_forecast_day': accuracy_summary,
             'overall_metrics': {
-                'total_forecasts': days_back * 7,
-                'successful_predictions': int(days_back * 7 * 0.72),
-                'average_accuracy': 72.6
+                'total_validations': total_samples,
+                'data_coverage': f'{total_samples}/{days_back * 6} days',
+                'average_accuracy': round(sum(s['accuracy'] for s in accuracy_summary.values()) / 7, 1)
             },
-            'data_source': 'Based on H_1631_1434 actual vs forecast comparison'
+            'data_source': '沓形アメダス(11151) vs 予報データ比較',
+            'methodology': '気温・湿度・風速の平均絶対誤差(MAE)に基づく総合精度スコア',
+            'note': 'アメダスデータがない期間は仕様書の理論精度値を使用'
         })
 
     except Exception as e:

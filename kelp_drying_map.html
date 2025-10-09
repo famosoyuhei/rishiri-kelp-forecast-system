@@ -867,17 +867,41 @@
             <div class="forecast-tabs" id="forecastTabs" style="display: none;">
                 <!-- Dynamic tabs will be inserted here -->
             </div>
-
-            <!-- 統合海洋予報セクション -->
-            <div id="oceanForecastSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <!-- 簡易エマグラム表示セクション -->
+            <div id="emagramSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
                 <h3 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-top: 0;">
-                    🌊 統合海洋予報 - 連続作業可能時間
+                    📊 簡易エマグラム - 気温・露点温度鉛直プロファイル
                 </h3>
                 <p style="color: #666; font-size: 14px; margin: 10px 0;">
-                    海水温・海霧・降水リスクを統合した実用的な作業時間予報
+                    大気の鉛直構造を確認（大気安定度・逆転層・雲底高度の推定）<br>
+                    <span style="font-size: 12px; color: #999;">※作業時間帯（6-18時）の3時間刻みデータ</span>
                 </p>
-                <div id="oceanForecastContainer">
-                    <p style="text-align: center; color: #999;">読み込み中...</p>
+
+                <!-- 時刻選択（作業時間帯6-18時、3時間刻み） -->
+                <div style="margin: 15px 0;">
+                    <label style="font-weight: bold; margin-right: 10px;">予報時刻（JST）:</label>
+                    <select id="emagramTimeSelect" onchange="loadEmagramData()" style="padding: 5px 10px; border: 1px solid #ddd; border-radius: 5px;">
+                        <!-- JavaScriptで動的生成 -->
+                    </select>
+                </div>
+
+                <!-- Canvas for chart -->
+                <div style="position: relative; height: 500px; margin: 20px 0;">
+                    <canvas id="emagramCanvas"></canvas>
+                </div>
+
+                <!-- 解説情報 -->
+                <div id="emagramInfo" style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 0.9rem;">
+                    <div style="margin-bottom: 8px;">
+                        <strong>📌 読み方:</strong>
+                    </div>
+                    <ul style="margin: 5px 0; padding-left: 20px; line-height: 1.8;">
+                        <li><span style="color: #dc3545; font-weight: bold;">赤線</span>: 気温（右に高温）</li>
+                        <li><span style="color: #007bff; font-weight: bold;">青線</span>: 露点温度（気温に近いほど湿潤）</li>
+                        <li><strong>気温と露点が接近</strong>: 湿度100%に近い（霧・雲発生層）</li>
+                        <li><strong>気温が上に向かって上昇</strong>: 逆転層（霧・汚染物質の閉じ込め）</li>
+                        <li><strong>気温と露点の差が大きい</strong>: 乾燥した空気（乾燥に有利）</li>
+                    </ul>
                 </div>
             </div>
 
@@ -3124,13 +3148,259 @@
             }
         }
 
-        // 干場選択時に等値線マップと統合海洋予報を表示
+        // エマグラム用Chart.jsインスタンス
+        let emagramChart = null;
+
+        // エマグラム時刻選択肢を生成（APIデータ取得可能時刻: 3時間刻み、7日間）
+        function generateEmagramTimeOptions() {
+            const select = document.getElementById('emagramTimeSelect');
+            const now = new Date();
+            const currentHour = now.getHours();
+
+            let options = '';
+
+            // 7日間分、3時間刻み（0, 3, 6, 9, 12, 15, 18, 21時）
+            // 作業時間帯に最も近い時刻: 6, 9, 12, 15時
+            for (let hoursFromNow = 0; hoursFromNow <= 168; hoursFromNow += 3) {
+                const targetTime = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
+                const targetHour = targetTime.getHours();
+                const targetDay = Math.floor(hoursFromNow / 24);
+
+                // 作業時間帯（6-18時）のデータのみ表示
+                if (targetHour >= 6 && targetHour <= 18) {
+                    const dayLabel = targetDay === 0 ? '今日' : targetDay === 1 ? '明日' : targetDay === 2 ? '明後日' : `${targetDay}日後`;
+                    const timeLabel = `${dayLabel} ${targetHour}時`;
+
+                    options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
+                }
+            }
+
+            select.innerHTML = options;
+        }
+
+        // エマグラムデータを読み込み
+        async function loadEmagramData() {
+            const timeOffset = document.getElementById('emagramTimeSelect').value;
+            const spot = allSpots.find(s => s.id === currentSpotId);
+
+            if (!spot) return;
+
+            try {
+                const response = await fetch(`/api/emagram?lat=${spot.lat}&lon=${spot.lon}&time=${timeOffset}`);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    drawEmagram(result.data);
+                } else {
+                    console.error('Failed to load emagram data:', result.message);
+                }
+            } catch (error) {
+                console.error('Error loading emagram:', error);
+            }
+        }
+
+        // エマグラムを描画
+        function drawEmagram(data) {
+            const ctx = document.getElementById('emagramCanvas').getContext('2d');
+
+            // 既存のチャートを破棄
+            if (emagramChart) {
+                emagramChart.destroy();
+            }
+
+            // 気圧を逆順（上が低気圧）
+            const pressures = [...data.pressure].reverse();
+            const temps = [...data.temperature].reverse();
+            const dewpoints = [...data.dewpoint].reverse();
+
+            emagramChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: pressures,
+                    datasets: [
+                        {
+                            label: '気温 (°C)',
+                            data: temps,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#dc3545',
+                            tension: 0.1
+                        },
+                        {
+                            label: '露点温度 (°C)',
+                            data: dewpoints,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#007bff',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            reverse: true,
+                            title: {
+                                display: true,
+                                text: '気圧 (hPa)',
+                                font: { size: 14, weight: 'bold' }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.1)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '気温 (°C)',
+                                font: { size: 14, weight: 'bold' }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: { size: 12 },
+                                usePointStyle: true
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return `気圧: ${context[0].label} hPa`;
+                                },
+                                label: function(context) {
+                                    const value = context.parsed.x;
+                                    const dataset = context.dataset.label;
+                                    return `${dataset}: ${value.toFixed(1)}°C`;
+                                },
+                                afterLabel: function(context) {
+                                    const index = context.dataIndex;
+                                    const temp = temps[index];
+                                    const dewpoint = dewpoints[index];
+                                    const spread = temp - dewpoint;
+                                    const relHumidity = 100 - (spread * 5); // 簡易計算
+                                    return `T-Td: ${spread.toFixed(1)}°C (RH≈${Math.max(0, relHumidity).toFixed(0)}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 解析情報を追加
+            updateEmagramAnalysis(data);
+        }
+
+        // エマグラム解析情報を更新
+        function updateEmagramAnalysis(data) {
+            const infoDiv = document.getElementById('emagramInfo');
+
+            // 逆転層の検出
+            let inversionLayers = [];
+            for (let i = 0; i < data.temperature.length - 1; i++) {
+                if (data.temperature[i+1] > data.temperature[i]) {
+                    inversionLayers.push({
+                        pressure: data.pressure[i],
+                        height: data.height[i],
+                        strength: data.temperature[i+1] - data.temperature[i]
+                    });
+                }
+            }
+
+            // 雲底高度の推定（露点差が2℃以下の最低層）
+            let cloudBase = null;
+            for (let i = data.temperature.length - 1; i >= 0; i--) {
+                const spread = data.temperature[i] - data.dewpoint[i];
+                if (spread <= 2.0) {
+                    cloudBase = {
+                        pressure: data.pressure[i],
+                        height: data.height[i]
+                    };
+                    break;
+                }
+            }
+
+            // 850hPaの湿度（霧発生の目安）
+            const idx850 = data.pressure.indexOf(850);
+            let humidity850 = null;
+            if (idx850 >= 0) {
+                const spread850 = data.temperature[idx850] - data.dewpoint[idx850];
+                humidity850 = 100 - (spread850 * 5); // 簡易計算
+            }
+
+            // 解析結果を表示
+            let analysisHTML = `
+                <div style="margin-bottom: 8px;">
+                    <strong>📌 読み方:</strong>
+                </div>
+                <ul style="margin: 5px 0; padding-left: 20px; line-height: 1.8;">
+                    <li><span style="color: #dc3545; font-weight: bold;">赤線</span>: 気温（右に高温）</li>
+                    <li><span style="color: #007bff; font-weight: bold;">青線</span>: 露点温度（気温に近いほど湿潤）</li>
+                    <li><strong>気温と露点が接近</strong>: 湿度100%に近い（霧・雲発生層）</li>
+                    <li><strong>気温が上に向かって上昇</strong>: 逆転層（霧・汚染物質の閉じ込め）</li>
+                    <li><strong>気温と露点の差が大きい</strong>: 乾燥した空気（乾燥に有利）</li>
+                </ul>
+
+                <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 3px;">
+                    <strong>🔍 自動解析結果:</strong>
+                    <ul style="margin: 8px 0; padding-left: 20px;">
+            `;
+
+            if (inversionLayers.length > 0) {
+                analysisHTML += `<li><strong>逆転層:</strong> ${inversionLayers.length}層検出`;
+                inversionLayers.forEach(inv => {
+                    analysisHTML += ` (${inv.pressure}hPa付近 +${inv.strength.toFixed(1)}°C)`;
+                });
+                analysisHTML += ` ⚠️ 霧の持続・発達に注意</li>`;
+            } else {
+                analysisHTML += `<li><strong>逆転層:</strong> なし ✓ 大気混合良好</li>`;
+            }
+
+            if (cloudBase) {
+                analysisHTML += `<li><strong>推定雲底:</strong> ${(cloudBase.height/1000).toFixed(1)}km (${cloudBase.pressure}hPa) 🌫️</li>`;
+            } else {
+                analysisHTML += `<li><strong>推定雲底:</strong> なし（晴天） ☀️</li>`;
+            }
+
+            if (humidity850 !== null) {
+                const fogRisk = humidity850 >= 95 ? '⚠️ 高' : humidity850 >= 90 ? '△ 中' : '✓ 低';
+                analysisHTML += `<li><strong>850hPa湿度:</strong> ${humidity850.toFixed(0)}% (霧リスク: ${fogRisk})</li>`;
+            }
+
+            analysisHTML += `
+                    </ul>
+                </div>
+            `;
+
+            infoDiv.innerHTML = analysisHTML;
+        }
+
+        // 干場選択時にエマグラムと等値線マップを表示
         const originalSelectSpot = selectSpot;
         selectSpot = function(spotId) {
             originalSelectSpot(spotId);
+            currentSpotId = spotId;
 
-            // 統合海洋予報セクションを表示（未実装のため一時無効化）
-            // loadOceanIntegratedForecast();
+            // エマグラムセクションを表示
+            document.getElementById('emagramSection').style.display = 'block';
+
+            // エマグラム時刻選択肢を生成
+            generateEmagramTimeOptions();
+
+            // エマグラムデータを読み込み
+            loadEmagramData();
 
             // 等値線マップセクションを表示
             document.getElementById('contourMapSection').style.display = 'block';
@@ -3384,7 +3654,5 @@
         window.updateContourDisplay = updateContourDisplay;
     </script>
 
-    <!-- 統合海洋予報JavaScript（未実装のため一時無効化） -->
-    <!-- <script src="/ocean_forecast_integration.js"></script> -->
 </body>
 </html>
