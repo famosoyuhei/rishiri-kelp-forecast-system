@@ -307,6 +307,28 @@
             </div>
         </div>
 
+        <!-- 専門家向け: 等値線解析 -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-header">
+                <div class="card-icon" style="background: #8e44ad;">🌪️</div>
+                <div class="card-title">高度気象解析 - 等値線マップ</div>
+            </div>
+            <div id="contourAnalysis">
+                <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button class="action-button" onclick="loadContourMap('temperature')">🌡️ 等温線</button>
+                    <button class="action-button" onclick="loadContourMap('humidity')">💧 等湿線</button>
+                    <button class="action-button" onclick="loadContourMap('pressure')">📊 等圧線</button>
+                    <button class="action-button" onclick="loadContourMap('wind')">💨 風向・風速場</button>
+                    <button class="action-button" onclick="loadContourMap('vorticity')">🌀 渦度場 (500hPa)</button>
+                    <button class="action-button" onclick="loadContourMap('omega')">⬇️ 鉛直流 (700hPa)</button>
+                </div>
+                <div id="contourMapDisplay" style="background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center; min-height: 400px;">
+                    <p style="color: #999;">上のボタンから表示する解析マップを選択してください</p>
+                </div>
+                <div id="contourMetadata" style="margin-top: 15px; font-size: 0.9rem; color: #666;"></div>
+            </div>
+        </div>
+
         <!-- 最近のアラート -->
         <div class="card">
             <div class="card-header">
@@ -697,6 +719,56 @@
         // システム設定
         function systemSettings() {
             alert('システム設定機能は開発中です');
+        }
+
+        // 等値線マップ読み込み (仕様書 lines 520-526, 614-616)
+        async function loadContourMap(mapType) {
+            const displayDiv = document.getElementById('contourMapDisplay');
+            const metadataDiv = document.getElementById('contourMetadata');
+
+            displayDiv.innerHTML = '<p style="color: #666;">読み込み中...</p>';
+            metadataDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(`/api/analysis/contours?type=${mapType}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let html = '<div style="max-width: 100%; overflow: auto;">';
+
+                    if (data.visualization_url) {
+                        // 画像形式の場合
+                        html += `<img src="${data.visualization_url}" alt="${data.map_type}解析図" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">`;
+                    } else if (data.contour_data) {
+                        // データが返された場合（簡易表示）
+                        html += '<div style="text-align: left; padding: 20px; background: white; border-radius: 8px;">';
+                        html += `<h3 style="margin-bottom: 15px;">${data.map_type}解析データ</h3>`;
+                        html += `<pre style="background: #f8f9fa; padding: 15px; border-radius: 5px; overflow: auto; max-height: 400px;">${JSON.stringify(data.contour_data, null, 2)}</pre>`;
+                        html += '</div>';
+                    } else {
+                        html += '<p style="color: #999;">解析データを取得できませんでした</p>';
+                    }
+
+                    html += '</div>';
+                    displayDiv.innerHTML = html;
+
+                    // メタデータ表示
+                    if (data.analysis_time || data.methodology) {
+                        let metadata = '<div style="padding: 10px; background: #fff3cd; border-radius: 5px;">';
+                        metadata += '<strong>解析情報:</strong><br>';
+                        if (data.analysis_time) metadata += `解析時刻: ${data.analysis_time}<br>`;
+                        if (data.grid_resolution) metadata += `格子解像度: ${data.grid_resolution}<br>`;
+                        if (data.methodology) metadata += `手法: ${data.methodology}`;
+                        metadata += '</div>';
+                        metadataDiv.innerHTML = metadata;
+                    }
+                } else {
+                    displayDiv.innerHTML = `<p style="color: #e74c3c;">エラー: ${data.message}</p>`;
+                }
+            } catch (error) {
+                displayDiv.innerHTML = `<p style="color: #e74c3c;">読み込みエラー: ${error.message}</p>`;
+                console.error('等値線マップ読み込みエラー:', error);
+            }
         }
 
         // ページロード時の初期化

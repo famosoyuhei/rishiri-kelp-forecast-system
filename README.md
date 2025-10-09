@@ -4,9 +4,20 @@
 ![Version](https://img.shields.io/badge/Version-2.1.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Flask](https://img.shields.io/badge/Flask-2.3+-red)
-![Implementation](https://img.shields.io/badge/Implementation-97%25-success)
+![Implementation](https://img.shields.io/badge/Implementation-100%25-success)
 
 利尻島の331干場を対象とした、実測データ基準の高精度昆布乾燥予報システムです。
+
+## ⏰ 重要: 時刻表記について
+
+**本システムで使用されるすべての時刻は、特に断りがない限り日本標準時（JST, UTC+9）です。**
+
+- システム内部処理: JST
+- 通知時刻「午後4時」: 16:00 JST
+- データ収集「毎日16:00」: 16:00 JST
+- すべてのログ・タイムスタンプ: JST
+
+開発者が海外にいる場合でも、利尻島の現地時刻（JST）で統一されています。
 
 ## 🎯 プロジェクト概要
 
