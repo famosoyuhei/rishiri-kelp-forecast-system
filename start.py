@@ -1294,6 +1294,51 @@ def get_emagram_data():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/forecast_calibration')
+def get_forecast_calibration():
+    """
+    予報補正情報を取得（等値線解析の信頼度）
+
+    Returns:
+        weights: 500hPa渦度と700hPa鉛直流の信頼度（0-1）
+    """
+    try:
+        import os
+        import json
+
+        # ERA5等値線相関データを読み込み
+        correlation_file = 'era5_contour_correlation_results.json'
+
+        if os.path.exists(correlation_file):
+            with open(correlation_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 相関係数から信頼度を計算（絶対値を0-1にマッピング）
+            correlations = data.get('correlations', {})
+            vorticity_corr = abs(correlations.get('cos_angle_vs_vorticity_500hPa_spatial', 0))
+            omega_corr = abs(correlations.get('cos_angle_vs_omega_700hPa', 0))
+
+            # 信頼度スコア: 相関が0.3以上で有効、0.5以上で高信頼
+            vorticity_weight = min(1.0, vorticity_corr * 2.0)  # 0.5で満点
+            omega_weight = min(1.0, omega_corr * 2.0)
+
+        else:
+            # デフォルト値（中程度の信頼度）
+            vorticity_weight = 0.5
+            omega_weight = 0.5
+
+        return jsonify({
+            'status': 'success',
+            'weights': {
+                'vorticity_500hPa': round(vorticity_weight, 3),
+                'omega_700hPa': round(omega_weight, 3)
+            },
+            'source': 'era5_contour_correlation_results.json' if os.path.exists(correlation_file) else 'default'
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/validation/accuracy')
 def get_forecast_accuracy():
     """
