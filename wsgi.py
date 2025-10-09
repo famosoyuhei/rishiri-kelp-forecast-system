@@ -2,7 +2,7 @@
 WSGI entry point for Render deployment
 """
 import os
-from konbu_flask_final import app
+from start import app
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
