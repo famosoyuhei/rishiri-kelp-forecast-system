@@ -3181,7 +3181,7 @@
         // エマグラムデータを読み込み
         async function loadEmagramData() {
             const timeOffset = document.getElementById('emagramTimeSelect').value;
-            const spot = allSpots.find(s => s.id === currentSpotId);
+            const spot = hoshibaSpots.find(s => s.id === currentSpotId);
 
             if (!spot) return;
 
