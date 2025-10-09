@@ -3151,7 +3151,7 @@
         // エマグラム用Chart.jsインスタンス
         let emagramChart = null;
 
-        // エマグラム時刻選択肢を生成（APIデータ取得可能時刻: 3時間刻み、7日間）
+        // エマグラム時刻選択肢を生成（固定時刻: 各日の6, 9, 12, 15, 18時JST）
         function generateEmagramTimeOptions() {
             const select = document.getElementById('emagramTimeSelect');
             const now = new Date();
@@ -3159,20 +3159,28 @@
 
             let options = '';
 
-            // 7日間分、3時間刻み（0, 3, 6, 9, 12, 15, 18, 21時）
-            // 作業時間帯に最も近い時刻: 6, 9, 12, 15時
-            for (let hoursFromNow = 0; hoursFromNow <= 168; hoursFromNow += 3) {
-                const targetTime = new Date(now.getTime() + hoursFromNow * 60 * 60 * 1000);
-                const targetHour = targetTime.getHours();
-                const targetDay = Math.floor(hoursFromNow / 24);
+            // 作業時間帯の固定時刻（JST）
+            const workHours = [6, 9, 12, 15, 18];
 
-                // 作業時間帯（6-18時）のデータのみ表示
-                if (targetHour >= 6 && targetHour <= 18) {
-                    const dayLabel = targetDay === 0 ? '今日' : targetDay === 1 ? '明日' : targetDay === 2 ? '明後日' : `${targetDay}日後`;
-                    const timeLabel = `${dayLabel} ${targetHour}時`;
+            // 7日間分
+            for (let day = 0; day < 7; day++) {
+                const dayLabel = day === 0 ? '今日' : day === 1 ? '明日' : day === 2 ? '明後日' : `${day}日後`;
 
-                    options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
-                }
+                workHours.forEach(hour => {
+                    // 今日の場合、過去の時刻はスキップ
+                    if (day === 0 && hour <= currentHour) {
+                        return;
+                    }
+
+                    // 現在時刻からの経過時間を計算
+                    let hoursFromNow = (day * 24) + (hour - currentHour);
+
+                    // 168時間（7日間）以内
+                    if (hoursFromNow >= 0 && hoursFromNow <= 168) {
+                        const timeLabel = `${dayLabel} ${hour}時`;
+                        options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
+                    }
+                });
             }
 
             select.innerHTML = options;
