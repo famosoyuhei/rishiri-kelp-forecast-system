@@ -3216,19 +3216,22 @@
                 emagramChart.destroy();
             }
 
-            // 気圧を逆順（上が低気圧）
+            // 気圧を逆順（左が低気圧）
             const pressures = [...data.pressure].reverse();
             const temps = [...data.temperature].reverse();
             const dewpoints = [...data.dewpoint].reverse();
 
+            // 気圧と気温のペアを作成（scatter plotとして描画）
+            const tempPoints = pressures.map((p, i) => ({ x: p, y: temps[i] }));
+            const dewpointPoints = pressures.map((p, i) => ({ x: p, y: dewpoints[i] }));
+
             emagramChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: pressures,
                     datasets: [
                         {
                             label: '気温 (°C)',
-                            data: temps,
+                            data: tempPoints,
                             borderColor: '#dc3545',
                             backgroundColor: 'rgba(220, 53, 69, 0.1)',
                             borderWidth: 3,
@@ -3238,7 +3241,7 @@
                         },
                         {
                             label: '露点温度 (°C)',
-                            data: dewpoints,
+                            data: dewpointPoints,
                             borderColor: '#007bff',
                             backgroundColor: 'rgba(0, 123, 255, 0.1)',
                             borderWidth: 3,
@@ -3252,7 +3255,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        y: {
+                        x: {
                             reverse: true,
                             title: {
                                 display: true,
@@ -3263,7 +3266,7 @@
                                 color: 'rgba(0, 0, 0, 0.1)'
                             }
                         },
-                        x: {
+                        y: {
                             title: {
                                 display: true,
                                 text: '気温 (°C)',
@@ -3286,10 +3289,10 @@
                         tooltip: {
                             callbacks: {
                                 title: function(context) {
-                                    return `気圧: ${context[0].label} hPa`;
+                                    return `気圧: ${context[0].parsed.x} hPa`;
                                 },
                                 label: function(context) {
-                                    const value = context.parsed.x;
+                                    const value = context.parsed.y;
                                     const dataset = context.dataset.label;
                                     return `${dataset}: ${value.toFixed(1)}°C`;
                                 },
