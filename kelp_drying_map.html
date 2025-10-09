@@ -645,6 +645,9 @@
     <div class="header">
         <h1>🌊 利尻島昆布干場予報システム</h1>
         <p>干場を選択して7日間の乾燥適性予報を確認できます</p>
+        <div id="connectionStatus" style="margin-top: 10px; padding: 8px 15px; border-radius: 20px; display: inline-block; font-size: 0.9rem; font-weight: 500;">
+            <span id="statusIcon">🌐</span> <span id="statusText">オンライン</span>
+        </div>
     </div>
 
     <div class="instructions">
@@ -669,6 +672,62 @@
         </div>
     </div>
 
+    <div class="notification-controls" style="background: white; padding: 20px; margin: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+        <h4>🔔 通知設定</h4>
+        <div style="margin: 15px 0;">
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="notificationEnabled" onchange="toggleNotifications()" style="margin-right: 10px; width: 20px; height: 20px;">
+                <span>午後4時に予報通知を受け取る</span>
+            </label>
+        </div>
+
+        <div id="notificationSettings" style="display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">
+                お気に入り干場の明日の予報を毎日午後4時に通知します
+            </p>
+
+            <div style="margin: 15px 0;">
+                <h5 style="font-size: 0.95rem; margin-bottom: 10px;">通知対象干場</h5>
+                <div id="notificationSpotsList" style="font-size: 0.85rem; color: #555;">
+                    お気に入りに干場を追加してください
+                </div>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <h5 style="font-size: 0.95rem; margin-bottom: 10px;">🚢 沖止め日設定</h5>
+                <p style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">昆布漁が休みの日を設定すると、その前日は通知されません</p>
+                <input type="date" id="offDayDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%;">
+                <button onclick="addOffDay()" style="margin-top: 8px; padding: 8px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
+                    沖止め日を追加
+                </button>
+                <div id="offDaysList" style="margin-top: 10px; font-size: 0.85rem;">
+                </div>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <h5 style="font-size: 0.95rem; margin-bottom: 10px;">📅 漁期設定</h5>
+                <div style="margin-bottom: 8px;">
+                    <label style="font-size: 0.85rem; color: #666;">開始日:</label>
+                    <input type="date" id="seasonStartDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%; margin-top: 5px;">
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label style="font-size: 0.85rem; color: #666;">終了日:</label>
+                    <input type="date" id="seasonEndDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%; margin-top: 5px;">
+                </div>
+                <button onclick="saveSeasonDates()" style="margin-top: 8px; padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
+                    漁期を保存
+                </button>
+                <p style="font-size: 0.75rem; color: #999; margin-top: 8px;">※ 6月～9月が推奨です</p>
+            </div>
+
+            <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px;">
+                <p style="font-size: 0.8rem; color: #856404; margin: 0;">
+                    ⚠️ ブラウザの通知許可が必要です。初回は許可ダイアログが表示されます。
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div class="spot-management-controls">
         <h4>📍 干場管理</h4>
         <button id="addSpotBtn" class="management-btn add" onclick="enableAddSpotMode()">➕ 新しい干場を追加</button>
@@ -677,38 +736,102 @@
         </p>
     </div>
 
-<div class="filter-controls">
-        <h4>📍 エリア絞り込み</h4>
-
-        <div class="filter-breadcrumb" id="filterBreadcrumb">
-            <span class="breadcrumb-item" onclick="resetFilters()">全エリア</span>
+<!-- サイドバーのタブナビゲーション -->
+    <div class="sidebar-tabs" style="background: white; margin: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow: hidden;">
+        <div class="sidebar-tab-header" style="display: flex; border-bottom: 2px solid #e9ecef;">
+            <button class="sidebar-tab-btn active" onclick="switchSidebarTab('filter')" data-tab="filter" style="flex: 1; padding: 15px; background: white; border: none; border-bottom: 3px solid #667eea; cursor: pointer; font-weight: 600; color: #667eea; transition: all 0.3s;">
+                📍 エリア絞込
+            </button>
+            <button class="sidebar-tab-btn" onclick="switchSidebarTab('contour')" data-tab="contour" style="flex: 1; padding: 15px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s;">
+                🌪️ 等値線解析
+            </button>
         </div>
 
-        <div class="filter-section">
-            <h4>町を選択</h4>
-            <select id="townSelect" class="filter-select" onchange="filterByTown()">
-                <option value="">-- 町を選択してください --</option>
-                <option value="利尻富士町">利尻富士町</option>
-                <option value="利尻町">利尻町</option>
-            </select>
+        <div class="sidebar-tab-content active" id="filterTabContent" style="padding: 20px;">
+            <div class="filter-breadcrumb" id="filterBreadcrumb">
+                <span class="breadcrumb-item" onclick="resetFilters()">全エリア</span>
+            </div>
+
+            <div class="filter-section">
+                <h4>町を選択</h4>
+                <select id="townSelect" class="filter-select" onchange="filterByTown()">
+                    <option value="">-- 町を選択してください --</option>
+                    <option value="利尻富士町">利尻富士町</option>
+                    <option value="利尻町">利尻町</option>
+                </select>
+            </div>
+
+            <div class="filter-section" id="districtSection" style="display: none;">
+                <h4>地区を選択</h4>
+                <select id="districtSelect" class="filter-select" onchange="filterByDistrict()">
+                    <option value="">-- 地区を選択してください --</option>
+                </select>
+            </div>
+
+            <div class="filter-section" id="burakuSection" style="display: none;">
+                <h4>部落を選択</h4>
+                <select id="burakuSelect" class="filter-select" onchange="filterByBuraku()">
+                    <option value="">-- 部落を選択してください --</option>
+                </select>
+            </div>
+
+            <div class="filter-stats" id="filterStats">
+                表示中: 331箇所の干場
+            </div>
         </div>
 
-        <div class="filter-section" id="districtSection" style="display: none;">
-            <h4>地区を選択</h4>
-            <select id="districtSelect" class="filter-select" onchange="filterByDistrict()">
-                <option value="">-- 地区を選択してください --</option>
-            </select>
-        </div>
+        <div class="sidebar-tab-content" id="contourTabContent" style="padding: 20px; display: none;">
+            <h4 style="margin-bottom: 15px; color: #2c3e50;">🌪️ 島内全域気象解析</h4>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 20px;">
+                利尻島全体の気象状況を等値線マップで概観できます
+            </p>
 
-        <div class="filter-section" id="burakuSection" style="display: none;">
-            <h4>部落を選択</h4>
-            <select id="burakuSelect" class="filter-select" onchange="filterByBuraku()">
-                <option value="">-- 部落を選択してください --</option>
-            </select>
-        </div>
+            <div class="filter-section">
+                <h4>解析カテゴリー</h4>
+                <select id="contourCategory" class="filter-select" onchange="updateContourTimeOptions()">
+                    <option value="">-- カテゴリーを選択 --</option>
+                    <optgroup label="地上レベル（1時間刻み）">
+                        <option value="temperature">🌡️ 等温線（気温分布）</option>
+                        <option value="humidity">💧 等湿線（湿度分布）</option>
+                        <option value="pressure">📊 等圧線（気圧分布）</option>
+                        <option value="wind">💨 風向・風速場</option>
+                        <option value="precipitation">🌧️ 降水量分布</option>
+                    </optgroup>
+                    <optgroup label="海域レベル（1時間刻み）">
+                        <option value="wave_height">🌊 有義波高分布</option>
+                        <option value="wave_direction_period">🌊 波向・波周期場</option>
+                    </optgroup>
+                    <optgroup label="高層レベル（3時間刻み）">
+                        <option value="vorticity_500hpa">🌀 渦度場（500hPa）</option>
+                        <option value="omega_700hpa">⬇️ 鉛直流（700hPa）</option>
+                        <option value="theta_e_850hpa">🌡️ 相当温位（850hPa）</option>
+                    </optgroup>
+                    <optgroup label="超高層レベル（長期予測・3時間刻み）">
+                        <option value="jet_stream_300hpa">✈️ ジェット気流（300hPa）</option>
+                        <option value="height_anomaly_200hpa">📈 高度偏差（200hPa）</option>
+                    </optgroup>
+                </select>
+            </div>
 
-        <div class="filter-stats" id="filterStats">
-            表示中: 331箇所の干場
+            <div class="filter-section">
+                <h4>解析時刻（JST）</h4>
+                <select id="contourTime" class="filter-select" onchange="updateContourDisplay()">
+                    <!-- 動的に生成される -->
+                </select>
+            </div>
+
+            <button onclick="loadContourAnalysis()" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: all 0.3s;">
+                🔍 解析図を表示
+            </button>
+
+            <div id="contourMapDisplay" style="margin-top: 20px; background: #f8f9fa; border-radius: 8px; padding: 15px; min-height: 200px; display: none;">
+                <h5 style="margin-bottom: 10px; color: #667eea;">解析結果</h5>
+                <div id="contourMapImage" style="text-align: center;">
+                    <p style="color: #999;">解析図を読み込み中...</p>
+                </div>
+                <div id="contourMetadata" style="margin-top: 15px; font-size: 0.8rem; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2296,6 +2419,341 @@
         window.filterByDistrict = filterByDistrict;
         window.filterByBuraku = filterByBuraku;
 
+        // ========================================
+        // 通知システム (仕様書 lines 335-341)
+        // ========================================
+
+        let notificationData = JSON.parse(localStorage.getItem('hoshibaNotificationData')) || {
+            enabled: false,
+            offDays: [],
+            seasonStart: null,
+            seasonEnd: null
+        };
+
+        // 通知設定の初期化
+        function initializeNotifications() {
+            const checkbox = document.getElementById('notificationEnabled');
+            const settingsDiv = document.getElementById('notificationSettings');
+
+            // 保存済み設定を復元
+            checkbox.checked = notificationData.enabled;
+            settingsDiv.style.display = notificationData.enabled ? 'block' : 'none';
+
+            if (notificationData.seasonStart) {
+                document.getElementById('seasonStartDate').value = notificationData.seasonStart;
+            }
+            if (notificationData.seasonEnd) {
+                document.getElementById('seasonEndDate').value = notificationData.seasonEnd;
+            }
+
+            updateNotificationSpotsList();
+            updateOffDaysList();
+
+            // PWA通知権限リクエスト
+            if (notificationData.enabled && 'Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log('通知権限が許可されました');
+                    }
+                });
+            }
+        }
+
+        function toggleNotifications() {
+            const checkbox = document.getElementById('notificationEnabled');
+            const settingsDiv = document.getElementById('notificationSettings');
+
+            notificationData.enabled = checkbox.checked;
+            settingsDiv.style.display = checkbox.checked ? 'block' : 'none';
+
+            // PWA通知権限リクエスト
+            if (checkbox.checked && 'Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            alert('通知が有効になりました。毎日午後4時にお気に入り干場の予報をお知らせします。');
+                            scheduleNextNotification();
+                        } else {
+                            alert('通知を有効にするには、ブラウザの通知許可が必要です。');
+                            checkbox.checked = false;
+                            notificationData.enabled = false;
+                            settingsDiv.style.display = 'none';
+                        }
+                    });
+                } else if (Notification.permission === 'granted') {
+                    scheduleNextNotification();
+                }
+            }
+
+            saveNotificationData();
+            updateNotificationSpotsList();
+        }
+
+        function updateNotificationSpotsList() {
+            const listDiv = document.getElementById('notificationSpotsList');
+
+            if (favorites.length === 0) {
+                listDiv.innerHTML = '<p style="color: #999;">お気に入りに干場を追加してください</p>';
+            } else {
+                const spotNames = favorites.map(index => hoshibaSpots[index].name).join(', ');
+                listDiv.innerHTML = `<p>通知対象: ${favorites.length}箇所</p><p style="color: #666; font-size: 0.8rem;">${spotNames}</p>`;
+            }
+        }
+
+        function addOffDay() {
+            const dateInput = document.getElementById('offDayDate');
+            const date = dateInput.value;
+
+            if (!date) {
+                alert('日付を選択してください');
+                return;
+            }
+
+            if (!notificationData.offDays.includes(date)) {
+                notificationData.offDays.push(date);
+                notificationData.offDays.sort();
+                saveNotificationData();
+                updateOffDaysList();
+                dateInput.value = '';
+            } else {
+                alert('この日付は既に登録されています');
+            }
+        }
+
+        function removeOffDay(date) {
+            notificationData.offDays = notificationData.offDays.filter(d => d !== date);
+            saveNotificationData();
+            updateOffDaysList();
+        }
+
+        function updateOffDaysList() {
+            const listDiv = document.getElementById('offDaysList');
+
+            if (notificationData.offDays.length === 0) {
+                listDiv.innerHTML = '<p style="color: #999;">沖止め日は設定されていません</p>';
+            } else {
+                let html = '<div style="display: flex; flex-direction: column; gap: 5px;">';
+                notificationData.offDays.forEach(date => {
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 5px; background: white; border-radius: 3px;">
+                        <span>${date}</span>
+                        <button onclick="removeOffDay('${date}')" style="padding: 3px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8rem;">削除</button>
+                    </div>`;
+                });
+                html += '</div>';
+                listDiv.innerHTML = html;
+            }
+        }
+
+        function saveSeasonDates() {
+            const startDate = document.getElementById('seasonStartDate').value;
+            const endDate = document.getElementById('seasonEndDate').value;
+
+            if (!startDate || !endDate) {
+                alert('開始日と終了日の両方を設定してください');
+                return;
+            }
+
+            if (startDate > endDate) {
+                alert('開始日は終了日より前である必要があります');
+                return;
+            }
+
+            notificationData.seasonStart = startDate;
+            notificationData.seasonEnd = endDate;
+            saveNotificationData();
+            alert('漁期が保存されました');
+        }
+
+        function saveNotificationData() {
+            localStorage.setItem('hoshibaNotificationData', JSON.stringify(notificationData));
+        }
+
+        // 午後4時の通知スケジューリング
+        function scheduleNextNotification() {
+            if (!notificationData.enabled) return;
+
+            const now = new Date();
+            const today4PM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0);
+
+            // 今日の4時が過ぎていれば明日の4時に設定
+            if (now > today4PM) {
+                today4PM.setDate(today4PM.getDate() + 1);
+            }
+
+            const timeUntilNotification = today4PM - now;
+
+            setTimeout(() => {
+                checkAndSendNotification();
+                // 次回の通知をスケジュール（24時間後）
+                scheduleNextNotification();
+            }, timeUntilNotification);
+
+            console.log(`次回通知予定: ${today4PM.toLocaleString()}`);
+        }
+
+        function checkAndSendNotification() {
+            // 漁期チェック
+            const today = new Date().toISOString().split('T')[0];
+
+            if (notificationData.seasonStart && today < notificationData.seasonStart) {
+                console.log('漁期前のため通知をスキップ');
+                return;
+            }
+
+            if (notificationData.seasonEnd && today > notificationData.seasonEnd) {
+                console.log('漁期後のため通知をスキップ');
+                return;
+            }
+
+            // 沖止め日チェック（明日が沖止めなら今日は通知しない）
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+            if (notificationData.offDays.includes(tomorrowStr)) {
+                console.log('明日は沖止めのため通知をスキップ');
+                return;
+            }
+
+            // お気に入り干場の予報を取得して通知
+            if (favorites.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
+                sendForecastNotifications();
+            }
+        }
+
+        async function sendForecastNotifications() {
+            for (const favoriteIndex of favorites) {
+                const spot = hoshibaSpots[favoriteIndex];
+
+                try {
+                    const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}&name=${encodeURIComponent(spot.name)}`);
+                    const data = await response.json();
+
+                    if (data.forecast && data.forecast.length > 0) {
+                        const tomorrow = data.forecast[0]; // 1日後の予報
+
+                        const title = `🌊 ${spot.name} 明日の予報`;
+                        const body = `降水: ${tomorrow.precipitation}mm, 湿度: ${tomorrow.min_humidity}%, 風速: ${tomorrow.avg_wind}m/s\n判定: ${tomorrow.recommendation}`;
+
+                        new Notification(title, {
+                            body: body,
+                            icon: '/static/icon-192x192.png',
+                            badge: '/static/badge-72x72.png',
+                            tag: `forecast-${spot.name}`,
+                            requireInteraction: false
+                        });
+                    }
+                } catch (error) {
+                    console.error(`通知送信エラー (${spot.name}):`, error);
+                }
+
+                // 通知間隔を空ける（連続送信を避ける）
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        window.toggleNotifications = toggleNotifications;
+        window.addOffDay = addOffDay;
+        window.removeOffDay = removeOffDay;
+        window.saveSeasonDates = saveSeasonDates;
+
+        // ========================================
+        // オフライン同期機能 (仕様書 lines 41-44)
+        // ========================================
+
+        let pendingSyncData = JSON.parse(localStorage.getItem('pendingSyncData')) || [];
+
+        function updateConnectionStatus() {
+            const statusDiv = document.getElementById('connectionStatus');
+            const iconSpan = document.getElementById('statusIcon');
+            const textSpan = document.getElementById('statusText');
+
+            if (navigator.onLine) {
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                iconSpan.textContent = '🌐';
+                textSpan.textContent = 'オンライン';
+
+                // オンライン復帰時に保留中データを同期
+                if (pendingSyncData.length > 0) {
+                    syncPendingData();
+                }
+            } else {
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                iconSpan.textContent = '📴';
+                textSpan.textContent = `オフライン (${pendingSyncData.length}件保存中)`;
+            }
+        }
+
+        async function syncPendingData() {
+            if (pendingSyncData.length === 0) return;
+
+            const textSpan = document.getElementById('statusText');
+            textSpan.textContent = `同期中... (${pendingSyncData.length}件)`;
+
+            let successCount = 0;
+            let failedData = [];
+
+            for (const dataItem of pendingSyncData) {
+                try {
+                    const response = await fetch(dataItem.endpoint, {
+                        method: dataItem.method || 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(dataItem.data)
+                    });
+
+                    if (response.ok) {
+                        successCount++;
+                        console.log(`同期成功: ${dataItem.endpoint}`);
+                    } else {
+                        failedData.push(dataItem);
+                        console.error(`同期失敗: ${dataItem.endpoint}`, response.status);
+                    }
+                } catch (error) {
+                    failedData.push(dataItem);
+                    console.error(`同期エラー: ${dataItem.endpoint}`, error);
+                }
+            }
+
+            // 同期結果を保存
+            pendingSyncData = failedData;
+            localStorage.setItem('pendingSyncData', JSON.stringify(pendingSyncData));
+
+            // ユーザーに通知
+            if (successCount > 0) {
+                alert(`${successCount}件のデータを同期しました`);
+            }
+
+            if (failedData.length > 0) {
+                alert(`${failedData.length}件のデータ同期に失敗しました。後で再試行します。`);
+            }
+
+            updateConnectionStatus();
+        }
+
+        function addPendingSyncData(endpoint, data, method = 'POST') {
+            pendingSyncData.push({
+                endpoint: endpoint,
+                data: data,
+                method: method,
+                timestamp: new Date().toISOString()
+            });
+            localStorage.setItem('pendingSyncData', JSON.stringify(pendingSyncData));
+            updateConnectionStatus();
+        }
+
+        // オンライン/オフラインイベント監視
+        window.addEventListener('online', () => {
+            console.log('オンラインに復帰しました');
+            updateConnectionStatus();
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('オフラインになりました');
+            updateConnectionStatus();
+        });
+
         // イベントリスナー
         document.addEventListener('DOMContentLoaded', () => {
             // all_spots_array.jsからのデータ読み込み確認
@@ -2315,6 +2773,15 @@
 
             document.getElementById('showFavoritesBtn').addEventListener('click', showFavorites);
             document.getElementById('clearFavoritesBtn').addEventListener('click', clearAllFavorites);
+
+            // 通知システム初期化
+            initializeNotifications();
+            if (notificationData.enabled) {
+                scheduleNextNotification();
+            }
+
+            // オフライン状態初期化
+            updateConnectionStatus();
         });
 
         // フィードバック送信機能
@@ -2662,8 +3129,8 @@
         selectSpot = function(spotId) {
             originalSelectSpot(spotId);
 
-            // 統合海洋予報セクションを表示
-            loadOceanIntegratedForecast();
+            // 統合海洋予報セクションを表示（未実装のため一時無効化）
+            // loadOceanIntegratedForecast();
 
             // 等値線マップセクションを表示
             document.getElementById('contourMapSection').style.display = 'block';
@@ -2677,6 +3144,230 @@
             showContourMap('500hpa');
         };
 
+        // サイドバータブ切り替え機能
+        function switchSidebarTab(tabName) {
+            // すべてのタブボタンとコンテンツを非アクティブ化
+            document.querySelectorAll('.sidebar-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.borderBottomColor = 'transparent';
+                btn.style.color = '#6c757d';
+                btn.style.fontWeight = '500';
+            });
+
+            document.querySelectorAll('.sidebar-tab-content').forEach(content => {
+                content.classList.remove('active');
+                content.style.display = 'none';
+            });
+
+            // 選択されたタブをアクティブ化
+            const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.borderBottomColor = '#667eea';
+                activeBtn.style.color = '#667eea';
+                activeBtn.style.fontWeight = '600';
+            }
+
+            const activeContent = document.getElementById(`${tabName}TabContent`);
+            if (activeContent) {
+                activeContent.classList.add('active');
+                activeContent.style.display = 'block';
+            }
+
+            // 等値線タブに切り替えた時、時刻オプションを初期化
+            if (tabName === 'contour') {
+                updateContourTimeOptions();
+            }
+        }
+
+        // カテゴリーに応じて時刻オプションを動的生成
+        function updateContourTimeOptions() {
+            const category = document.getElementById('contourCategory').value;
+            const timeSelect = document.getElementById('contourTime');
+
+            if (!category) {
+                timeSelect.innerHTML = '<option value="">-- カテゴリーを先に選択 --</option>';
+                return;
+            }
+
+            // 地上レベルか海域レベルか高層レベルかを判定
+            const isSurface = ['temperature', 'humidity', 'pressure', 'wind', 'precipitation'].includes(category);
+            const isMarine = ['wave_height', 'wave_direction_period'].includes(category);
+            const isUpperAir = ['vorticity_500hpa', 'omega_700hpa', 'theta_e_850hpa',
+                                'jet_stream_300hpa', 'height_anomaly_200hpa'].includes(category);
+
+            let options = '';
+
+            if (isSurface || isMarine) {
+                // 地上レベル・海域レベル（漁師向け）：1時間刻み、0-168時間（7日間）
+                options += '<optgroup label="短期詳細（1時間刻み）">';
+                options += '<option value="0">現在</option>';
+                for (let h = 1; h <= 48; h++) {
+                    options += `<option value="${h}">${h}時間後</option>`;
+                }
+                options += '</optgroup>';
+
+                options += '<optgroup label="週間予報（3時間刻み）">';
+                for (let h = 51; h <= 168; h += 3) {
+                    const days = Math.floor(h / 24);
+                    const hours = h % 24;
+                    options += `<option value="${h}">${h}時間後 (${days}日${hours}時間後)</option>`;
+                }
+                options += '</optgroup>';
+            } else if (isUpperAir) {
+                // 高層レベル（専門家向け）：3時間刻み、0-384時間（16日間）
+                options += '<optgroup label="短期予報（3時間刻み）">';
+                options += '<option value="0">現在</option>';
+                for (let h = 3; h <= 72; h += 3) {
+                    options += `<option value="${h}">${h}時間後</option>`;
+                }
+                options += '</optgroup>';
+
+                options += '<optgroup label="週間予報（6時間刻み）">';
+                for (let h = 78; h <= 168; h += 6) {
+                    const days = Math.floor(h / 24);
+                    options += `<option value="${h}">${h}時間後 (${days}日目)</option>`;
+                }
+                options += '</optgroup>';
+
+                options += '<optgroup label="長期傾向（12時間刻み・参考）">';
+                for (let h = 180; h <= 384; h += 12) {
+                    const days = Math.floor(h / 24);
+                    options += `<option value="${h}">${h}時間後 (${days}日目・参考)</option>`;
+                }
+                options += '</optgroup>';
+            }
+
+            timeSelect.innerHTML = options;
+        }
+
+        // 等値線解析マップを読み込み
+        async function loadContourAnalysis() {
+            const category = document.getElementById('contourCategory').value;
+            const timeOffset = document.getElementById('contourTime').value;
+
+            if (!category) {
+                alert('解析カテゴリーを選択してください');
+                return;
+            }
+
+            const displayDiv = document.getElementById('contourMapDisplay');
+            const imageDiv = document.getElementById('contourMapImage');
+            const metadataDiv = document.getElementById('contourMetadata');
+
+            // 表示エリアを表示
+            displayDiv.style.display = 'block';
+            imageDiv.innerHTML = '<p style="color: #999;">解析図を読み込み中...</p>';
+            metadataDiv.innerHTML = '';
+
+            try {
+                // APIリクエスト
+                const response = await fetch(`/api/analysis/contours?type=${category}&time=${timeOffset}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // 画像表示
+                    if (data.visualization_url) {
+                        imageDiv.innerHTML = `
+                            <img src="${data.visualization_url}"
+                                 alt="${data.map_type}解析図"
+                                 style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        `;
+                    } else if (data.contour_data) {
+                        // データのみの場合はテキスト表示
+                        imageDiv.innerHTML = `
+                            <div style="background: white; padding: 15px; border-radius: 8px; text-align: left; max-height: 300px; overflow-y: auto;">
+                                <pre style="margin: 0; font-size: 0.75rem;">${JSON.stringify(data.contour_data, null, 2)}</pre>
+                            </div>
+                        `;
+                    } else {
+                        imageDiv.innerHTML = '<p style="color: #dc3545;">解析データが見つかりませんでした</p>';
+                    }
+
+                    // メタデータ表示
+                    const categoryInfo = {
+                        'temperature': { name: '等温線（気温分布）', level: '地上', interval: '1時間刻み' },
+                        'humidity': { name: '等湿線（湿度分布）', level: '地上', interval: '1時間刻み' },
+                        'pressure': { name: '等圧線（気圧分布）', level: '地上', interval: '1時間刻み' },
+                        'wind': { name: '風向・風速場', level: '地上', interval: '1時間刻み' },
+                        'precipitation': { name: '降水量分布', level: '地上', interval: '1時間刻み' },
+                        'wave_height': { name: '有義波高分布', level: '海面', interval: '1時間刻み' },
+                        'wave_direction_period': { name: '波向・波周期場', level: '海面', interval: '1時間刻み' },
+                        'vorticity_500hpa': { name: '渦度場', level: '500hPa', interval: '3時間刻み' },
+                        'omega_700hpa': { name: '鉛直流', level: '700hPa', interval: '3時間刻み' },
+                        'theta_e_850hpa': { name: '相当温位（湿舌検出）', level: '850hPa', interval: '3時間刻み' },
+                        'jet_stream_300hpa': { name: 'ジェット気流', level: '300hPa', interval: '3時間刻み' },
+                        'height_anomaly_200hpa': { name: '高度偏差（ブロッキング検出）', level: '200hPa', interval: '3時間刻み' }
+                    };
+
+                    const info = categoryInfo[category] || { name: category, level: '不明', interval: '不明' };
+                    const timeOffsetNum = parseInt(timeOffset);
+                    const timeLabel = timeOffsetNum === 0 || timeOffset === 'current' ? '現在' : `${timeOffset}時間後`;
+                    const days = Math.floor(timeOffsetNum / 24);
+                    const hours = timeOffsetNum % 24;
+
+                    // 予報精度の評価
+                    let accuracyNote = '';
+                    if (timeOffsetNum <= 72) {
+                        accuracyNote = '<span style="color: #28a745;">●</span> 高精度（短期予報）';
+                    } else if (timeOffsetNum <= 168) {
+                        accuracyNote = '<span style="color: #ffc107;">●</span> 中精度（週間予報）';
+                    } else {
+                        accuracyNote = '<span style="color: #dc3545;">●</span> 参考程度（長期傾向）';
+                    }
+
+                    metadataDiv.innerHTML = `
+                        <div><strong>解析カテゴリー:</strong> ${info.name}</div>
+                        <div><strong>気圧面:</strong> ${info.level}</div>
+                        <div><strong>時間分解能:</strong> ${info.interval}</div>
+                        <div><strong>解析時刻:</strong> ${timeLabel} ${days > 0 ? `(${days}日${hours}時間後)` : ''} (JST)</div>
+                        <div><strong>予報精度:</strong> ${accuracyNote}</div>
+                        <div><strong>対象エリア:</strong> 利尻島全域</div>
+                        ${data.grid_resolution ? `<div><strong>格子解像度:</strong> ${data.grid_resolution}</div>` : ''}
+                        ${data.interpolation_method ? `<div><strong>補間手法:</strong> ${data.interpolation_method}</div>` : ''}
+                        ${data.data_source ? `<div><strong>データソース:</strong> ${data.data_source}</div>` : ''}
+                        ${data.parameter ? `<div><strong>パラメータ:</strong> ${data.parameter} (${data.unit || ''})</div>` : ''}
+                        ${data.equivalent_potential_temperature ? `<div><strong>相当温位値:</strong> ${data.equivalent_potential_temperature.toFixed(1)} K</div>` : ''}
+                        ${data.jet_intensity ? `<div><strong>ジェット強度:</strong> ${data.jet_intensity}</div>` : ''}
+                        ${data.wind_speed_ms ? `<div><strong>風速:</strong> ${data.wind_speed_ms.toFixed(1)} m/s</div>` : ''}
+                        ${data.height_anomaly !== undefined && data.height_anomaly !== null ? `<div><strong>高度偏差:</strong> ${data.height_anomaly > 0 ? '+' : ''}${data.height_anomaly.toFixed(0)} m</div>` : ''}
+                        ${data.anomaly_category ? `<div><strong>偏差評価:</strong> ${data.anomaly_category}</div>` : ''}
+                        ${data.wave_height !== undefined && data.wave_height !== null ? `<div><strong>有義波高:</strong> ${data.wave_height.toFixed(2)} m</div>` : ''}
+                        ${data.work_safety ? `<div><strong>作業安全度:</strong> ${data.work_safety}</div>` : ''}
+                        ${data.wave_period ? `<div><strong>波周期:</strong> ${data.wave_period.toFixed(1)} 秒</div>` : ''}
+                        ${data.wave_direction ? `<div><strong>波向:</strong> ${data.wave_direction.toFixed(0)}°</div>` : ''}
+                        ${data.swell_condition ? `<div><strong>うねり状態:</strong> ${data.swell_condition}</div>` : ''}
+                        ${data.message ? `<div style="margin-top: 10px; padding: 8px; background: #e7f3ff; border-radius: 5px; color: #004085; font-size: 0.75rem;">💡 ${data.message}</div>` : ''}
+                        ${timeOffsetNum > 168 ? `
+                            <div style="margin-top: 10px; padding: 8px; background: #f8d7da; border-radius: 5px; color: #721c24; font-size: 0.75rem;">
+                                ⚠️ 8日目以降の予報は精度が低下します。長期的な気圧配置パターンの傾向把握にご利用ください。
+                            </div>
+                        ` : ''}
+                    `;
+                } else {
+                    imageDiv.innerHTML = `<p style="color: #dc3545;">エラー: ${data.message || '解析図の読み込みに失敗しました'}</p>`;
+                }
+            } catch (error) {
+                console.error('等値線解析エラー:', error);
+                imageDiv.innerHTML = `<p style="color: #dc3545;">エラー: ${error.message}</p>`;
+            }
+        }
+
+        // カテゴリーや時刻が変更されたときに自動更新（オプション）
+        function updateContourDisplay() {
+            const category = document.getElementById('contourCategory').value;
+            const time = document.getElementById('contourTime').value;
+
+            if (category && time) {
+                // 自動読み込みは行わず、ボタンクリックを促す
+                const displayDiv = document.getElementById('contourMapDisplay');
+                if (displayDiv.style.display === 'block') {
+                    // 既に表示されている場合は自動更新
+                    loadContourAnalysis();
+                }
+            }
+        }
+
         // グローバル関数として公開（popup内で使用するため）
         window.selectSpot = selectSpot;
         window.toggleFavorite = toggleFavorite;
@@ -2688,9 +3379,12 @@
         window.submitRecord = submitRecord;
         window.closeRecordForm = closeRecordForm;
         window.showContourMap = showContourMap;
+        window.switchSidebarTab = switchSidebarTab;
+        window.loadContourAnalysis = loadContourAnalysis;
+        window.updateContourDisplay = updateContourDisplay;
     </script>
 
-    <!-- 統合海洋予報JavaScript -->
-    <script src="/ocean_forecast_integration.js"></script>
+    <!-- 統合海洋予報JavaScript（未実装のため一時無効化） -->
+    <!-- <script src="/ocean_forecast_integration.js"></script> -->
 </body>
 </html>
