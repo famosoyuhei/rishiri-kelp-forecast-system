@@ -3216,14 +3216,14 @@
                 emagramChart.destroy();
             }
 
-            // 気圧を逆順（左が低気圧）
-            const pressures = [...data.pressure].reverse();
-            const temps = [...data.temperature].reverse();
-            const dewpoints = [...data.dewpoint].reverse();
+            // データはそのまま使用（reverseしない）
+            const pressures = data.pressure;
+            const temps = data.temperature;
+            const dewpoints = data.dewpoint;
 
-            // 気圧と気温のペアを作成（scatter plotとして描画）
-            const tempPoints = pressures.map((p, i) => ({ x: p, y: temps[i] }));
-            const dewpointPoints = pressures.map((p, i) => ({ x: p, y: dewpoints[i] }));
+            // 気温と気圧のペアを作成（X軸=気温、Y軸=気圧）
+            const tempPoints = temps.map((t, i) => ({ x: t, y: pressures[i] }));
+            const dewpointPoints = dewpoints.map((d, i) => ({ x: d, y: pressures[i] }));
 
             emagramChart = new Chart(ctx, {
                 type: 'line',
@@ -3256,6 +3256,16 @@
                     maintainAspectRatio: false,
                     scales: {
                         x: {
+                            title: {
+                                display: true,
+                                text: '気温 (°C)',
+                                font: { size: 14, weight: 'bold' }
+                            },
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        y: {
                             reverse: true,
                             title: {
                                 display: true,
@@ -3264,16 +3274,6 @@
                             },
                             grid: {
                                 color: 'rgba(0, 0, 0, 0.1)'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: '気温 (°C)',
-                                font: { size: 14, weight: 'bold' }
-                            },
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)'
                             }
                         }
                     },
@@ -3289,10 +3289,10 @@
                         tooltip: {
                             callbacks: {
                                 title: function(context) {
-                                    return `気圧: ${context[0].parsed.x} hPa`;
+                                    return `気圧: ${context[0].parsed.y} hPa`;
                                 },
                                 label: function(context) {
-                                    const value = context.parsed.y;
+                                    const value = context.parsed.x;
                                     const dataset = context.dataset.label;
                                     return `${dataset}: ${value.toFixed(1)}°C`;
                                 },
