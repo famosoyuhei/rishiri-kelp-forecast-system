@@ -1181,16 +1181,61 @@ def get_contour_analysis():
                     'message': '地上データは最大168時間（7日間）までです'
                 }), 400
 
-            return jsonify({
-                'status': 'success',
-                'map_type': category,
-                'time_offset': time_offset,
-                'level': '地上',
-                'message': '地上レベル等値線は isoline_analysis_engine.py で実装済み',
-                'grid_resolution': '約5km格子',
-                'interpolation_method': 'scipy griddata (cubic)',
-                'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']
-            })
+            # Open-Meteo APIから気象データを取得
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&timezone=Asia/Tokyo&forecast_days=7"
+
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                hourly = data.get('hourly', {})
+
+                if time_offset >= len(hourly.get('time', [])):
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'指定時刻（{time_offset}時間後）のデータが利用できません'
+                    }), 400
+
+                result = {
+                    'status': 'success',
+                    'map_type': category,
+                    'time_offset': time_offset,
+                    'time': hourly['time'][time_offset],
+                    'level': '地上',
+                    'grid_resolution': '約5km格子',
+                    'interpolation_method': 'scipy griddata (cubic)',
+                    'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']
+                }
+
+                if category == 'temperature':
+                    result['value'] = hourly.get('temperature_2m', [None])[time_offset]
+                    result['unit'] = '°C'
+                    result['parameter'] = '気温'
+                elif category == 'humidity':
+                    result['value'] = hourly.get('relative_humidity_2m', [None])[time_offset]
+                    result['unit'] = '%'
+                    result['parameter'] = '相対湿度'
+                elif category == 'pressure':
+                    result['value'] = hourly.get('pressure_msl', [None])[time_offset]
+                    result['unit'] = 'hPa'
+                    result['parameter'] = '海面気圧'
+                elif category == 'wind':
+                    result['wind_speed'] = hourly.get('wind_speed_10m', [None])[time_offset]
+                    result['wind_direction'] = hourly.get('wind_direction_10m', [None])[time_offset]
+                    result['unit'] = 'm/s'
+                    result['parameter'] = '風速・風向'
+                elif category == 'precipitation':
+                    result['value'] = hourly.get('precipitation', [None])[time_offset]
+                    result['unit'] = 'mm'
+                    result['parameter'] = '降水量'
+
+                return jsonify(result)
+
+            except Exception as e:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'データ取得エラー: {str(e)}'
+                }), 500
 
         elif category in ['wave_height', 'wave_direction_period']:
             # 海域レベル（最大168時間=7日間）
