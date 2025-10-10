@@ -12,8 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- 干場データの読み込み -->
-    <script src="all_spots_array.js?v=2.3.1"></script>
-    <script src="rishiri_wind_names.js?v=2.3.1"></script>
+    <script src="all_spots_array.js?v=2.3.2"></script>
+    <script src="rishiri_wind_names.js?v=2.3.2"></script>
 
     <style>
         * {
@@ -217,8 +217,16 @@
             display: none;
         }
 
+        .hourly-table .general-row {
+            display: table-row;
+        }
+
         .hourly-table.show-expert .expert-row {
             display: table-row;
+        }
+
+        .hourly-table.show-expert .general-row {
+            display: none;
         }
 
         /* 旧スタイル（後方互換性のため残す） */
@@ -1932,7 +1940,7 @@
                             </thead>
                             <tbody>
                                 <!-- 一般漁師向け項目 -->
-                                <tr>
+                                <tr class="general-row">
                                     <td class="time-cell">🌡️ 気温(°C)</td>
             `;
 
@@ -1945,7 +1953,7 @@
 
             html += `
                                 </tr>
-                                <tr>
+                                <tr class="general-row">
                                     <td class="time-cell">💧 湿度(%)</td>
             `;
 
@@ -1958,7 +1966,7 @@
 
             html += `
                                 </tr>
-                                <tr>
+                                <tr class="general-row">
                                     <td class="time-cell">💨 風速(m/s)</td>
             `;
 
@@ -1971,7 +1979,7 @@
 
             html += `
                                 </tr>
-                                <tr>
+                                <tr class="general-row">
                                     <td class="time-cell">🌬️ 風向</td>
             `;
 
@@ -1986,7 +1994,7 @@
 
             html += `
                                 </tr>
-                                <tr>
+                                <tr class="general-row">
                                     <td class="time-cell">☀️ 日射(W/m²)</td>
             `;
 
