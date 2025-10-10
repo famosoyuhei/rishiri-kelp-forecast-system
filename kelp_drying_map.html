@@ -12,8 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- 干場データの読み込み -->
-    <script src="all_spots_array.js"></script>
-    <script src="rishiri_wind_names.js"></script>
+    <script src="all_spots_array.js?v=2.3.1"></script>
+    <script src="rishiri_wind_names.js?v=2.3.1"></script>
 
     <style>
         * {
@@ -1755,7 +1755,7 @@
                             </div>
                             <div class="data-item">
                                 <span>風向:</span>
-                                <span>${forecast.daily_summary && forecast.daily_summary.wind_direction ? getRishiriWindDetails(forecast.daily_summary.wind_direction).name + '（' + getRishiriWindDetails(forecast.daily_summary.wind_direction).cardinal + '）' : '--'}</span>
+                                <span>${forecast.daily_summary && forecast.daily_summary.wind_direction ? getRishiriWindDetails(forecast.daily_summary.wind_direction).name + ' (' + getRishiriWindDetails(forecast.daily_summary.wind_direction).cardinal16 + ')' : '--'}</span>
                             </div>
                             <div class="data-item expert-only">
                                 <span>紫外線指数:</span>
@@ -1978,8 +1978,9 @@
             // 風向行
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
-                    const windName = hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).name : '--';
-                    html += `<td title="${hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).description : ''}">${windName}</td>`;
+                    const windDetails = hour.wind_direction ? getRishiriWindDetails(hour.wind_direction) : null;
+                    const windName = windDetails ? `${windDetails.name} (${windDetails.cardinal16})` : '--';
+                    html += `<td title="${windDetails ? windDetails.cardinal : ''}">${windName}</td>`;
                 }
             });
 
@@ -2215,7 +2216,7 @@
                     datasets: [
                         {
                             label: '乾燥適性スコア',
-                            data: forecasts.map(f => f.drying_score),
+                            data: forecasts.map(f => f.daily_summary.drying_score),
                             borderColor: '#667eea',
                             backgroundColor: 'rgba(102, 126, 234, 0.1)',
                             fill: true,
@@ -2223,7 +2224,7 @@
                         },
                         {
                             label: '最高気温 (°C)',
-                            data: forecasts.map(f => f.temperature_max),
+                            data: forecasts.map(f => f.daily_summary.temperature_max),
                             borderColor: '#ff6b6b',
                             backgroundColor: 'rgba(255, 107, 107, 0.1)',
                             fill: false,
