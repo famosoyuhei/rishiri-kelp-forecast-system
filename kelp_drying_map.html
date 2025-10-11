@@ -3608,6 +3608,33 @@
                                 <pre style="margin: 0; font-size: 0.75rem;">${JSON.stringify(data.contour_data, null, 2)}</pre>
                             </div>
                         `;
+                    } else if (data.parameter) {
+                        // APIからパラメータ情報が返された場合
+                        let valueDisplay = '';
+                        if (data.value !== undefined && data.value !== null) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>${data.value} ${data.unit || ''}</strong></p>`;
+                        } else if (data.wind_speed !== undefined || data.wind_direction !== undefined) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>風速: ${data.wind_speed || '--'} ${data.unit || 'm/s'} / 風向: ${data.wind_direction || '--'}°</strong></p>`;
+                        } else if (data.wave_height !== undefined) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>${data.wave_height || '--'} ${data.unit || 'm'}</strong></p>`;
+                            if (data.work_safety) {
+                                valueDisplay += `<p style="margin: 10px 0; padding: 10px; background: ${data.work_safety.includes('危険') ? '#fee' : data.work_safety.includes('注意') ? '#ffe' : '#efe'}; border-radius: 5px;"><strong>作業安全度:</strong> ${data.work_safety}</p>`;
+                            }
+                        } else if (data.temperature_500hpa !== undefined) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>500hPa気温: ${data.temperature_500hpa}°C</strong></p>`;
+                        } else if (data.temperature_700hpa !== undefined) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>700hPa気温: ${data.temperature_700hpa}°C</strong></p>`;
+                        } else if (data.equivalent_potential_temperature !== undefined) {
+                            valueDisplay = `<p style="font-size: 1.2rem; color: #667eea; margin: 10px 0;"><strong>相当温位: ${data.equivalent_potential_temperature} K</strong></p>`;
+                        }
+
+                        imageDiv.innerHTML = `
+                            <div style="background: white; padding: 20px; border-radius: 8px; text-align: center;">
+                                <p style="font-size: 0.9rem; color: #666; margin-bottom: 5px;">${data.parameter}</p>
+                                ${valueDisplay}
+                                ${data.message ? `<p style="font-size: 0.85rem; color: #666; margin-top: 10px;">${data.message}</p>` : ''}
+                            </div>
+                        `;
                     } else {
                         imageDiv.innerHTML = '<p style="color: #dc3545;">解析データが見つかりませんでした</p>';
                     }
