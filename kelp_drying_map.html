@@ -708,34 +708,8 @@
             cursor: not-allowed;
         }
 
-        .mode-btn {
-            background: transparent;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-            color: #667eea;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-
-        .mode-btn.active {
-            background: #667eea;
-            color: white;
-            box-shadow: 0 2px 5px rgba(102, 126, 234, 0.3);
-        }
-
         .expert-only {
             display: none;
-        }
-
-        .basic-mode .expert-only {
-            display: none !important;
-        }
-
-        .expert-mode .expert-only {
-            display: block !important;
         }
     </style>
 </head>
@@ -756,14 +730,6 @@
         <h4>🌟 お気に入り干場管理</h4>
         <button id="showFavoritesBtn" class="favorite-btn">お気に入り一覧</button>
         <button id="clearFavoritesBtn" class="favorite-btn remove">全て削除</button>
-
-        <div style="margin: 15px 0; text-align: center;">
-            <label style="color: #666; font-size: 0.9rem; display: block; margin-bottom: 10px;">表示モード:</label>
-            <div style="display: inline-flex; background: white; border-radius: 25px; padding: 3px; border: 2px solid #667eea;">
-                <button id="basicModeBtn" class="mode-btn active" onclick="switchMode('basic')">一般漁師</button>
-                <button id="expertModeBtn" class="mode-btn" onclick="switchMode('expert')">気象専門家</button>
-            </div>
-        </div>
 
         <div id="favoritesList" class="favorites-list" style="display: none;">
             <div id="favoritesContent"></div>
@@ -1078,9 +1044,6 @@
 
         // フィードバック管理
         let feedbackData = JSON.parse(localStorage.getItem('forecastFeedback')) || {};
-
-        // 表示モード管理
-        let currentMode = localStorage.getItem('displayMode') || 'basic';
 
         // 自動更新管理
         let autoUpdateTimer = null;
@@ -2439,22 +2402,6 @@
         }
 
         // モード切替機能
-        function switchMode(mode) {
-            currentMode = mode;
-            localStorage.setItem('displayMode', mode);
-
-            // ボタンの状態更新
-            document.getElementById('basicModeBtn').classList.toggle('active', mode === 'basic');
-            document.getElementById('expertModeBtn').classList.toggle('active', mode === 'expert');
-
-            // body クラス更新
-            document.body.className = mode === 'basic' ? 'basic-mode' : 'expert-mode';
-
-            // 現在の予報を再表示
-            if (selectedSpot) {
-                loadForecastData(selectedSpot);
-            }
-        }
 
         // 自動更新機能
         function startAutoUpdate() {
@@ -2892,7 +2839,6 @@
             }
 
             addHoshibaMarkers();
-            switchMode(currentMode); // 保存されたモードを復元
 
             document.getElementById('showFavoritesBtn').addEventListener('click', showFavorites);
             document.getElementById('clearFavoritesBtn').addEventListener('click', clearAllFavorites);
@@ -3754,7 +3700,6 @@
         window.selectSpot = selectSpot;
         window.toggleFavorite = toggleFavorite;
         window.submitFeedback = submitFeedback;
-        window.switchMode = switchMode;
         window.enableAddSpotMode = enableAddSpotMode;
         window.deleteSpot = deleteSpot;
         window.showRecordForm = showRecordForm;
