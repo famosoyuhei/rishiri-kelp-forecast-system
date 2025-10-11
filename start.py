@@ -13,6 +13,12 @@ from datetime import datetime
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from scipy.optimize import fsolve
+import matplotlib
+matplotlib.use('Agg')  # バックエンド設定（GUI不要）
+import matplotlib.pyplot as plt
+from scipy.interpolate import griddata
+import io
+import base64
 
 # Create Flask app
 app = Flask(__name__)
@@ -1152,6 +1158,136 @@ def fetch_marine_data(lat, lon, forecast_hours=168):
         print(f"Error fetching marine data: {e}")
         return None
 
+def generate_contour_map(category, time_offset, center_lat=45.1821, center_lon=141.2421):
+    """
+    等値線図を生成
+
+    Args:
+        category: データカテゴリー（temperature, humidity, pressure等）
+        time_offset: 予報時刻オフセット（時間）
+        center_lat: 中心緯度
+        center_lon: 中心経度
+
+    Returns:
+        base64エンコードされた画像データ、またはNone
+    """
+    try:
+        # グリッドサイズ（利尻島周辺 約30km四方、3km間隔）
+        grid_size = 10
+        lat_range = 0.15  # 約15km
+        lon_range = 0.2   # 約15km
+
+        lats = np.linspace(center_lat - lat_range, center_lat + lat_range, grid_size)
+        lons = np.linspace(center_lon - lon_range, center_lon + lon_range, grid_size)
+
+        # データ取得
+        data_points = []
+        values = []
+
+        for lat in lats:
+            for lon in lons:
+                try:
+                    if category in ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']:
+                        # 地上レベル
+                        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&timezone=Asia/Tokyo&forecast_days=7"
+                        response = requests.get(url, timeout=5)
+                        response.raise_for_status()
+                        api_data = response.json()
+                        hourly = api_data.get('hourly', {})
+
+                        if time_offset < len(hourly.get('time', [])):
+                            if category == 'temperature':
+                                value = hourly.get('temperature_2m', [None])[time_offset]
+                            elif category == 'humidity':
+                                value = hourly.get('relative_humidity_2m', [None])[time_offset]
+                            elif category == 'pressure':
+                                value = hourly.get('pressure_msl', [None])[time_offset]
+                            elif category == 'wind':
+                                value = hourly.get('wind_speed_10m', [None])[time_offset]
+                            elif category == 'precipitation':
+                                value = hourly.get('precipitation', [None])[time_offset]
+
+                            if value is not None:
+                                data_points.append([lon, lat])
+                                values.append(value)
+                except:
+                    continue
+
+        if len(values) < 4:  # 最低4点必要
+            return None
+
+        # グリッド補間
+        data_points = np.array(data_points)
+        values = np.array(values)
+
+        grid_lon, grid_lat = np.meshgrid(
+            np.linspace(center_lon - lon_range, center_lon + lon_range, 100),
+            np.linspace(center_lat - lat_range, center_lat + lat_range, 100)
+        )
+
+        grid_values = griddata(data_points, values, (grid_lon, grid_lat), method='cubic')
+
+        # 等値線図を描画
+        plt.figure(figsize=(10, 8))
+
+        # 等値線
+        if category == 'temperature':
+            levels = np.arange(np.floor(values.min()), np.ceil(values.max()) + 1, 1)
+            cmap = 'RdYlBu_r'
+            unit = '°C'
+            title = '気温分布'
+        elif category == 'humidity':
+            levels = np.arange(0, 101, 10)
+            cmap = 'BuGn'
+            unit = '%'
+            title = '相対湿度分布'
+        elif category == 'pressure':
+            levels = np.arange(np.floor(values.min()), np.ceil(values.max()) + 1, 2)
+            cmap = 'viridis'
+            unit = 'hPa'
+            title = '海面気圧分布'
+        elif category == 'wind':
+            levels = np.arange(0, np.ceil(values.max()) + 1, 1)
+            cmap = 'YlOrRd'
+            unit = 'm/s'
+            title = '風速分布'
+        elif category == 'precipitation':
+            levels = np.arange(0, np.ceil(values.max()) + 1, 0.5)
+            cmap = 'Blues'
+            unit = 'mm'
+            title = '降水量分布'
+
+        contour = plt.contourf(grid_lon, grid_lat, grid_values, levels=levels, cmap=cmap, alpha=0.7)
+        plt.contour(grid_lon, grid_lat, grid_values, levels=levels, colors='black', linewidths=0.5, alpha=0.3)
+
+        # カラーバー
+        cbar = plt.colorbar(contour)
+        cbar.set_label(f'{title} ({unit})', fontsize=12)
+
+        # 利尻島の中心をマーク
+        plt.plot(center_lon, center_lat, 'r*', markersize=15, label='利尻島')
+
+        plt.xlabel('経度 (°E)', fontsize=12)
+        plt.ylabel('緯度 (°N)', fontsize=12)
+        plt.title(f'{title} - {time_offset}時間後', fontsize=14, weight='bold')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        # 画像をbase64エンコード
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+
+        image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        return f"data:image/png;base64,{image_base64}"
+
+    except Exception as e:
+        print(f"Error generating contour map: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 @app.route('/api/analysis/contours')
 def get_contour_analysis():
     """
@@ -1181,60 +1317,24 @@ def get_contour_analysis():
                     'message': '地上データは最大168時間（7日間）までです'
                 }), 400
 
-            # Open-Meteo APIから気象データを取得
-            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&timezone=Asia/Tokyo&forecast_days=7"
+            # 等値線図を生成
+            contour_image = generate_contour_map(category, time_offset, lat, lon)
 
-            try:
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                hourly = data.get('hourly', {})
-
-                if time_offset >= len(hourly.get('time', [])):
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'指定時刻（{time_offset}時間後）のデータが利用できません'
-                    }), 400
-
-                result = {
+            if contour_image:
+                return jsonify({
                     'status': 'success',
                     'map_type': category,
                     'time_offset': time_offset,
-                    'time': hourly['time'][time_offset],
                     'level': '地上',
-                    'grid_resolution': '約5km格子',
+                    'visualization_url': contour_image,  # base64エンコード画像
+                    'grid_resolution': '約3km格子（10x10グリッド）',
                     'interpolation_method': 'scipy griddata (cubic)',
                     'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']
-                }
-
-                if category == 'temperature':
-                    result['value'] = hourly.get('temperature_2m', [None])[time_offset]
-                    result['unit'] = '°C'
-                    result['parameter'] = '気温'
-                elif category == 'humidity':
-                    result['value'] = hourly.get('relative_humidity_2m', [None])[time_offset]
-                    result['unit'] = '%'
-                    result['parameter'] = '相対湿度'
-                elif category == 'pressure':
-                    result['value'] = hourly.get('pressure_msl', [None])[time_offset]
-                    result['unit'] = 'hPa'
-                    result['parameter'] = '海面気圧'
-                elif category == 'wind':
-                    result['wind_speed'] = hourly.get('wind_speed_10m', [None])[time_offset]
-                    result['wind_direction'] = hourly.get('wind_direction_10m', [None])[time_offset]
-                    result['unit'] = 'm/s'
-                    result['parameter'] = '風速・風向'
-                elif category == 'precipitation':
-                    result['value'] = hourly.get('precipitation', [None])[time_offset]
-                    result['unit'] = 'mm'
-                    result['parameter'] = '降水量'
-
-                return jsonify(result)
-
-            except Exception as e:
+                })
+            else:
                 return jsonify({
                     'status': 'error',
-                    'message': f'データ取得エラー: {str(e)}'
+                    'message': '等値線図の生成に失敗しました'
                 }), 500
 
         elif category in ['wave_height', 'wave_direction_period']:
