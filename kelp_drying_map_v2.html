@@ -2281,13 +2281,13 @@
                             pointBorderWidth: 2
                         },
                         {
-                            label: '最低湿度 (%) - 負相関',
-                            data: forecasts.map(f => f.daily_summary.min_humidity),
+                            label: '乾燥度 (100-湿度%)',
+                            data: forecasts.map(f => 100 - f.daily_summary.min_humidity),
                             type: 'bar',
                             backgroundColor: 'rgba(78, 205, 196, 0.5)',
                             borderColor: '#4ecdc4',
                             borderWidth: 1,
-                            yAxisID: 'y2'
+                            yAxisID: 'y1'
                         },
                         {
                             label: '平均風速 (m/s)',
@@ -2345,22 +2345,8 @@
                             position: 'right',
                             title: {
                                 display: true,
-                                text: '気温・風速・降水'
+                                text: '気象要素'
                             },
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                        },
-                        y2: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: '湿度 (%)'
-                            },
-                            min: 0,
-                            max: 100,
                             grid: {
                                 drawOnChartArea: false,
                             },
