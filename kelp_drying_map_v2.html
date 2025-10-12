@@ -2269,7 +2269,39 @@
                             borderColor: '#667eea',
                             backgroundColor: 'rgba(102, 126, 234, 0.1)',
                             fill: true,
-                            tension: 0.3
+                            tension: 0.3,
+                            borderWidth: 3
+                        },
+                        {
+                            label: '最低湿度 (%)',
+                            data: forecasts.map(f => f.daily_summary.min_humidity),
+                            borderColor: '#4ecdc4',
+                            backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: '平均風速 (m/s)',
+                            data: forecasts.map(f => f.daily_summary.wind_speed),
+                            borderColor: '#95e1d3',
+                            backgroundColor: 'rgba(149, 225, 211, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            yAxisID: 'y1'
+                        },
+                        {
+                            label: '降水量 (mm)',
+                            data: forecasts.map(f => f.daily_summary.precipitation),
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            yAxisID: 'y1'
                         },
                         {
                             label: '最高気温 (°C)',
@@ -2278,6 +2310,7 @@
                             backgroundColor: 'rgba(255, 107, 107, 0.1)',
                             fill: false,
                             tension: 0.3,
+                            borderWidth: 2,
                             yAxisID: 'y1'
                         }
                     ]
@@ -2306,7 +2339,7 @@
                             position: 'right',
                             title: {
                                 display: true,
-                                text: '気温 (°C)'
+                                text: '気象要素'
                             },
                             grid: {
                                 drawOnChartArea: false,
