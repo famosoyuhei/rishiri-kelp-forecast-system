@@ -2282,7 +2282,10 @@
                         },
                         {
                             label: '乾燥度 (100-湿度%) - 正相関',
-                            data: forecasts.map(f => 100 - f.daily_summary.min_humidity),
+                            data: forecasts.map(f => {
+                                const humidity = f.daily_summary.min_humidity || f.daily_summary.humidity || 0;
+                                return humidity > 0 ? 100 - humidity : 0;
+                            }),
                             borderColor: '#f39c12',
                             backgroundColor: 'rgba(243, 156, 18, 0.1)',
                             fill: false,
