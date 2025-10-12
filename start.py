@@ -1625,8 +1625,8 @@ def get_emagram_data():
         apply_correction = request.args.get('apply_theta_e_correction', 'false').lower() == 'true'
         wind_direction = float(request.args.get('wind_direction', 270.0)) if apply_correction else None
 
-        # 利用可能な気圧面（1000hPaから上層まで）
-        pressure_levels = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200]
+        # 利用可能な気圧面（1000hPaから上層まで）- 100hPaまで拡張（雲頂高度検出のため）
+        pressure_levels = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]
 
         # Open-Meteo Pressure Level APIから気温・露点温度・高度を取得
         url = (
@@ -1645,7 +1645,9 @@ def get_emagram_data():
             f"temperature_400hPa,dewpoint_400hPa,geopotential_height_400hPa,"
             f"temperature_300hPa,dewpoint_300hPa,geopotential_height_300hPa,"
             f"temperature_250hPa,dewpoint_250hPa,geopotential_height_250hPa,"
-            f"temperature_200hPa,dewpoint_200hPa,geopotential_height_200hPa&"
+            f"temperature_200hPa,dewpoint_200hPa,geopotential_height_200hPa,"
+            f"temperature_150hPa,dewpoint_150hPa,geopotential_height_150hPa,"
+            f"temperature_100hPa,dewpoint_100hPa,geopotential_height_100hPa&"
             f"timezone=Asia/Tokyo&forecast_days=7"
         )
 

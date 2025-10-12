@@ -3259,17 +3259,17 @@
             return T0 - gamma_s * (dZ / 100);
         }
 
-        function calculateLCL(T850, Td850, P850) {
+        function calculateLCL(T_surface, Td_surface, P_surface) {
             // LCL (持ち上げ凝結高度) の計算
-            // 850hPaの温度と露点から計算
-            const ws850 = calculateSaturationMixingRatio(Td850, P850);
+            // 地上の温度と露点から計算
+            const ws_surface = calculateSaturationMixingRatio(Td_surface, P_surface);
 
             // 乾燥断熱的に上昇させながら、飽和混合比線と交わる点を探す
-            for (let P = P850; P >= 300; P -= 10) {
-                const T_dry = calculateDryAdiabat(T850, P850, P);
+            for (let P = P_surface; P >= 100; P -= 10) {
+                const T_dry = calculateDryAdiabat(T_surface, P_surface, P);
                 const ws = calculateSaturationMixingRatio(T_dry, P);
 
-                if (ws <= ws850 * 1.01) { // 1%の許容誤差
+                if (ws <= ws_surface * 1.01) { // 1%の許容誤差
                     return { pressure: P, temperature: T_dry };
                 }
             }
@@ -3314,7 +3314,7 @@
             let el = null;
             let crossCount = 0;
 
-            for (let P = lcl.pressure; P >= 200; P -= 10) {
+            for (let P = lcl.pressure; P >= 100; P -= 10) {
                 const T_moist = calculateMoistAdiabat(lcl.temperature, lcl.pressure, P);
                 moistAdiabatLine.push({ x: T_moist, y: P });
 
