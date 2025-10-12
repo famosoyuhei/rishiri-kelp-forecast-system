@@ -1,0 +1,5102 @@
+[
+  {
+    "id": "fog_alert_oshidomari_1753020818",
+    "timestamp": "2025-07-20T23:13:38.778695",
+    "zone": "oshidomari",
+    "location": {
+      "lat": 45.242,
+      "lon": 141.231
+    },
+    "alert_level": "warning",
+    "priority": "high",
+    "risk_assessment": {
+      "max_probability": 0.375,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.2995,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "作業開始前に最新の気象情報を確認してください",
+      "作業中は視程の変化に注意してください",
+      "通信手段を確保し、定期的に状況を報告してください",
+      "作業時間の短縮を検討してください"
+    ],
+    "summary": {
+      "message": "【注意警報】oshidomariで海霧発生リスク37.5%",
+      "reasons": [
+        "注意レベル（37.5%）"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.242,
+        "lon": 141.231
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.375,
+          "average_probability": 0.311,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.3,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.32,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.316,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 96,
+            "wind_speed": 33.0,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.323,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.322,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.600000000000001,
+            "humidity": 96,
+            "wind_speed": 33.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.315,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.308,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.600000000000001,
+            "humidity": 96,
+            "wind_speed": 34.6,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1008.9
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.374,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.406,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 98,
+            "wind_speed": 32.1,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1008.8
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.375,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.175,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 97,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.0
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.347,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.362,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.062,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.8,
+            "humidity": 96,
+            "wind_speed": 28.4,
+            "cloud_cover": 95,
+            "visibility": 380.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.309,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.299,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.141,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.8,
+            "humidity": 96,
+            "wind_speed": 30.8,
+            "cloud_cover": 94,
+            "visibility": 2140.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.288,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.263,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1305,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.899999999999999,
+            "humidity": 95,
+            "wind_speed": 31.1,
+            "cloud_cover": 87,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.277,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.244,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.899999999999999,
+            "humidity": 94,
+            "wind_speed": 33.5,
+            "cloud_cover": 91,
+            "visibility": 18820.0,
+            "pressure": 1009.8
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.28,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.25,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.6,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.100000000000001,
+            "humidity": 94,
+            "wind_speed": 35.7,
+            "cloud_cover": 95,
+            "visibility": 8220.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.269,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.231,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.12299999999999998,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.5,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.0,
+            "humidity": 94,
+            "wind_speed": 34.1,
+            "cloud_cover": 82,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.251,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.201,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.075,
+            "wind": 0.0,
+            "cloud": 0.1185,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.7,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.2,
+            "humidity": 93,
+            "wind_speed": 35.6,
+            "cloud_cover": 79,
+            "visibility": 24140.0,
+            "pressure": 1009.6
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:13:38.778654"
+    },
+    "expires_at": "2025-07-21T05:13:38.778704"
+  },
+  {
+    "id": "fog_alert_senposhi_1753020820",
+    "timestamp": "2025-07-20T23:13:40.241780",
+    "zone": "senposhi",
+    "location": {
+      "lat": 45.136,
+      "lon": 141.211
+    },
+    "alert_level": "warning",
+    "priority": "high",
+    "risk_assessment": {
+      "max_probability": 0.382,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.30062500000000003,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "作業開始前に最新の気象情報を確認してください",
+      "作業中は視程の変化に注意してください",
+      "通信手段を確保し、定期的に状況を報告してください",
+      "作業時間の短縮を検討してください",
+      "作業時間帯の一部で注意が必要です"
+    ],
+    "summary": {
+      "message": "【注意警報】senposhiで海霧発生リスク38.2%",
+      "reasons": [
+        "注意レベル（38.2%）",
+        "作業時間帯高リスク（平均30.1%）"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.136,
+        "lon": 141.211
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.382,
+          "average_probability": 0.308,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.301,
+          "recommendation": "要注意"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.311,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.318,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.314,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.324,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.306,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.31,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 20.9,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.399999999999999,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.365,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.408,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.382,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.436,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 20.9,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.399999999999999,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.335,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.359,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.296,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.294,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.297,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.295,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.263,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.238,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.276,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.26,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.2,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.7,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.2,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.7,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.263,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.3,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.8,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:13:40.241702"
+    },
+    "expires_at": "2025-07-21T05:13:40.241797"
+  },
+  {
+    "id": "fog_alert_kutsugata_1753020821",
+    "timestamp": "2025-07-20T23:13:41.722983",
+    "zone": "kutsugata",
+    "location": {
+      "lat": 45.21,
+      "lon": 141.2
+    },
+    "alert_level": "warning",
+    "priority": "medium",
+    "risk_assessment": {
+      "max_probability": 0.347,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.27125,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "作業開始前に最新の気象情報を確認してください",
+      "作業中は視程の変化に注意してください",
+      "通信手段を確保し、定期的に状況を報告してください",
+      "作業時間の短縮を検討してください"
+    ],
+    "summary": {
+      "message": "【注意警報】kutsugataで海霧発生リスク34.7%",
+      "reasons": [
+        "注意レベル（34.7%）"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.21,
+        "lon": 141.2
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.347,
+          "average_probability": 0.282,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.271,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.291,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.319,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 96,
+            "wind_speed": 33.0,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.295,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.325,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 33.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.286,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.311,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 34.6,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1008.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.345,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 98,
+            "wind_speed": 32.1,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1008.8
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.347,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.412,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.175,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 97,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.0
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.319,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.365,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.062,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 96,
+            "wind_speed": 28.4,
+            "cloud_cover": 95,
+            "visibility": 380.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.281,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.302,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.141,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 96,
+            "wind_speed": 30.8,
+            "cloud_cover": 94,
+            "visibility": 2140.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.26,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.266,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1305,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.899999999999999,
+            "humidity": 95,
+            "wind_speed": 31.1,
+            "cloud_cover": 87,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.248,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.247,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 94,
+            "wind_speed": 33.5,
+            "cloud_cover": 91,
+            "visibility": 18820.0,
+            "pressure": 1009.8
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.252,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.253,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.6,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.100000000000001,
+            "humidity": 94,
+            "wind_speed": 35.7,
+            "cloud_cover": 95,
+            "visibility": 8220.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.24,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.234,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.12299999999999998,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.5,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.0,
+            "humidity": 94,
+            "wind_speed": 34.1,
+            "cloud_cover": 82,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.223,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.204,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.075,
+            "wind": 0.0,
+            "cloud": 0.1185,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.7,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.2,
+            "humidity": 93,
+            "wind_speed": 35.6,
+            "cloud_cover": 79,
+            "visibility": 24140.0,
+            "pressure": 1009.6
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:13:41.722918"
+    },
+    "expires_at": "2025-07-21T05:13:41.722996"
+  },
+  {
+    "id": "fog_alert_oniwaki_1753020823",
+    "timestamp": "2025-07-20T23:13:43.474861",
+    "zone": "oniwaki",
+    "location": {
+      "lat": 45.18,
+      "lon": 141.27
+    },
+    "alert_level": "warning",
+    "priority": "medium",
+    "risk_assessment": {
+      "max_probability": 0.362,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.28125,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "作業開始前に最新の気象情報を確認してください",
+      "作業中は視程の変化に注意してください",
+      "通信手段を確保し、定期的に状況を報告してください",
+      "作業時間の短縮を検討してください"
+    ],
+    "summary": {
+      "message": "【注意警報】oniwakiで海霧発生リスク36.2%",
+      "reasons": [
+        "注意レベル（36.2%）"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.18,
+        "lon": 141.27
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.362,
+          "average_probability": 0.289,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.281,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.292,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.319,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.295,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.325,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.287,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.311,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.346,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.362,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.437,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.316,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.36,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.7,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.699999999999999,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.277,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.295,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.296,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.243,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.239,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.7,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.699999999999999,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.257,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.261,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.259,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.265,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.258,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:13:43.474767"
+    },
+    "expires_at": "2025-07-21T05:13:43.474876"
+  },
+  {
+    "id": "fog_alert_rishiri_mountain_1753020825",
+    "timestamp": "2025-07-20T23:13:45.183197",
+    "zone": "rishiri_mountain",
+    "location": {
+      "lat": 45.178,
+      "lon": 141.228
+    },
+    "alert_level": "warning",
+    "priority": "low",
+    "risk_assessment": {
+      "max_probability": 0.405,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.32337499999999997,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "作業開始前に最新の気象情報を確認してください",
+      "作業中は視程の変化に注意してください",
+      "通信手段を確保し、定期的に状況を報告してください",
+      "作業時間の短縮を検討してください",
+      "作業時間帯の一部で注意が必要です"
+    ],
+    "summary": {
+      "message": "【注意警報】rishiri_mountainで海霧発生リスク40.5%",
+      "reasons": [
+        "注意レベル（40.5%）",
+        "作業時間帯高リスク（平均32.3%）"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.178,
+        "lon": 141.228
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.405,
+          "average_probability": 0.331,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.323,
+          "recommendation": "要注意"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.334,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.323,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.337,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.329,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.329,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.315,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.388,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.413,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.405,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.441,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.358,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.363,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.319,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.298,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.32,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.3,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.285,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.242,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.299,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.301,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.269,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.3,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.268,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:13:45.183141"
+    },
+    "expires_at": "2025-07-21T05:13:45.183212"
+  },
+  {
+    "id": "fog_alert_oshidomari_1753020902",
+    "timestamp": "2025-07-20T23:15:02.515243",
+    "zone": "oshidomari",
+    "location": {
+      "lat": 45.242,
+      "lon": 141.231
+    },
+    "alert_level": "warning",
+    "priority": "high",
+    "risk_assessment": {
+      "max_probability": 0.375,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.2995,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "Check latest weather information before starting work",
+      "Pay attention to visibility changes during work",
+      "Secure communication means and report status regularly",
+      "Consider shortening work hours"
+    ],
+    "summary": {
+      "message": "[Warning Alert] oshidomari Sea Fog Risk 37.5%",
+      "reasons": [
+        "Warning level (37.5%)"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.242,
+        "lon": 141.231
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.375,
+          "average_probability": 0.311,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.3,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.32,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.316,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 96,
+            "wind_speed": 33.0,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.323,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.322,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.600000000000001,
+            "humidity": 96,
+            "wind_speed": 33.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.315,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.308,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.600000000000001,
+            "humidity": 96,
+            "wind_speed": 34.6,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1008.9
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.374,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.406,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 98,
+            "wind_speed": 32.1,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1008.8
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.375,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.175,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.7,
+            "humidity": 97,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.0
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.347,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.362,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.062,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.8,
+            "humidity": 96,
+            "wind_speed": 28.4,
+            "cloud_cover": 95,
+            "visibility": 380.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.309,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.299,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.141,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.8,
+            "humidity": 96,
+            "wind_speed": 30.8,
+            "cloud_cover": 94,
+            "visibility": 2140.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.288,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.263,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1305,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.899999999999999,
+            "humidity": 95,
+            "wind_speed": 31.1,
+            "cloud_cover": 87,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.277,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.244,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -10.899999999999999,
+            "humidity": 94,
+            "wind_speed": 33.5,
+            "cloud_cover": 91,
+            "visibility": 18820.0,
+            "pressure": 1009.8
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.28,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.25,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.6,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.100000000000001,
+            "humidity": 94,
+            "wind_speed": 35.7,
+            "cloud_cover": 95,
+            "visibility": 8220.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.269,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.231,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.12299999999999998,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.5,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.0,
+            "humidity": 94,
+            "wind_speed": 34.1,
+            "cloud_cover": 82,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.251,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.201,
+            "statistical_probability": 0.325
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.075,
+            "wind": 0.0,
+            "cloud": 0.1185,
+            "visibility": 0.0,
+            "mountain": 0.007891424826310165
+          },
+          "conditions": {
+            "temperature": 22.7,
+            "sea_temperature": 11.5,
+            "temperature_difference": -11.2,
+            "humidity": 93,
+            "wind_speed": 35.6,
+            "cloud_cover": 79,
+            "visibility": 24140.0,
+            "pressure": 1009.6
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:15:02.515159"
+    },
+    "expires_at": "2025-07-21T05:15:02.515258"
+  },
+  {
+    "id": "fog_alert_senposhi_1753020904",
+    "timestamp": "2025-07-20T23:15:04.154513",
+    "zone": "senposhi",
+    "location": {
+      "lat": 45.136,
+      "lon": 141.211
+    },
+    "alert_level": "warning",
+    "priority": "high",
+    "risk_assessment": {
+      "max_probability": 0.382,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.30062500000000003,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "Check latest weather information before starting work",
+      "Pay attention to visibility changes during work",
+      "Secure communication means and report status regularly",
+      "Consider shortening work hours",
+      "Caution needed during part of work hours"
+    ],
+    "summary": {
+      "message": "[Warning Alert] senposhi Sea Fog Risk 38.2%",
+      "reasons": [
+        "Warning level (38.2%)",
+        "Work hours high risk (avg 30.1%)"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.136,
+        "lon": 141.211
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.382,
+          "average_probability": 0.308,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.301,
+          "recommendation": "要注意"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.311,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.318,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.314,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.324,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.306,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.31,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 20.9,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.399999999999999,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.365,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.408,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.0,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.5,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.382,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.436,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 20.9,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.399999999999999,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.335,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.359,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.296,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.294,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.297,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.295,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.263,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.238,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.1,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.276,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.26,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.2,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.7,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.2,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.7,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.263,
+            "statistical_probability": 0.3
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.01011919381659205
+          },
+          "conditions": {
+            "temperature": 21.3,
+            "sea_temperature": 12.5,
+            "temperature_difference": -8.8,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:15:04.154478"
+    },
+    "expires_at": "2025-07-21T05:15:04.154519"
+  },
+  {
+    "id": "fog_alert_kutsugata_1753020905",
+    "timestamp": "2025-07-20T23:15:05.751502",
+    "zone": "kutsugata",
+    "location": {
+      "lat": 45.21,
+      "lon": 141.2
+    },
+    "alert_level": "warning",
+    "priority": "medium",
+    "risk_assessment": {
+      "max_probability": 0.347,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.27125,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "Check latest weather information before starting work",
+      "Pay attention to visibility changes during work",
+      "Secure communication means and report status regularly",
+      "Consider shortening work hours"
+    ],
+    "summary": {
+      "message": "[Warning Alert] kutsugata Sea Fog Risk 34.7%",
+      "reasons": [
+        "Warning level (34.7%)"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.21,
+        "lon": 141.2
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.347,
+          "average_probability": 0.282,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.271,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.291,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.319,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 96,
+            "wind_speed": 33.0,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.295,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.325,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 33.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.286,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.311,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.1,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.600000000000001,
+            "humidity": 96,
+            "wind_speed": 34.6,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1008.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.345,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 98,
+            "wind_speed": 32.1,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1008.8
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.347,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.412,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.175,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.2,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.7,
+            "humidity": 97,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.0
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.319,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.365,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.062,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 96,
+            "wind_speed": 28.4,
+            "cloud_cover": 95,
+            "visibility": 380.0,
+            "pressure": 1009.2
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.281,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.302,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.141,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 96,
+            "wind_speed": 30.8,
+            "cloud_cover": 94,
+            "visibility": 2140.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.26,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.266,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1305,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.4,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.899999999999999,
+            "humidity": 95,
+            "wind_speed": 31.1,
+            "cloud_cover": 87,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.248,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.247,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.3,
+            "sea_temperature": 11.5,
+            "temperature_difference": -8.8,
+            "humidity": 94,
+            "wind_speed": 33.5,
+            "cloud_cover": 91,
+            "visibility": 18820.0,
+            "pressure": 1009.8
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.252,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.253,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1425,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.6,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.100000000000001,
+            "humidity": 94,
+            "wind_speed": 35.7,
+            "cloud_cover": 95,
+            "visibility": 8220.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.24,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.234,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.12299999999999998,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.5,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.0,
+            "humidity": 94,
+            "wind_speed": 34.1,
+            "cloud_cover": 82,
+            "visibility": 19200.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.223,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.204,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.075,
+            "wind": 0.0,
+            "cloud": 0.1185,
+            "visibility": 0.0,
+            "mountain": 0.010724359229307154
+          },
+          "conditions": {
+            "temperature": 20.7,
+            "sea_temperature": 11.5,
+            "temperature_difference": -9.2,
+            "humidity": 93,
+            "wind_speed": 35.6,
+            "cloud_cover": 79,
+            "visibility": 24140.0,
+            "pressure": 1009.6
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:15:05.751465"
+    },
+    "expires_at": "2025-07-21T05:15:05.751510"
+  },
+  {
+    "id": "fog_alert_oniwaki_1753020907",
+    "timestamp": "2025-07-20T23:15:07.168985",
+    "zone": "oniwaki",
+    "location": {
+      "lat": 45.18,
+      "lon": 141.27
+    },
+    "alert_level": "warning",
+    "priority": "medium",
+    "risk_assessment": {
+      "max_probability": 0.362,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.28125,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "Check latest weather information before starting work",
+      "Pay attention to visibility changes during work",
+      "Secure communication means and report status regularly",
+      "Consider shortening work hours"
+    ],
+    "summary": {
+      "message": "[Warning Alert] oniwaki Sea Fog Risk 36.2%",
+      "reasons": [
+        "Warning level (36.2%)"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.18,
+        "lon": 141.27
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.362,
+          "average_probability": 0.289,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.281,
+          "recommendation": "作業可能"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.292,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.319,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.295,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.325,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.287,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.311,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.346,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.409,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.362,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.437,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.5,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.316,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.36,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.7,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.699999999999999,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.277,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.295,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.278,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.296,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.600000000000001,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.243,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.239,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.7,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.699999999999999,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.257,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.261,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.259,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.265,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.258,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.25
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.011423104139061205
+          },
+          "conditions": {
+            "temperature": 18.8,
+            "sea_temperature": 12.0,
+            "temperature_difference": -6.800000000000001,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:15:07.168958"
+    },
+    "expires_at": "2025-07-21T05:15:07.168990"
+  },
+  {
+    "id": "fog_alert_rishiri_mountain_1753020908",
+    "timestamp": "2025-07-20T23:15:08.600710",
+    "zone": "rishiri_mountain",
+    "location": {
+      "lat": 45.178,
+      "lon": 141.228
+    },
+    "alert_level": "warning",
+    "priority": "low",
+    "risk_assessment": {
+      "max_probability": 0.405,
+      "max_risk_time": "2025-07-20T04:00:00",
+      "work_hours_average": 0.32337499999999997,
+      "consecutive_high_risk_hours": 0,
+      "rapid_increase_detected": false
+    },
+    "recommendations": [
+      "Check latest weather information before starting work",
+      "Pay attention to visibility changes during work",
+      "Secure communication means and report status regularly",
+      "Consider shortening work hours",
+      "Caution needed during part of work hours"
+    ],
+    "summary": {
+      "message": "[Warning Alert] rishiri_mountain Sea Fog Risk 40.5%",
+      "reasons": [
+        "Warning level (40.5%)",
+        "Work hours high risk (avg 32.3%)"
+      ]
+    },
+    "prediction_data": {
+      "location": {
+        "lat": 45.178,
+        "lon": 141.228
+      },
+      "prediction_date": "2025-07-20",
+      "summary": {
+        "overall_risk": {
+          "maximum_probability": 0.405,
+          "average_probability": 0.331,
+          "peak_risk_time": "2025-07-20T04:00:00",
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          }
+        },
+        "work_hours_risk": {
+          "average_probability": 0.323,
+          "recommendation": "要注意"
+        },
+        "trend_analysis": "安定"
+      },
+      "hourly_predictions": [
+        {
+          "datetime": "2025-07-20T00:00:00",
+          "hour": 0,
+          "fog_probability": 0.334,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.323,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.007999999999999997,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 30.6,
+            "cloud_cover": 100,
+            "visibility": 920.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T01:00:00",
+          "hour": 1,
+          "fog_probability": 0.337,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.329,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.014000000000000002,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 96,
+            "wind_speed": 30.7,
+            "cloud_cover": 100,
+            "visibility": 860.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T02:00:00",
+          "hour": 2,
+          "fog_probability": 0.329,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.315,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 96,
+            "wind_speed": 30.3,
+            "cloud_cover": 100,
+            "visibility": 2840.0,
+            "pressure": 1009.4
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T03:00:00",
+          "hour": 3,
+          "fog_probability": 0.388,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.413,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.048,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 98,
+            "wind_speed": 29.3,
+            "cloud_cover": 100,
+            "visibility": 520.0,
+            "pressure": 1009.3
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T04:00:00",
+          "hour": 4,
+          "fog_probability": 0.405,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.441,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.2,
+            "wind": 0.0,
+            "cloud": 0.15,
+            "visibility": 0.07600000000000001,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.3,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.3000000000000007,
+            "humidity": 98,
+            "wind_speed": 26.8,
+            "cloud_cover": 100,
+            "visibility": 240.0,
+            "pressure": 1009.5
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T05:00:00",
+          "hour": 5,
+          "fog_probability": 0.358,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.363,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1365,
+            "visibility": 0.062,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5,
+            "humidity": 96,
+            "wind_speed": 24.8,
+            "cloud_cover": 91,
+            "visibility": 380.0,
+            "pressure": 1009.7
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T06:00:00",
+          "hour": 6,
+          "fog_probability": 0.319,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.298,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.1335,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 25.5,
+            "cloud_cover": 89,
+            "visibility": 2140.0,
+            "pressure": 1009.9
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T07:00:00",
+          "hour": 7,
+          "fog_probability": 0.32,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.3,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.15,
+            "wind": 0.0,
+            "cloud": 0.135,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.4,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.4000000000000004,
+            "humidity": 96,
+            "wind_speed": 27.4,
+            "cloud_cover": 90,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります",
+            "非常に高い湿度により霧が発生しやすい状況です"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T08:00:00",
+          "hour": 8,
+          "fog_probability": 0.285,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.242,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.1,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.5,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5,
+            "humidity": 94,
+            "wind_speed": 26.8,
+            "cloud_cover": 85,
+            "visibility": 18820.0,
+            "pressure": 1010.3
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T09:00:00",
+          "hour": 9,
+          "fog_probability": 0.299,
+          "alert_level": {
+            "level": 0,
+            "label": "正常",
+            "color": "green"
+          },
+          "components": {
+            "physical_probability": 0.264,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.12449999999999999,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 28.0,
+            "cloud_cover": 83,
+            "visibility": 8220.0,
+            "pressure": 1010.2
+          },
+          "recommendations": [
+            "海霧の心配は少ないです",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T10:00:00",
+          "hour": 10,
+          "fog_probability": 0.301,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.269,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.129,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 27.8,
+            "cloud_cover": 86,
+            "visibility": 19200.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        },
+        {
+          "datetime": "2025-07-20T11:00:00",
+          "hour": 11,
+          "fog_probability": 0.3,
+          "alert_level": {
+            "level": 1,
+            "label": "注意",
+            "color": "yellow"
+          },
+          "components": {
+            "physical_probability": 0.268,
+            "statistical_probability": 0.35
+          },
+          "factors": {
+            "temperature": 0.0,
+            "humidity": 0.125,
+            "wind": 0.0,
+            "cloud": 0.1275,
+            "visibility": 0.0,
+            "mountain": 0.015
+          },
+          "conditions": {
+            "temperature": 14.6,
+            "sea_temperature": 12.0,
+            "temperature_difference": -2.5999999999999996,
+            "humidity": 95,
+            "wind_speed": 29.5,
+            "cloud_cover": 85,
+            "visibility": 24140.0,
+            "pressure": 1010.1
+          },
+          "recommendations": [
+            "海霧発生の可能性があります",
+            "作業中の視程変化に注意してください",
+            "緊急時の対応計画を確認してください",
+            "強風により作業自体が困難な可能性があります"
+          ]
+        }
+      ],
+      "generated_at": "2025-07-20T23:15:08.600640"
+    },
+    "expires_at": "2025-07-21T05:15:08.600726"
+  }
+]

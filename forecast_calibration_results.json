@@ -1,0 +1,26 @@
+{
+  "timestamp": "2025-10-06T19:49:54.479918",
+  "calibration": {
+    "bias": {
+      "vorticity_500hPa": 1.0208090460602453,
+      "omega_700hPa": 0.3890461085928668
+    },
+    "true_correlation": {
+      "vorticity_500hPa": -0.20590203896560155,
+      "omega_700hPa": 0.006007376587736604
+    },
+    "forecast_correlation": {
+      "vorticity_500hPa": 0.7880432827078231,
+      "omega_700hPa": 0.5393281259675382
+    }
+  },
+  "weights": {
+    "vorticity_500hPa": 0.4895954769698774,
+    "omega_700hPa": 0.8054769457035666
+  },
+  "recommendation": {
+    "use_forecast_vorticity": false,
+    "use_forecast_omega": true,
+    "primary_method": "calibrated_forecast"
+  }
+}

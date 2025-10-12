@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-10-06T19:21:10.220595",
+  "data_source": "Wakkanai Radiosonde (observed)",
+  "location_analyzed": "Kutsugata (West side)",
+  "n_samples": 88,
+  "correlations": {
+    "cos_angle_vs_omega_700hPa": -0.1382672641991982,
+    "cos_angle_vs_vorticity_500hPa": -0.1790383145787809,
+    "omega_700hPa_vs_vorticity_500hPa": 0.6815187760960666
+  },
+  "statistics": {
+    "cos_angle": {
+      "mean": 0.6225265438351291,
+      "std": 0.4182892976882387,
+      "min": -0.9950014048973135,
+      "max": 0.9999185772033359
+    },
+    "omega_700hPa": {
+      "mean": -0.00014336069023569026,
+      "std": 0.0021323158996328197,
+      "min": -0.004803240740740741,
+      "max": 0.005555555555555555
+    },
+    "vorticity_500hPa": {
+      "mean": -0.00021856007888564416,
+      "std": 0.004689874992413276,
+      "min": -0.01021768368790387,
+      "max": 0.010938931948226495
+    }
+  },
+  "interpretation": {
+    "dominant_scale": "mixed",
+    "vorticity_correlation_strength": "weak",
+    "omega_correlation_strength": "weak"
+  }
+}

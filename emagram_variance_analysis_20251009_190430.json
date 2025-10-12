@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-10-09T19:04:31.354727",
+  "time_offset_hours": 0,
+  "n_spots": 50,
+  "analysis": {
+    "lower_atmosphere_std_mean": 0.07048922509720984,
+    "upper_atmosphere_std_mean": 0.22265902617528238,
+    "lower_atmosphere_range_mean": 0.18333333333333326,
+    "upper_atmosphere_range_mean": 0.6,
+    "std_ratio_lower_to_upper": 0.31657923915340885,
+    "range_ratio_lower_to_upper": 0.30555555555555547,
+    "hypothesis_supported": 

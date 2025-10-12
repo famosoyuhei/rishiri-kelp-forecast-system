@@ -1,0 +1,116 @@
+[
+  {
+    "user_id": 1,
+    "name": "Test Fisherman",
+    "contact_info": {
+      "phone": "090-1234-5678",
+      "email": "test@example.com",
+      "line_id": "",
+      "preferred_method": "email"
+    },
+    "work_profile": {
+      "experience_level": "intermediate",
+      "primary_locations": [
+        "oshidomari",
+        "senposhi"
+      ],
+      "work_schedule": {
+        "typical_start_time": "05:30",
+        "typical_end_time": "15:30",
+        "work_days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday"
+        ],
+        "flexibility": "flexible"
+      },
+      "equipment": {
+        "has_boat": true,
+        "boat_size": "small",
+        "safety_equipment": [
+          "life_jacket",
+          "radio"
+        ]
+      }
+    },
+    "notification_preferences": {
+      "verbosity": "standard",
+      "risk_tolerance": "moderate",
+      "notification_channels": [
+        "email",
+        "console"
+      ],
+      "quiet_hours": {
+        "start": "22:00",
+        "end": "05:00"
+      },
+      "custom_thresholds": {
+        "fog_warning": 0.3,
+        "wind_warning": 8.0,
+        "rain_warning": 30.0
+      }
+    },
+    "emergency_contacts": [],
+    "created_at": "2025-07-20T23:30:25.717594",
+    "last_updated": "2025-07-20T23:30:25.717598",
+    "active": true
+  },
+  {
+    "user_id": 2,
+    "name": "Test User",
+    "contact_info": {
+      "phone": "",
+      "email": "test@example.com",
+      "line_id": "",
+      "preferred_method": "email"
+    },
+    "work_profile": {
+      "experience_level": "intermediate",
+      "primary_locations": [
+        "oshidomari"
+      ],
+      "work_schedule": {
+        "typical_start_time": "05:00",
+        "typical_end_time": "16:00",
+        "work_days": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday"
+        ],
+        "flexibility": "flexible"
+      },
+      "equipment": {
+        "has_boat": true,
+        "boat_size": "small",
+        "safety_equipment": [
+          "life_jacket",
+          "radio"
+        ]
+      }
+    },
+    "notification_preferences": {
+      "verbosity": "standard",
+      "risk_tolerance": "moderate",
+      "notification_channels": [
+        "console"
+      ],
+      "quiet_hours": {
+        "start": "22:00",
+        "end": "05:00"
+      },
+      "custom_thresholds": {
+        "fog_warning": 0.3,
+        "wind_warning": 8.0,
+        "rain_warning": 30.0
+      }
+    },
+    "emergency_contacts": [],
+    "created_at": "2025-07-20T23:37:56.329269",
+    "last_updated": "2025-07-20T23:37:56.329273",
+    "active": true
+  }
+]

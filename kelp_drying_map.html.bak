@@ -1,0 +1,2450 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>利尻島昆布干場マップ - 7日間予報システム</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Chart.js for forecast charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- 干場データの読み込み -->
+    <script src="all_spots_array.js"></script>
+    <script src="rishiri_wind_names.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 100px);
+            background: white;
+            margin: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        #map {
+            flex: 1;
+            height: 100%;
+        }
+
+        .forecast-panel {
+            width: 420px;
+            background: #f8f9fa;
+            border-left: 1px solid #e9ecef;
+            overflow-y: auto;
+            padding: 20px;
+            display: none;
+            max-height: 80vh;
+        }
+
+        .forecast-panel.active {
+            display: block;
+        }
+
+        .forecast-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .forecast-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .forecast-tab {
+            padding: 8px 12px;
+            background: #e9ecef;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            cursor: pointer;
+            font-size: 0.85rem;
+            border-radius: 5px 5px 0 0;
+            margin-right: 2px;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .forecast-tab.active {
+            background: white;
+            border-color: #667eea;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .forecast-tab:hover {
+            background: #f8f9fa;
+        }
+
+        .forecast-content {
+            display: none;
+        }
+
+        .forecast-content.active {
+            display: block;
+        }
+
+        .reliability-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .reliability-high { background: #d4edda; color: #155724; }
+        .reliability-medium { background: #fff3cd; color: #856404; }
+        .reliability-low { background: #f8d7da; color: #721c24; }
+
+        .hourly-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            border: 1px solid #e9ecef;
+        }
+
+        .hourly-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .hourly-item {
+            text-align: center;
+            padding: 8px 4px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+
+        .hourly-time {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .forecast-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #667eea;
+        }
+
+        .forecast-date {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .forecast-data {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .suitability {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .excellent { background: #d4edda; color: #155724; }
+        .good { background: #cce7ff; color: #004085; }
+        .fair { background: #fff3cd; color: #856404; }
+        .poor { background: #f8d7da; color: #721c24; }
+
+        .instructions {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px;
+            text-align: center;
+        }
+
+        .chart-container {
+            margin: 20px 0;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom marker styles */
+        .custom-div-icon {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .selected-marker {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f) !important;
+            transform: scale(1.3);
+        }
+
+        .favorite-controls {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .spot-management-controls {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .management-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .management-btn.add {
+            background: #28a745;
+            color: white;
+        }
+
+        .management-btn.add:hover {
+            background: #218838;
+        }
+
+        .management-btn.delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .management-btn.delete:hover {
+            background: #c82333;
+        }
+
+        .instructions {
+            color: #666;
+            font-style: italic;
+            margin-top: 10px;
+        }
+
+        .record-form {
+            background: rgba(255, 255, 255, 0.98);
+            border: 2px solid #17a2b8;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 10px 0;
+            max-width: 350px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .record-form h4 {
+            color: #17a2b8;
+            margin-bottom: 15px;
+        }
+
+        .record-form input[type="date"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .record-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin: 10px 0;
+        }
+
+        .record-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .record-btn.success {
+            background: #28a745;
+            color: white;
+        }
+
+        .record-btn.warning {
+            background: #ffc107;
+            color: black;
+        }
+
+        .record-btn.danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .record-btn:hover {
+            opacity: 0.8;
+        }
+
+        .existing-record {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #6c757d;
+        }
+
+        .filter-controls {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .filter-section {
+            margin-bottom: 15px;
+        }
+
+        .filter-section h4 {
+            margin-bottom: 8px;
+            color: #2c3e50;
+            font-size: 1rem;
+        }
+
+        .filter-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+            color: #495057;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .filter-breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        .breadcrumb-item {
+            cursor: pointer;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .breadcrumb-item:hover {
+            text-decoration: underline;
+        }
+
+        .breadcrumb-separator {
+            color: #adb5bd;
+        }
+
+        .filter-stats {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            color: #495057;
+        }
+
+        .favorite-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 0.9rem;
+        }
+
+        .favorite-btn:hover {
+            background: #218838;
+        }
+
+        .favorite-btn.remove {
+            background: #dc3545;
+        }
+
+        .favorite-btn.remove:hover {
+            background: #c82333;
+        }
+
+        .favorites-list {
+            background: white;
+            border-radius: 10px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .favorite-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .favorite-item:hover {
+            background: #f8f9fa;
+        }
+
+        .favorite-marker {
+            background: linear-gradient(135deg, #28a745, #20c997) !important;
+        }
+
+        .feedback-section {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .feedback-btn {
+            padding: 5px 8px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            flex: 1;
+            min-width: 45px;
+        }
+
+        .feedback-btn.excellent { background: #d4edda; color: #155724; }
+        .feedback-btn.good { background: #cce7ff; color: #004085; }
+        .feedback-btn.fair { background: #fff3cd; color: #856404; }
+        .feedback-btn.poor { background: #f8d7da; color: #721c24; }
+
+        .feedback-btn:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        .feedback-submitted {
+            background: #e9ecef !important;
+            color: #6c757d !important;
+            cursor: not-allowed;
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            color: #667eea;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .mode-btn.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 2px 5px rgba(102, 126, 234, 0.3);
+        }
+
+        .expert-only {
+            display: none;
+        }
+
+        .basic-mode .expert-only {
+            display: none !important;
+        }
+
+        .expert-mode .expert-only {
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌊 利尻島昆布干場予報システム</h1>
+        <p>干場を選択して7日間の乾燥適性予報を確認できます</p>
+    </div>
+
+    <div class="instructions">
+        <strong>使い方:</strong> 地図上の🔵マーカーをクリックすると、その干場の詳細な7日間予報が右側に表示されます
+    </div>
+
+    <div class="favorite-controls">
+        <h4>🌟 お気に入り干場管理</h4>
+        <button id="showFavoritesBtn" class="favorite-btn">お気に入り一覧</button>
+        <button id="clearFavoritesBtn" class="favorite-btn remove">全て削除</button>
+
+        <div style="margin: 15px 0; text-align: center;">
+            <label style="color: #666; font-size: 0.9rem; display: block; margin-bottom: 10px;">表示モード:</label>
+            <div style="display: inline-flex; background: white; border-radius: 25px; padding: 3px; border: 2px solid #667eea;">
+                <button id="basicModeBtn" class="mode-btn active" onclick="switchMode('basic')">一般漁師</button>
+                <button id="expertModeBtn" class="mode-btn" onclick="switchMode('expert')">気象専門家</button>
+            </div>
+        </div>
+
+        <div id="favoritesList" class="favorites-list" style="display: none;">
+            <div id="favoritesContent"></div>
+        </div>
+    </div>
+
+    <div class="spot-management-controls">
+        <h4>📍 干場管理</h4>
+        <button id="addSpotBtn" class="management-btn add" onclick="enableAddSpotMode()">➕ 新しい干場を追加</button>
+        <p id="addSpotInstructions" class="instructions" style="display: none;">
+            地図上をクリックして新しい干場を追加してください
+        </p>
+    </div>
+
+    
+    <!-- 統合海洋予報セクション -->
+    <div class="ocean-forecast-section" style="margin: 20px 0; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <h3 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px;">
+            🌊 統合海洋予報 - 連続作業可能時間
+        </h3>
+        <p style="color: #666; font-size: 14px; margin: 10px 0;">
+            海水温・海霧・降水リスクを統合した実用的な作業時間予報
+        </p>
+        <div id="oceanForecastContainer">
+            <p style="text-align: center; color: #999;">読み込み中...</p>
+        </div>
+    </div>
+
+<div class="filter-controls">
+        <h4>📍 エリア絞り込み</h4>
+
+        <div class="filter-breadcrumb" id="filterBreadcrumb">
+            <span class="breadcrumb-item" onclick="resetFilters()">全エリア</span>
+        </div>
+
+        <div class="filter-section">
+            <h4>町を選択</h4>
+            <select id="townSelect" class="filter-select" onchange="filterByTown()">
+                <option value="">-- 町を選択してください --</option>
+                <option value="利尻富士町">利尻富士町</option>
+                <option value="利尻町">利尻町</option>
+            </select>
+        </div>
+
+        <div class="filter-section" id="districtSection" style="display: none;">
+            <h4>地区を選択</h4>
+            <select id="districtSelect" class="filter-select" onchange="filterByDistrict()">
+                <option value="">-- 地区を選択してください --</option>
+            </select>
+        </div>
+
+        <div class="filter-section" id="burakuSection" style="display: none;">
+            <h4>部落を選択</h4>
+            <select id="burakuSelect" class="filter-select" onchange="filterByBuraku()">
+                <option value="">-- 部落を選択してください --</option>
+            </select>
+        </div>
+
+        <div class="filter-stats" id="filterStats">
+            表示中: 331箇所の干場
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="map"></div>
+
+        <!-- 記録フォーム（非表示） -->
+        <div id="recordFormContainer" class="record-form" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
+            <h4>📝 乾燥記録の入力</h4>
+            <div id="recordSpotInfo"></div>
+            <label for="recordDate">日付を選択してください:</label>
+            <input type="date" id="recordDate" />
+            <div id="existingRecordInfo"></div>
+            <div id="recordButtons" class="record-buttons">
+                <button class="record-btn success" onclick="submitRecord('完全乾燥')">完全乾燥</button>
+                <button class="record-btn warning" onclick="submitRecord('干したが完全には乾かせなかった（泣）')">干したが完全には乾かせなかった（泣）</button>
+                <button class="record-btn danger" onclick="submitRecord('中止')">中止</button>
+            </div>
+            <button onclick="closeRecordForm()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin-top: 10px;">キャンセル</button>
+        </div>
+
+        <div class="forecast-panel" id="forecastPanel">
+            <div class="forecast-header">
+                <h3 id="selectedSpotName">干場を選択してください</h3>
+                <p id="selectedSpotLocation"></p>
+            </div>
+
+            <div id="autoUpdateStatus" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; font-size: 0.85rem; color: #666;">
+                <span id="updateStatusText">自動更新: 停止中</span>
+                <span id="nextUpdateTime" style="display: block; margin-top: 3px;"></span>
+            </div>
+
+            <div class="forecast-tabs" id="forecastTabs" style="display: none;">
+                <!-- Dynamic tabs will be inserted here -->
+            </div>
+
+            <!-- 等値線マップ表示セクション -->
+            <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button onclick="showContourMap('500hpa')" id="contour500Btn" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        500hPa 渦度
+                    </button>
+                    <button onclick="showContourMap('700hpa')" id="contour700Btn" style="flex: 1; padding: 8px; background: #e9ecef; color: #333; border: none; border-radius: 5px; cursor: pointer;">
+                        700hPa 鉛直流
+                    </button>
+                </div>
+
+                <div id="contourMapContainer" style="text-align: center;">
+                    <img id="contourMapImage" src="" alt="等値線マップ" style="max-width: 100%; border-radius: 5px;">
+                    <p id="contourMapCaption" style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;"></p>
+                </div>
+
+                <div id="calibrationInfo" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #555;">
+                    <strong>予報補正情報:</strong>
+                    <div id="calibrationDetails"></div>
+                </div>
+            </div>
+
+            <div id="forecastContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    予報データを取得中...
+                </div>
+                <!-- Dynamic daily forecast content will be inserted here -->
+            </div>
+
+            <div class="chart-container">
+                <canvas id="forecastChart" width="350" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 利尻島の中心座標
+        const RISHIRI_CENTER = [45.178269, 141.228528];
+
+        // マップ初期化
+        const map = L.map('map').setView(RISHIRI_CENTER, 12);
+
+        // 航空写真タイル (Google Satellite)
+        L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            attribution: '© Google',
+            maxZoom: 20
+        }).addTo(map);
+
+        // 現在選択されているマーカー
+        let selectedMarker = null;
+        let selectedSpot = null;
+        let forecastChart = null;
+
+        // マーカー管理
+        let allMarkers = [];
+        let visibleMarkers = [];
+
+        // フィルタリング状態
+        let currentFilters = {
+            town: '',
+            district: '',
+            buraku: ''
+        };
+
+        // お気に入り管理
+        let favorites = JSON.parse(localStorage.getItem('hoshibaFavorites')) || [];
+
+        // フィードバック管理
+        let feedbackData = JSON.parse(localStorage.getItem('forecastFeedback')) || {};
+
+        // 表示モード管理
+        let currentMode = localStorage.getItem('displayMode') || 'basic';
+
+        // 自動更新管理
+        let autoUpdateTimer = null;
+        let lastUpdateTime = null;
+        const UPDATE_INTERVAL = 60 * 60 * 1000; // 1時間
+
+        // 干場データ（hoshiba_spots.csvから全331箇所）
+        // データ一貫性のためall_spots_array.jsから読み込み
+        /* const hoshibaSpots = [
+            { name: "H_1021_2473", lat: 45.1021947, lon: 141.247311, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1025_2483", lat: 45.1025111, lon: 141.2483481, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1034_2485", lat: 45.1034294, lon: 141.2485286, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1037_2486", lat: 45.1037247, lon: 141.2486332, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1040_2502", lat: 45.1040639, lon: 141.250253, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1048_2519", lat: 45.1048553, lon: 141.2519053, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
+            { name: "H_1094_2687", lat: 45.1094479, lon: 141.268727, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1089_2701", lat: 45.1089406, lon: 141.2701461, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1098_2701", lat: 45.1098663, lon: 141.2701888, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1089_2721", lat: 45.1089222, lon: 141.2721856, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1093_2722", lat: 45.1093235, lon: 141.2722929, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1087_2725", lat: 45.1087049, lon: 141.2725681, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1103_2721", lat: 45.1103838, lon: 141.2721514, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1128_2736", lat: 45.1128726, lon: 141.2736647, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1109_2745", lat: 45.1109264, lon: 141.2745775, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1123_2744", lat: 45.1123653, lon: 141.2744747, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1110_2758", lat: 45.1110778, lon: 141.2758374, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1109_2760", lat: 45.1109604, lon: 141.276001, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1120_2760", lat: 45.1120335, lon: 141.276079, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1110_2765", lat: 45.1110214, lon: 141.2765827, town: "利尻富士町", district: "鬼脇", buraku: "南浜" },
+            { name: "H_1132_2845", lat: 45.1132552, lon: 141.28455, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1135_2852", lat: 45.1135576, lon: 141.2852805, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1131_2857", lat: 45.1131534, lon: 141.2857969, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1127_2865", lat: 45.1127594, lon: 141.2865226, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1142_2856", lat: 45.1142836, lon: 141.2856837, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1144_2856", lat: 45.1144161, lon: 141.2856904, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1150_2859", lat: 45.1150648, lon: 141.2859724, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1152_2861", lat: 45.1152692, lon: 141.2861105, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1158_2868", lat: 45.1158224, lon: 141.286849, town: "利尻富士町", district: "鬼脇", buraku: "沼浦" },
+            { name: "H_1278_3025", lat: 45.1278291, lon: 141.3025525, town: "利尻富士町", district: "鬼脇", buraku: "金崎" },
+            { name: "H_1274_3032", lat: 45.1274206, lon: 141.3032061, town: "利尻富士町", district: "鬼脇", buraku: "金崎" },
+            { name: "H_1285_3022", lat: 45.1285684, lon: 141.3022085, town: "利尻富士町", district: "鬼脇", buraku: "金崎" },
+            { name: "H_1302_3047", lat: 45.1302484, lon: 141.3047225, town: "利尻富士町", district: "鬼脇", buraku: "金崎" },
+            { name: "H_1304_3063", lat: 45.1304074, lon: 141.3063238, town: "利尻富士町", district: "鬼脇", buraku: "金崎" },
+            { name: "H_1338_3064", lat: 45.1338215, lon: 141.3064824, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1351_3093", lat: 45.1351708, lon: 141.3093172, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1361_3088", lat: 45.1361111, lon: 141.3088355, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1367_3096", lat: 45.1367493, lon: 141.3096145, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1370_3094", lat: 45.137052, lon: 141.3094106, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1359_3112", lat: 45.1359889, lon: 141.3112589, town: "利尻富士町", district: "鬼脇", buraku: "鬼脇" },
+            { name: "H_1442_3184", lat: 45.1442677, lon: 141.3184243, town: "利尻富士町", district: "鬼脇", buraku: "清川" },
+            { name: "H_1451_3204", lat: 45.1451173, lon: 141.3204306, town: "利尻富士町", district: "鬼脇", buraku: "清川" },
+            { name: "H_1524_3268", lat: 45.1524539, lon: 141.3268048, town: "利尻富士町", district: "鬼脇", buraku: "二石" },
+            { name: "H_1540_3282", lat: 45.1540826, lon: 141.328278, town: "利尻富士町", district: "鬼脇", buraku: "二石" },
+            { name: "H_1567_3281", lat: 45.1567282, lon: 141.3281503, town: "利尻富士町", district: "鬼脇", buraku: "二石" },
+            { name: "H_1742_3256", lat: 45.1742397, lon: 141.3256546, town: "利尻富士町", district: "鬼脇", buraku: "石崎" },
+            { name: "H_1753_3251", lat: 45.1753987, lon: 141.3251336, town: "利尻富士町", district: "鬼脇", buraku: "石崎" },
+            { name: "H_1778_3244", lat: 45.1778217, lon: 141.324457, town: "利尻富士町", district: "鬼脇", buraku: "石崎" },
+            { name: "H_1893_3209", lat: 45.1893588, lon: 141.3209405, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1940_3177", lat: 45.1940268, lon: 141.317736, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1946_3173", lat: 45.1946346, lon: 141.3173819, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1947_3177", lat: 45.1947542, lon: 141.3177935, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1950_3176", lat: 45.1950056, lon: 141.3176728, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1953_3176", lat: 45.1953685, lon: 141.3176299, town: "利尻富士町", district: "鬼脇", buraku: "旭浜" },
+            { name: "H_1980_3109", lat: 45.1980472, lon: 141.3109215, town: "利尻富士町", district: "鬼脇", buraku: "鰊泊" },
+            { name: "H_2031_3110", lat: 45.2031365, lon: 141.3110767, town: "利尻富士町", district: "鬼脇", buraku: "鰊泊" },
+            { name: "H_2040_3104", lat: 45.2040524, lon: 141.3104559, town: "利尻富士町", district: "鬼脇", buraku: "鰊泊" },
+            { name: "H_2042_3110", lat: 45.2042659, lon: 141.3110326, town: "利尻富士町", district: "鬼脇", buraku: "鰊泊" },
+            { name: "H_2079_3079", lat: 45.2079224, lon: 141.3079776, town: "利尻富士町", district: "鬼脇", buraku: "鰊泊" },
+            { name: "H_2194_2962", lat: 45.2194176, lon: 141.2962013, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2193_2959", lat: 45.2193194, lon: 141.2959867, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2201_2935", lat: 45.2201345, lon: 141.2935349, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2204_2938", lat: 45.2204618, lon: 141.2938303, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2199_2928", lat: 45.219963, lon: 141.2928647, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2210_2904", lat: 45.2210151, lon: 141.2904494, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2210_2890", lat: 45.2210388, lon: 141.2890304, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2214_2893", lat: 45.221457, lon: 141.2893312, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2212_2878", lat: 45.2212342, lon: 141.2878744, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2219_2868", lat: 45.2219079, lon: 141.2868433, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2220_2862", lat: 45.2220439, lon: 141.286221, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2215_2856", lat: 45.2215376, lon: 141.2856577, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2218_2852", lat: 45.2218248, lon: 141.2852661, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2221_2854", lat: 45.2221875, lon: 141.2854324, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2224_2845", lat: 45.2224066, lon: 141.2845634, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2227_2836", lat: 45.2227795, lon: 141.2836497, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2227_2825", lat: 45.2227253, lon: 141.2825291, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2239_2811", lat: 45.2239435, lon: 141.2811209, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2237_2808", lat: 45.2237319, lon: 141.2808312, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2247_2802", lat: 45.2247828, lon: 141.2802683, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2256_2798", lat: 45.2256531, lon: 141.2798945, town: "利尻富士町", district: "鴛泊", buraku: "雄忠志内" },
+            { name: "H_2285_2795", lat: 45.2285744, lon: 141.2795595, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2291_2795", lat: 45.2291147, lon: 141.2795005, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2286_2789", lat: 45.2286084, lon: 141.2789346, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2289_2791", lat: 45.2289031, lon: 141.2791304, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2293_2788", lat: 45.2293262, lon: 141.2788997, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2290_2784", lat: 45.2290731, lon: 141.2784035, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2303_2784", lat: 45.2303186, lon: 141.2784865, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2310_2788", lat: 45.2310321, lon: 141.2788517, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2306_2783", lat: 45.2306511, lon: 141.2783337, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2310_2782", lat: 45.2310828, lon: 141.2782263, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2301_2772", lat: 45.230104, lon: 141.27726, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2306_2774", lat: 45.2306823, lon: 141.2774055, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2324_2761", lat: 45.2324163, lon: 141.276199, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2335_2755", lat: 45.2335589, lon: 141.2755405, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2328_2750", lat: 45.2328752, lon: 141.2750577, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2295_2716", lat: 45.2295769, lon: 141.2716298, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2336_2735", lat: 45.2336033, lon: 141.273556, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2333_2728", lat: 45.2333984, lon: 141.2728951, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2334_2721", lat: 45.2334664, lon: 141.2721763, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2339_2724", lat: 45.2339094, lon: 141.2724089, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2338_2721", lat: 45.2338328, lon: 141.2721387, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2336_2709", lat: 45.2336399, lon: 141.2709148, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2304_2689", lat: 45.2304117, lon: 141.2689928, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2321_2696", lat: 45.2321359, lon: 141.2696453, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2335_2702", lat: 45.2335381, lon: 141.2702816, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2343_2707", lat: 45.2343497, lon: 141.2707242, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2312_2687", lat: 45.2312126, lon: 141.2687881, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2333_2698", lat: 45.2333266, lon: 141.2698847, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2335_2699", lat: 45.2335683, lon: 141.2699598, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2341_2689", lat: 45.2341459, lon: 141.2689975, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2349_2692", lat: 45.2349392, lon: 141.2692443, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2320_2676", lat: 45.2320281, lon: 141.2676805, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2345_2687", lat: 45.2345161, lon: 141.2687186, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2311_2669", lat: 45.2311673, lon: 141.2669597, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2334_2676", lat: 45.2334409, lon: 141.2676698, town: "利尻富士町", district: "鴛泊", buraku: "野塚" },
+            { name: "H_2308_2619", lat: 45.230855, lon: 141.2619475, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2336_2570", lat: 45.2336527, lon: 141.2570902, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2341_2459", lat: 45.2341015, lon: 141.2459467, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2337_2440", lat: 45.2337844, lon: 141.2440412, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2339_2435", lat: 45.2339622, lon: 141.2435604, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2337_2418", lat: 45.2337851, lon: 141.2418753, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2340_2417", lat: 45.2340382, lon: 141.2417412, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2343_2407", lat: 45.2343285, lon: 141.2407067, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2344_2393", lat: 45.2344229, lon: 141.2393335, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2342_2390", lat: 45.2342601, lon: 141.2390011, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2339_2388", lat: 45.2339941, lon: 141.238894, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2339_2382", lat: 45.2339095, lon: 141.2382436, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2331_2380", lat: 45.2331577, lon: 141.2380102, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2337_2369", lat: 45.2337791, lon: 141.2369709, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2448_2304", lat: 45.24477126204745, lon: 141.23042285442355, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2449_2271", lat: 45.2449474, lon: 141.2271061, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2451_2270", lat: 45.245108, lon: 141.2270471, town: "利尻富士町", district: "鴛泊", buraku: "湾内" },
+            { name: "H_2449_2267", lat: 45.244904, lon: 141.2267682, town: "利尻富士町", district: "鴛泊", buraku: "港町" },
+            { name: "H_2393_2280", lat: 45.2393215, lon: 141.2280094, town: "利尻富士町", district: "鴛泊", buraku: "港町" },
+            { name: "H_2446_2262", lat: 45.2446982, lon: 141.2262474, town: "利尻富士町", district: "鴛泊", buraku: "港町" },
+            { name: "H_2463_2219", lat: 45.2463148, lon: 141.2219816, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2464_2216", lat: 45.2464662, lon: 141.2216058, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2467_2209", lat: 45.2467619, lon: 141.2209986, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2477_2203", lat: 45.2477271, lon: 141.2203331, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2480_2198", lat: 45.2480376, lon: 141.2198462, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2478_2195", lat: 45.2478847, lon: 141.2195726, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2479_2191", lat: 45.24793, lon: 141.2191086, town: "利尻富士町", district: "鴛泊", buraku: "栄町" },
+            { name: "H_2579_1966", lat: 45.2579463, lon: 141.1966851, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2575_1968", lat: 45.257528, lon: 141.1968466, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2579_1957", lat: 45.2579451, lon: 141.195735, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2581_1945", lat: 45.258163, lon: 141.1945494, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2581_1934", lat: 45.2581336, lon: 141.1934075, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2579_1933", lat: 45.2579048, lon: 141.1933233, town: "利尻富士町", district: "鴛泊", buraku: "富士岬" },
+            { name: "H_2575_1930", lat: 45.2575895, lon: 141.1930146, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2574_1919", lat: 45.2574384, lon: 141.1919687, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2565_1899", lat: 45.2565726, lon: 141.1899583, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2565_1893", lat: 45.2565726, lon: 141.1893602, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2563_1893", lat: 45.2563989, lon: 141.1893575, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2512_1861", lat: 45.2512927, lon: 141.186103, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2507_1861", lat: 45.2507977, lon: 141.1861938, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2517_1848", lat: 45.2517003, lon: 141.1848425, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2494_1848", lat: 45.2494955, lon: 141.1848312, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2516_1829", lat: 45.2516839, lon: 141.1829666, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2476_1852", lat: 45.2476831, lon: 141.1852532, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2475_1845", lat: 45.2475868, lon: 141.1845035, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+            { name: "H_2466_1826", lat: 45.2466719, lon: 141.1826188, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2455_1813", lat: 45.2455728, lon: 141.1813367, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2462_1785", lat: 45.2462307, lon: 141.17855, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2455_1786", lat: 45.2455802, lon: 141.1786554, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2449_1787", lat: 45.2449797, lon: 141.1787923, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2468_1766", lat: 45.2468489, lon: 141.176613, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2454_1779", lat: 45.2454745, lon: 141.1779728, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2446_1774", lat: 45.2446706, lon: 141.1774097, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2439_1772", lat: 45.2439473, lon: 141.1772333, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2434_1764", lat: 45.2434053, lon: 141.1764709, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2426_1759", lat: 45.2426844, lon: 141.1759649, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2414_1760", lat: 45.241472, lon: 141.1760937, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2422_1746", lat: 45.242235, lon: 141.174656, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2426_1741", lat: 45.2426801, lon: 141.1741546, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2297_1543", lat: 45.2297761, lon: 141.1543565, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2292_1551", lat: 45.229217, lon: 141.1551159, town: "利尻富士町", district: "鴛泊", buraku: "大磯" },
+            { name: "H_2183_1381", lat: 45.2183318, lon: 141.1381607, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2182_1377", lat: 45.2182693, lon: 141.1377479, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2176_1383", lat: 45.2176465, lon: 141.1383282, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2162_1369", lat: 45.2162989, lon: 141.1369268, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2153_1377", lat: 45.2153768, lon: 141.137775, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2150_1362", lat: 45.215014, lon: 141.1362997, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2148_1356", lat: 45.2148553, lon: 141.1356077, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2139_1335", lat: 45.2139627, lon: 141.1335752, town: "利尻町", district: "沓形", buraku: "栄浜" },
+            { name: "H_2088_1443", lat: 45.2088707, lon: 141.1443995, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2110_1346", lat: 45.2110922, lon: 141.1346602, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2080_1451", lat: 45.208048, lon: 141.1451738, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2095_1370", lat: 45.2095628, lon: 141.1370219, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2095_1365", lat: 45.2095666, lon: 141.1365163, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2091_1377", lat: 45.2091917, lon: 141.1377542, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2073_1446", lat: 45.2073413, lon: 141.1446213, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2089_1368", lat: 45.2089394, lon: 141.1368919, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2064_1420", lat: 45.2064953, lon: 141.1420567, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2077_1364", lat: 45.2077046, lon: 141.1364899, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2065_1375", lat: 45.2065728, lon: 141.137565, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2065_1369", lat: 45.2065164, lon: 141.1369002, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2052_1384", lat: 45.2052096, lon: 141.1384087, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2030_1392", lat: 45.2030471, lon: 141.1392327, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2020_1404", lat: 45.2020959, lon: 141.140491, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_2011_1417", lat: 45.201169, lon: 141.141782, town: "利尻町", district: "沓形", buraku: "新湊" },
+            { name: "H_1998_1383", lat: 45.1998289, lon: 141.1383242, town: "利尻町", district: "沓形", buraku: "種富町" },
+            { name: "H_1883_1394", lat: 45.1883009, lon: 141.1394494, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1885_1351", lat: 45.1885151, lon: 141.1351124, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1857_1317", lat: 45.1857184, lon: 141.131719, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1845_1337", lat: 45.1845217, lon: 141.1337514, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1838_1349", lat: 45.1838904, lon: 141.134998, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1836_1371", lat: 45.1836457, lon: 141.1371968, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1835_1363", lat: 45.1835834, lon: 141.1363493, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1835_1367", lat: 45.1835456, lon: 141.1367007, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1834_1386", lat: 45.1834255, lon: 141.1386249, town: "利尻町", district: "沓形", buraku: "富野・日出町・緑町・本町・富士見町" },
+            { name: "H_1818_1416", lat: 45.1818894, lon: 141.141604, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1817_1402", lat: 45.1817422, lon: 141.1402608, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1811_1399", lat: 45.1811051, lon: 141.1399778, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1804_1404", lat: 45.1804171, lon: 141.1404971, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1799_1392", lat: 45.1799133, lon: 141.1392124, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1798_1396", lat: 45.1798377, lon: 141.139647, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1795_1395", lat: 45.1795258, lon: 141.1395881, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1795_1393", lat: 45.1795069, lon: 141.1393681, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1790_1377", lat: 45.1790034, lon: 141.1377481, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1788_1372", lat: 45.1788408, lon: 141.1372921, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1782_1394", lat: 45.1782154, lon: 141.1394976, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1762_1377", lat: 45.1762629, lon: 141.1377278, town: "利尻町", district: "沓形", buraku: "泉町" },
+            { name: "H_1745_1387", lat: 45.1745589, lon: 141.1387238, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1725_1392", lat: 45.1725647, lon: 141.1392606, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1723_1388", lat: 45.1723075, lon: 141.1388261, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1721_1390", lat: 45.1721789, lon: 141.1390943, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1719_1390", lat: 45.1719407, lon: 141.1390031, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1704_1384", lat: 45.1704874, lon: 141.1384103, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1698_1385", lat: 45.1698969, lon: 141.1385708, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1695_1397", lat: 45.1695078, lon: 141.1397705, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1642_1430", lat: 45.1642297, lon: 141.1430654, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1637_1420", lat: 45.163794, lon: 141.1420934, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1629_1421", lat: 45.1629892, lon: 141.1421148, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1630_1426", lat: 45.1630233, lon: 141.1426459, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1631_1434", lat: 45.1631035, lon: 141.1434784, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1624_1426", lat: 45.1624446, lon: 141.1426244, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1613_1450", lat: 45.1613739, lon: 141.1450036, town: "利尻町", district: "沓形", buraku: "神居" },
+            { name: "H_1544_1510", lat: 45.1544086, lon: 141.1510617, town: "利尻町", district: "沓形", buraku: "蘭泊" },
+            { name: "H_1517_1528", lat: 45.151713, lon: 141.152844, town: "利尻町", district: "沓形", buraku: "蘭泊" },
+            { name: "H_1490_1564", lat: 45.1490644, lon: 141.1564134, town: "利尻町", district: "沓形", buraku: "蘭泊" },
+            { name: "H_1488_1568", lat: 45.1488286, lon: 141.1568409, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1484_1578", lat: 45.1484215, lon: 141.1578882, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1386_1658", lat: 45.1386527, lon: 141.165883, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1376_1662", lat: 45.1376793, lon: 141.166274, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1370_1684", lat: 45.1370722, lon: 141.168404, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1364_1676", lat: 45.1364546, lon: 141.1676095, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1362_1681", lat: 45.1362881, lon: 141.1681353, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1364_1688", lat: 45.1364516, lon: 141.1688868, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1360_1691", lat: 45.1360732, lon: 141.1691658, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1356_1687", lat: 45.1356264, lon: 141.1687017, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1352_1690", lat: 45.1352972, lon: 141.1690933, town: "利尻町", district: "仙法志", buraku: "久連" },
+            { name: "H_1279_1806", lat: 45.1279996, lon: 141.180658, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1275_1824", lat: 45.1275998, lon: 141.1824476, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1274_1829", lat: 45.1274371, lon: 141.182984, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1266_1851", lat: 45.1266709, lon: 141.18514, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1264_1862", lat: 45.1264901, lon: 141.1862968, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1261_1871", lat: 45.1261867, lon: 141.1871998, town: "利尻町", district: "仙法志", buraku: "長浜" },
+            { name: "H_1254_1910", lat: 45.1254663, lon: 141.1910171, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1201_1983", lat: 45.12012, lon: 141.1983058, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1202_1987", lat: 45.1202539, lon: 141.1987064, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1190_2001", lat: 45.1190237, lon: 141.2001839, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1187_2006", lat: 45.1187323, lon: 141.2006667, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1179_2012", lat: 45.1179306, lon: 141.2012737, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1187_2021", lat: 45.1187228, lon: 141.2021983, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1174_2017", lat: 45.1174726, lon: 141.2017458, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1193_2032", lat: 45.1193133, lon: 141.2032926, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1168_2021", lat: 45.1168902, lon: 141.202176, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1163_2023", lat: 45.1163905, lon: 141.2023047, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1159_2022", lat: 45.1159627, lon: 141.2022511, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1156_2027", lat: 45.1156135, lon: 141.2027696, town: "利尻町", district: "仙法志", buraku: "神磯" },
+            { name: "H_1176_2048", lat: 45.1176023, lon: 141.2048161, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1157_2040", lat: 45.1157831, lon: 141.2040999, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1155_2039", lat: 45.115509, lon: 141.2039961, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1154_2050", lat: 45.1154598, lon: 141.2050234, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1152_2053", lat: 45.115263, lon: 141.2053721, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1150_2053", lat: 45.1150699, lon: 141.205356, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1176_2068", lat: 45.1176175, lon: 141.2068331, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1141_2080", lat: 45.1141486, lon: 141.2080556, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1138_2086", lat: 45.1138382, lon: 141.208667, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1135_2085", lat: 45.1135127, lon: 141.2085382, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1132_2088", lat: 45.1132505, lon: 141.2088686, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1131_2104", lat: 45.1131045, lon: 141.2104698, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1121_2106", lat: 45.1121695, lon: 141.2106951, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1125_2109", lat: 45.1125215, lon: 141.2109204, town: "利尻町", district: "仙法志", buraku: "政泊" },
+            { name: "H_1109_2141", lat: 45.1109702, lon: 141.2141438, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1112_2148", lat: 45.1112163, lon: 141.214868, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1107_2152", lat: 45.1107242, lon: 141.2152221, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1105_2154", lat: 45.1105336, lon: 141.2154636, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1113_2168", lat: 45.1113909, lon: 141.2168461, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1099_2183", lat: 45.1099756, lon: 141.218347, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1071_2182", lat: 45.1071109, lon: 141.2182966, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1080_2187", lat: 45.1080022, lon: 141.2187599, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1076_2188", lat: 45.1076646, lon: 141.218891, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1072_2189", lat: 45.1072161, lon: 141.2189003, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1068_2198", lat: 45.1068639, lon: 141.2198209, town: "利尻町", district: "仙法志", buraku: "本町" },
+            { name: "H_1067_2201", lat: 45.1067276, lon: 141.2201696, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1064_2209", lat: 45.1064436, lon: 141.2209367, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1079_2225", lat: 45.1079586, lon: 141.2225588, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1064_2224", lat: 45.1064667, lon: 141.2224071, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1064_2238", lat: 45.1064311, lon: 141.2238985, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1061_2255", lat: 45.1061591, lon: 141.2255371, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1059_2261", lat: 45.1059702, lon: 141.2261239, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1064_2264", lat: 45.1064435, lon: 141.2264297, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1058_2266", lat: 45.105861, lon: 141.2266559, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1058_2269", lat: 45.1058005, lon: 141.2269617, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1054_2274", lat: 45.1054103, lon: 141.2274857, town: "利尻町", district: "仙法志", buraku: "元村" },
+            { name: "H_1052_2278", lat: 45.1052855, lon: 141.2278468, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0999_2282", lat: 45.099954, lon: 141.228227, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0996_2286", lat: 45.0996921, lon: 141.228644, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1013_2289", lat: 45.1013171, lon: 141.2289152, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1021_2294", lat: 45.1021501, lon: 141.2294408, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1002_2305", lat: 45.1002115, lon: 141.2305065, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1000_2307", lat: 45.100083, lon: 141.2307556, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0999_2310", lat: 45.0999335, lon: 141.2310079, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1014_2312", lat: 45.1014286, lon: 141.2312722, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0993_2312", lat: 45.0993577, lon: 141.2312092, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0985_2332", lat: 45.098564, lon: 141.2332933, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0989_2335", lat: 45.0989786, lon: 141.2335938, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0991_2343", lat: 45.0991319, lon: 141.234371, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0991_2351", lat: 45.09916, lon: 141.2351819, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0988_2353", lat: 45.0988753, lon: 141.2353402, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0982_2358", lat: 45.0982545, lon: 141.2358986, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0978_2363", lat: 45.0978959, lon: 141.2363079, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0983_2369", lat: 45.0983261, lon: 141.2369949, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0986_2371", lat: 45.0986909, lon: 141.237183, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0983_2378", lat: 45.0983485, lon: 141.2378509, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0976_2378", lat: 45.0976072, lon: 141.2378178, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0980_2384", lat: 45.0980579, lon: 141.2384079, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_1047_2387", lat: 45.104712, lon: 141.2387548, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0988_2393", lat: 45.0988451, lon: 141.2393708, town: "利尻町", district: "仙法志", buraku: "御崎" },
+            { name: "H_0988_2398", lat: 45.0988214, lon: 141.2398858, town: "利尻町", district: "仙法志", buraku: "御崎" }
+        ]; */
+
+        // 干場マーカーを地図に追加
+        function addHoshibaMarkers() {
+            // 既存のマーカーをクリア
+            allMarkers.forEach(markerData => {
+                map.removeLayer(markerData.marker);
+            });
+            allMarkers = [];
+
+            // hoshibaSpots変数の有効性確認
+            if (typeof hoshibaSpots === 'undefined') {
+                console.error('hoshibaSpots is not defined. Trying to load from API...');
+                loadSpotsFromAPI();
+                return;
+            }
+
+            // all_spots_array.jsから読み込んだデータを使用
+            hoshibaSpots.forEach((spot, index) => {
+                const isFavorite = favorites.includes(index);
+                const marker = L.circleMarker([spot.lat, spot.lon], {
+                    radius: 8,
+                    fillColor: isFavorite ? '#28a745' : '#667eea',
+                    color: 'white',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+
+                // マーカーデータを配列に保存
+                allMarkers.push({
+                    marker: marker,
+                    spot: spot,
+                    index: index,
+                    visible: true
+                });
+
+                marker.bindPopup(`
+                    <div style="text-align: center; padding: 10px;">
+                        <strong>${spot.name}</strong><br>
+                        <span style="color: #666;">${spot.town} ${spot.district}</span><br>
+                        <button onclick="selectSpot(${index})" style="
+                            background: #667eea;
+                            color: white;
+                            border: none;
+                            padding: 8px 15px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 5px;
+                        ">7日間予報を表示</button>
+                        <button onclick="toggleFavorite(${index})" style="
+                            background: #28a745;
+                            color: white;
+                            border: none;
+                            padding: 8px 15px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 5px;
+                        ">お気に入り登録</button>
+                        <button onclick="deleteSpot(${index})" style="
+                            background: #dc3545;
+                            color: white;
+                            border: none;
+                            padding: 8px 15px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 5px;
+                        ">🗑️ 干場を削除</button>
+                        <button onclick="console.log('Record button clicked for index:', ${index}); showRecordForm(${index})" style="
+                            background: #17a2b8;
+                            color: white;
+                            border: none;
+                            padding: 8px 15px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                            margin: 5px;
+                        ">📝 記録を入力</button>
+                    </div>
+                `);
+
+                marker.on('click', () => selectSpot(index));
+                spot.marker = marker;
+            });
+        }
+
+        // 階層フィルタリング関数
+        function filterByTown() {
+            const townSelect = document.getElementById('townSelect');
+            const selectedTown = townSelect.value;
+
+            currentFilters.town = selectedTown;
+            currentFilters.district = '';
+            currentFilters.buraku = '';
+
+            // 地区セレクトボックスを更新
+            updateDistrictOptions(selectedTown);
+
+            // マーカーをフィルタリング
+            applyFilters();
+            updateBreadcrumb();
+            updateStats();
+        }
+
+        function filterByDistrict() {
+            const districtSelect = document.getElementById('districtSelect');
+            const selectedDistrict = districtSelect.value;
+
+            currentFilters.district = selectedDistrict;
+            currentFilters.buraku = '';
+
+            // 部落セレクトボックスを更新
+            updateBurakuOptions(currentFilters.town, selectedDistrict);
+
+            // マーカーをフィルタリング
+            applyFilters();
+            updateBreadcrumb();
+            updateStats();
+        }
+
+        function filterByBuraku() {
+            const burakuSelect = document.getElementById('burakuSelect');
+            const selectedBuraku = burakuSelect.value;
+
+            currentFilters.buraku = selectedBuraku;
+
+            // マーカーをフィルタリング
+            applyFilters();
+            updateBreadcrumb();
+            updateStats();
+        }
+
+        function resetFilters() {
+            currentFilters = { town: '', district: '', buraku: '' };
+
+            // セレクトボックスをリセット
+            document.getElementById('townSelect').value = '';
+            document.getElementById('districtSelect').value = '';
+            document.getElementById('burakuSelect').value = '';
+
+            // セクションを隠す
+            document.getElementById('districtSection').style.display = 'none';
+            document.getElementById('burakuSection').style.display = 'none';
+
+            // 全マーカーを表示
+            showAllMarkers();
+            updateBreadcrumb();
+            updateStats();
+
+            // 全体表示にズーム
+            map.setView(RISHIRI_CENTER, 12);
+        }
+
+        function updateDistrictOptions(selectedTown) {
+            const districtSelect = document.getElementById('districtSelect');
+            const districtSection = document.getElementById('districtSection');
+            const burakuSection = document.getElementById('burakuSection');
+
+            districtSelect.innerHTML = '<option value="">-- 地区を選択してください --</option>';
+
+            if (selectedTown) {
+                // 選択された町の地区を取得
+                const districts = [...new Set(
+                    hoshibaSpots
+                        .filter(spot => spot.town === selectedTown)
+                        .map(spot => spot.district)
+                )].sort();
+
+                districts.forEach(district => {
+                    const option = document.createElement('option');
+                    option.value = district;
+                    option.textContent = district;
+                    districtSelect.appendChild(option);
+                });
+
+                districtSection.style.display = 'block';
+                burakuSection.style.display = 'none';
+            } else {
+                districtSection.style.display = 'none';
+                burakuSection.style.display = 'none';
+            }
+        }
+
+        function updateBurakuOptions(selectedTown, selectedDistrict) {
+            const burakuSelect = document.getElementById('burakuSelect');
+            const burakuSection = document.getElementById('burakuSection');
+
+            burakuSelect.innerHTML = '<option value="">-- 部落を選択してください --</option>';
+
+            if (selectedTown && selectedDistrict) {
+                // 選択された町・地区の部落を取得
+                const burakus = [...new Set(
+                    hoshibaSpots
+                        .filter(spot => spot.town === selectedTown && spot.district === selectedDistrict)
+                        .map(spot => spot.buraku)
+                )].sort();
+
+                burakus.forEach(buraku => {
+                    const option = document.createElement('option');
+                    option.value = buraku;
+                    option.textContent = buraku;
+                    burakuSelect.appendChild(option);
+                });
+
+                burakuSection.style.display = 'block';
+            } else {
+                burakuSection.style.display = 'none';
+            }
+        }
+
+        // フィルタリング実行
+        function applyFilters() {
+            let visibleCount = 0;
+            const filteredMarkers = [];
+
+            allMarkers.forEach(markerData => {
+                const { marker, spot, index } = markerData;
+                let shouldShow = true;
+
+                // 町フィルター
+                if (currentFilters.town && spot.town !== currentFilters.town) {
+                    shouldShow = false;
+                }
+
+                // 地区フィルター
+                if (currentFilters.district && spot.district !== currentFilters.district) {
+                    shouldShow = false;
+                }
+
+                // 部落フィルター
+                if (currentFilters.buraku && spot.buraku !== currentFilters.buraku) {
+                    shouldShow = false;
+                }
+
+                if (shouldShow) {
+                    if (!map.hasLayer(marker)) {
+                        map.addLayer(marker);
+                    }
+                    markerData.visible = true;
+                    filteredMarkers.push(markerData);
+                    visibleCount++;
+                } else {
+                    if (map.hasLayer(marker)) {
+                        map.removeLayer(marker);
+                    }
+                    markerData.visible = false;
+                }
+            });
+
+            // フィルタリングされた範囲にズーム
+            if (filteredMarkers.length > 0) {
+                zoomToMarkers(filteredMarkers);
+            }
+
+            return visibleCount;
+        }
+
+        // 指定されたマーカーの範囲にズーム
+        function zoomToMarkers(markerData) {
+            if (markerData.length === 0) return;
+
+            const latLngs = markerData.map(data => [data.spot.lat, data.spot.lon]);
+            const group = L.latLngBounds(latLngs);
+
+            // 適切なパディングでズーム
+            map.fitBounds(group, {
+                padding: [50, 50],
+                maxZoom: 16
+            });
+        }
+
+        // 全マーカーを表示
+        function showAllMarkers() {
+            allMarkers.forEach(markerData => {
+                const { marker } = markerData;
+                if (!map.hasLayer(marker)) {
+                    map.addLayer(marker);
+                }
+                markerData.visible = true;
+            });
+        }
+
+        // パンくずナビゲーション更新
+        function updateBreadcrumb() {
+            const breadcrumb = document.getElementById('filterBreadcrumb');
+            let html = '<span class="breadcrumb-item" onclick="resetFilters()">全エリア</span>';
+
+            if (currentFilters.town) {
+                html += '<span class="breadcrumb-separator"> > </span>';
+                html += `<span class="breadcrumb-item" onclick="filterToTown('${currentFilters.town}')">${currentFilters.town}</span>`;
+            }
+
+            if (currentFilters.district) {
+                html += '<span class="breadcrumb-separator"> > </span>';
+                html += `<span class="breadcrumb-item" onclick="filterToDistrict('${currentFilters.town}', '${currentFilters.district}')">${currentFilters.district}</span>`;
+            }
+
+            if (currentFilters.buraku) {
+                html += '<span class="breadcrumb-separator"> > </span>';
+                html += `<span class="breadcrumb-item">${currentFilters.buraku}</span>`;
+            }
+
+            breadcrumb.innerHTML = html;
+        }
+
+        // 統計情報更新
+        function updateStats() {
+            const visibleCount = allMarkers.filter(m => m.visible).length;
+            const statsElement = document.getElementById('filterStats');
+            statsElement.textContent = `表示中: ${visibleCount}箇所の干場`;
+        }
+
+        // パンくずナビゲーションから町レベルにフィルタ
+        function filterToTown(town) {
+            currentFilters = { town: town, district: '', buraku: '' };
+            document.getElementById('townSelect').value = town;
+            updateDistrictOptions(town);
+            applyFilters();
+            updateBreadcrumb();
+            updateStats();
+        }
+
+        // パンくずナビゲーションから地区レベルにフィルタ
+        function filterToDistrict(town, district) {
+            currentFilters = { town: town, district: district, buraku: '' };
+            document.getElementById('townSelect').value = town;
+            document.getElementById('districtSelect').value = district;
+            updateDistrictOptions(town);
+            updateBurakuOptions(town, district);
+            applyFilters();
+            updateBreadcrumb();
+            updateStats();
+        }
+
+        // 干場選択処理
+        async function selectSpot(index) {
+            const spot = hoshibaSpots[index];
+
+            // 前の選択をリセット
+            if (selectedMarker) {
+                selectedMarker.setStyle({
+                    fillColor: '#667eea',
+                    radius: 8
+                });
+            }
+
+            // 新しい選択をハイライト
+            selectedMarker = spot.marker;
+            selectedMarker.setStyle({
+                fillColor: '#ff6b6b',
+                radius: 12
+            });
+
+            selectedSpot = spot;
+
+            // パネル表示
+            const panel = document.getElementById('forecastPanel');
+            panel.classList.add('active');
+
+            // ヘッダー更新
+            document.getElementById('selectedSpotName').textContent = spot.name;
+            document.getElementById('selectedSpotLocation').textContent = `${spot.town} ${spot.district} ${spot.buraku}`;
+
+            // 予報データ取得
+            await loadForecastData(spot);
+
+            // 自動更新開始
+            startAutoUpdate();
+        }
+
+        // 予報データ取得と表示
+        async function loadForecastData(spot) {
+            const forecastContent = document.getElementById('forecastContent');
+            const forecastTabs = document.getElementById('forecastTabs');
+
+            forecastContent.innerHTML = '<div class="loading"><div class="spinner"></div>予報データを取得中...</div>';
+            forecastTabs.style.display = 'none';
+
+            try {
+                // Enhanced API call
+                const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    displayEnhancedForecast(data.forecasts);
+                    updateChart(data.forecasts);
+                    lastUpdateTime = new Date();
+                    updateAutoUpdateStatus();
+                } else {
+                    forecastContent.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">予報データの取得に失敗しました</div>';
+                }
+            } catch (error) {
+                console.error('Forecast fetch error:', error);
+                forecastContent.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">ネットワークエラーが発生しました</div>';
+            }
+        }
+
+        // 予報表示
+        function displayForecast(forecasts) {
+            const forecastContent = document.getElementById('forecastContent');
+            let html = '';
+
+            forecasts.forEach(forecast => {
+                const date = new Date(forecast.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                const dayStr = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+
+                html += `
+                    <div class="forecast-item">
+                        <div class="forecast-date">${dateStr} (${dayStr})</div>
+                        <div class="forecast-data">
+                            <div class="data-item">
+                                <span>最高気温:</span>
+                                <span>${forecast.temperature_max}°C</span>
+                            </div>
+                            <div class="data-item">
+                                <span>湿度:</span>
+                                <span>${forecast.humidity}%</span>
+                            </div>
+                            <div class="data-item">
+                                <span>風速:</span>
+                                <span>${forecast.wind_speed}m/s</span>
+                            </div>
+                            <div class="data-item">
+                                <span>降水量:</span>
+                                <span>${forecast.precipitation}mm</span>
+                            </div>
+                            <div class="data-item expert-only">
+                                <span>気圧:</span>
+                                <span>${forecast.pressure || '1013'}hPa</span>
+                            </div>
+                            <div class="data-item">
+                                <span>風向:</span>
+                                <span>${forecast.daily_summary && forecast.daily_summary.wind_direction ? getRishiriWindDetails(forecast.daily_summary.wind_direction).name + '（' + getRishiriWindDetails(forecast.daily_summary.wind_direction).cardinal + '）' : '--'}</span>
+                            </div>
+                            <div class="data-item expert-only">
+                                <span>紫外線指数:</span>
+                                <span>${forecast.uv_index || '5'}</span>
+                            </div>
+                            <div class="data-item expert-only">
+                                <span>雲量:</span>
+                                <span>${forecast.cloud_cover || '30'}%</span>
+                            </div>
+                        </div>
+                        <div class="suitability ${forecast.suitability}">
+                            乾燥適性: ${getSuitabilityText(forecast.suitability)} (${forecast.drying_score}点)
+                        </div>
+                        <div class="schedule-recommendation" style="margin-top: 10px; padding: 8px; background: rgba(102, 126, 234, 0.1); border-radius: 5px; font-size: 0.85rem;">
+                            <strong>🕒 推奨作業時間:</strong>
+                            <div id="workSchedule_${forecast.date}" style="margin-top: 5px; color: #333;"></div>
+                        </div>
+                        <div class="feedback-section">
+                            <small style="color: #666; margin-bottom: 5px; display: block;">実際の乾燥状況をフィードバック:</small>
+                            <div class="feedback-buttons">
+                                <button onclick="submitFeedback('${forecast.date}', 'excellent')" class="feedback-btn excellent">非常に良い</button>
+                                <button onclick="submitFeedback('${forecast.date}', 'good')" class="feedback-btn good">良い</button>
+                                <button onclick="submitFeedback('${forecast.date}', 'fair')" class="feedback-btn fair">普通</button>
+                                <button onclick="submitFeedback('${forecast.date}', 'poor')" class="feedback-btn poor">悪い</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            forecastContent.innerHTML = html;
+
+            // 作業スケジュール計算
+            forecasts.forEach(forecast => {
+                calculateWorkSchedule(forecast);
+            });
+        }
+
+        // Enhanced forecast display with tabs and hourly details
+        function displayEnhancedForecast(forecasts) {
+            const forecastContent = document.getElementById('forecastContent');
+            const forecastTabs = document.getElementById('forecastTabs');
+
+            // Create tabs
+            let tabsHtml = '';
+            forecasts.forEach((forecast, index) => {
+                const date = new Date(forecast.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                const dayStr = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+                const isActive = index === 0 ? 'active' : '';
+                const reliabilityClass = getReliabilityClass(forecast.reliability);
+
+                const dayLabel = index === 0 ? '今日' : index === 1 ? '明日' : `${index}日後`;
+
+                tabsHtml += `
+                    <div class="forecast-tab ${isActive}" onclick="showForecastDay(${index})" data-day="${index}">
+                        ${dayLabel}<br>
+                        <small>${dateStr}(${dayStr})</small><br>
+                        <span class="reliability-badge ${reliabilityClass}">${forecast.reliability.accuracy}%</span>
+                    </div>
+                `;
+            });
+
+            forecastTabs.innerHTML = tabsHtml;
+            forecastTabs.style.display = 'flex';
+
+            // Create content for each day
+            let contentHtml = '';
+            forecasts.forEach((forecast, index) => {
+                const date = new Date(forecast.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                const dayStr = ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
+                const isActive = index === 0 ? 'active' : '';
+                const reliabilityClass = getReliabilityClass(forecast.reliability);
+
+                const dayLabel2 = index === 0 ? '今日' : index === 1 ? '明日' : `${index}日後`;
+
+                contentHtml += `
+                    <div class="forecast-content ${isActive}" id="forecastDay${index}">
+                        <div class="forecast-item">
+                            <div class="forecast-date">${dateStr} (${dayStr}) - ${dayLabel2}</div>
+
+                            <div class="reliability-badge ${reliabilityClass}" style="margin-bottom: 15px;">
+                                信頼度: ${forecast.reliability.accuracy}% (${forecast.reliability.confidence}) - ${forecast.reliability.usage}
+                            </div>
+
+                            <div class="forecast-data">
+                                <div class="data-item">
+                                    <span>最高気温:</span>
+                                    <span>${forecast.daily_summary.temperature_max.toFixed(1)}°C</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>最低気温:</span>
+                                    <span>${forecast.daily_summary.temperature_min.toFixed(1)}°C</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>平均湿度:</span>
+                                    <span>${forecast.daily_summary.humidity.toFixed(1)}%</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>最大風速:</span>
+                                    <span>${forecast.daily_summary.wind_speed.toFixed(1)}m/s</span>
+                                </div>
+                                <div class="data-item">
+                                    <span>降水量:</span>
+                                    <span>${forecast.daily_summary.precipitation.toFixed(1)}mm</span>
+                                </div>
+                            </div>
+
+                            <div class="suitability ${forecast.daily_summary.suitability}">
+                                乾燥適性: ${getSuitabilityText(forecast.daily_summary.suitability)} (${forecast.daily_summary.drying_score}点)
+                            </div>
+
+                            <div class="schedule-recommendation" style="margin: 15px 0; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 5px;">
+                                <strong>🕒 予測乾燥時間:</strong> ${forecast.daily_summary.estimated_drying_time}
+                            </div>
+
+                            ${generateHourlyDetails(forecast.hourly_details)}
+
+                            <div class="feedback-section">
+                                <small style="color: #666; margin-bottom: 5px; display: block;">実際の乾燥状況をフィードバック:</small>
+                                <div class="feedback-buttons">
+                                    <button onclick="submitFeedback('${forecast.date}', 'excellent')" class="feedback-btn excellent">非常に良い</button>
+                                    <button onclick="submitFeedback('${forecast.date}', 'good')" class="feedback-btn good">良い</button>
+                                    <button onclick="submitFeedback('${forecast.date}', 'fair')" class="feedback-btn fair">普通</button>
+                                    <button onclick="submitFeedback('${forecast.date}', 'poor')" class="feedback-btn poor">悪い</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            forecastContent.innerHTML = contentHtml;
+        }
+
+        function generateHourlyDetails(hourlyData) {
+            if (!hourlyData || hourlyData.length === 0) {
+                return '<div class="hourly-section"><h4>時間別詳細データなし</h4></div>';
+            }
+
+            let html = `
+                <div class="hourly-section">
+                    <h4>📊 時間別詳細 (4:00-16:00)</h4>
+                    <div class="hourly-grid">
+            `;
+
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    html += `
+                        <div class="hourly-item">
+                            <div class="hourly-time">${hour.time}</div>
+                            <div>🌡️ ${hour.temperature ? hour.temperature.toFixed(1) : '--'}°C</div>
+                            <div>💧 ${hour.humidity ? hour.humidity.toFixed(0) : '--'}%</div>
+                            <div>💨 ${hour.wind_speed ? hour.wind_speed.toFixed(1) : '--'}m/s</div>
+                            <div>🌬️ ${hour.wind_direction ? getRishiriWindDetails(hour.wind_direction).name + '（' + getRishiriWindDetails(hour.wind_direction).cardinal + '）' : '--'}</div>
+                            <div>☀️ ${hour.solar_radiation ? Math.round(hour.solar_radiation) : '--'}W/m²</div>
+                            <div>☁️ ${hour.cloud_cover ? hour.cloud_cover.toFixed(0) : '--'}%</div>
+                            <div class="expert-only">⬆️ ${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}Pa/s</div>
+                            <div class="expert-only">📊 ${hour.ssi !== undefined && hour.ssi !== null ? hour.ssi.toFixed(1) + ' (' + getSSICategory(hour.ssi) + ')' : '--'}</div>
+                            <div class="expert-only">🌡️ ${hour.equivalent_potential_temperature !== undefined && hour.equivalent_potential_temperature !== null ? hour.equivalent_potential_temperature.toFixed(1) + 'K' : '--'}</div>
+                        </div>
+                    `;
+                }
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            return html;
+        }
+
+        function getReliabilityClass(reliability) {
+            if (reliability.accuracy >= 85) return 'reliability-high';
+            if (reliability.accuracy >= 70) return 'reliability-medium';
+            return 'reliability-low';
+        }
+
+        function showForecastDay(dayIndex) {
+            // Hide all content
+            document.querySelectorAll('.forecast-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Hide all tabs
+            document.querySelectorAll('.forecast-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected content and tab
+            const selectedContent = document.getElementById(`forecastDay${dayIndex}`);
+            const selectedTab = document.querySelector(`.forecast-tab[data-day="${dayIndex}"]`);
+
+            if (selectedContent) selectedContent.classList.add('active');
+            if (selectedTab) selectedTab.classList.add('active');
+        }
+
+        // 作業スケジュール最適化
+        function calculateWorkSchedule(forecast) {
+            const scheduleElement = document.getElementById(`workSchedule_${forecast.date}`);
+            if (!scheduleElement) return;
+
+            let recommendations = [];
+
+            // 乾燥適性に基づく推奨時間帯
+            if (forecast.drying_score >= 8) {
+                recommendations.push('🌟 終日作業最適 (6:00-18:00)');
+            } else if (forecast.drying_score >= 6) {
+                // 風速と湿度を考慮
+                const windSpeed = forecast.wind_speed || 5;
+                const humidity = forecast.humidity || 70;
+
+                if (windSpeed > 3 && humidity < 70) {
+                    recommendations.push('☀️ 午前中推奨 (8:00-12:00)');
+                    recommendations.push('🌤️ 午後も良好 (13:00-17:00)');
+                } else if (windSpeed > 3) {
+                    recommendations.push('🌬️ 風強時間帯 (10:00-15:00)');
+                } else {
+                    recommendations.push('⏰ 短時間作業 (10:00-14:00)');
+                }
+            } else if (forecast.drying_score >= 4) {
+                recommendations.push('⚠️ 限定的作業 (11:00-13:00)');
+                if (forecast.precipitation < 1) {
+                    recommendations.push('💧 雨間を利用');
+                }
+            } else {
+                recommendations.push('❌ 作業非推奨');
+                if (forecast.precipitation > 5) {
+                    recommendations.push('🌧️ 雨天作業停止');
+                }
+            }
+
+            // 気温による調整
+            const temp = forecast.temperature_max || 20;
+            if (temp > 25) {
+                recommendations.push('🌡️ 高温注意 (早朝・夕方推奨)');
+            } else if (temp < 10) {
+                recommendations.push('🧥 低温注意 (日中推奨)');
+            }
+
+            scheduleElement.innerHTML = recommendations.join('<br>');
+        }
+
+        // 適性テキスト変換
+        function getSuitabilityText(suitability) {
+            const suitabilityMap = {
+                'excellent': '非常に良い',
+                'good': '良い',
+                'fair': '普通',
+                'poor': '悪い'
+            };
+            return suitabilityMap[suitability] || suitability;
+        }
+
+        function getSSICategory(ssi) {
+            if (ssi === null || ssi === undefined) {
+                return '--';
+            }
+            if (ssi >= 3) {
+                return '安定';
+            } else if (ssi >= 0) {
+                return '中性';
+            } else if (ssi >= -3) {
+                return 'やや不安定';
+            } else {
+                return '不安定';
+            }
+        }
+
+        // チャート更新
+        function updateChart(forecasts) {
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+
+            if (forecastChart) {
+                forecastChart.destroy();
+            }
+
+            const labels = forecasts.map(f => {
+                const date = new Date(f.date);
+                return `${date.getMonth() + 1}/${date.getDate()}`;
+            });
+
+            forecastChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '乾燥適性スコア',
+                            data: forecasts.map(f => f.drying_score),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: '最高気温 (°C)',
+                            data: forecasts.map(f => f.temperature_max),
+                            borderColor: '#ff6b6b',
+                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: '7日間乾燥適性予報'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: '適性スコア'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: '気温 (°C)'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        }
+                    }
+                }
+            });
+        }
+
+        // お気に入り機能
+        function toggleFavorite(index) {
+            const favoriteIndex = favorites.indexOf(index);
+            if (favoriteIndex === -1) {
+                // お気に入りに追加
+                favorites.push(index);
+            } else {
+                // お気に入りから削除
+                favorites.splice(favoriteIndex, 1);
+            }
+
+            localStorage.setItem('hoshibaFavorites', JSON.stringify(favorites));
+            refreshMarkers();
+            updateFavoritesList();
+        }
+
+        function refreshMarkers() {
+            map.eachLayer((layer) => {
+                if (layer instanceof L.CircleMarker) {
+                    map.removeLayer(layer);
+                }
+            });
+            addHoshibaMarkers();
+        }
+
+        function showFavorites() {
+            const favoritesList = document.getElementById('favoritesList');
+            if (favoritesList.style.display === 'none') {
+                favoritesList.style.display = 'block';
+                updateFavoritesList();
+            } else {
+                favoritesList.style.display = 'none';
+            }
+        }
+
+        function updateFavoritesList() {
+            const content = document.getElementById('favoritesContent');
+
+            if (favorites.length === 0) {
+                content.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">お気に入りの干場がありません</div>';
+                return;
+            }
+
+            let html = '';
+            favorites.forEach(index => {
+                const spot = hoshibaSpots[index];
+                html += `
+                    <div class="favorite-item" onclick="selectSpot(${index})">
+                        <div>
+                            <strong>${spot.name}</strong><br>
+                            <small style="color: #666;">${spot.town} ${spot.district}</small>
+                        </div>
+                        <button onclick="event.stopPropagation(); toggleFavorite(${index})"
+                                style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
+                            削除
+                        </button>
+                    </div>
+                `;
+            });
+
+            content.innerHTML = html;
+        }
+
+        function clearAllFavorites() {
+            if (confirm('すべてのお気に入りを削除しますか？')) {
+                favorites = [];
+                localStorage.setItem('hoshibaFavorites', JSON.stringify(favorites));
+                refreshMarkers();
+                updateFavoritesList();
+            }
+        }
+
+        // モード切替機能
+        function switchMode(mode) {
+            currentMode = mode;
+            localStorage.setItem('displayMode', mode);
+
+            // ボタンの状態更新
+            document.getElementById('basicModeBtn').classList.toggle('active', mode === 'basic');
+            document.getElementById('expertModeBtn').classList.toggle('active', mode === 'expert');
+
+            // body クラス更新
+            document.body.className = mode === 'basic' ? 'basic-mode' : 'expert-mode';
+
+            // 現在の予報を再表示
+            if (selectedSpot) {
+                loadForecastData(selectedSpot);
+            }
+        }
+
+        // 自動更新機能
+        function startAutoUpdate() {
+            if (autoUpdateTimer) {
+                clearInterval(autoUpdateTimer);
+            }
+
+            autoUpdateTimer = setInterval(() => {
+                if (selectedSpot) {
+                    console.log('自動更新を実行中...');
+                    loadForecastData(selectedSpot);
+                }
+            }, UPDATE_INTERVAL);
+
+            updateAutoUpdateStatus();
+        }
+
+        function stopAutoUpdate() {
+            if (autoUpdateTimer) {
+                clearInterval(autoUpdateTimer);
+                autoUpdateTimer = null;
+            }
+            updateAutoUpdateStatus();
+        }
+
+        function updateAutoUpdateStatus() {
+            const statusText = document.getElementById('updateStatusText');
+            const nextUpdateTime = document.getElementById('nextUpdateTime');
+
+            if (autoUpdateTimer && selectedSpot) {
+                statusText.textContent = '自動更新: 有効';
+                if (lastUpdateTime) {
+                    const nextUpdate = new Date(lastUpdateTime.getTime() + UPDATE_INTERVAL);
+                    nextUpdateTime.textContent = `次回更新: ${nextUpdate.toLocaleTimeString()}`;
+                    nextUpdateTime.style.display = 'block';
+                } else {
+                    nextUpdateTime.style.display = 'none';
+                }
+            } else {
+                statusText.textContent = '自動更新: 停止中';
+                nextUpdateTime.style.display = 'none';
+            }
+        }
+
+        // ページ表示状態の監視
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && selectedSpot) {
+                // ページが再表示された時に更新チェック
+                if (lastUpdateTime && (new Date() - lastUpdateTime) > UPDATE_INTERVAL * 0.8) {
+                    loadForecastData(selectedSpot);
+                }
+            }
+        });
+
+        // APIからスポットデータを読み込む関数（フォールバック）
+        async function loadSpotsFromAPI() {
+            try {
+                console.log('Loading spots data from CSV API...');
+                const response = await fetch('/api/spots');
+                const data = await response.json();
+
+                if (data && Array.isArray(data)) {
+                    // グローバル変数として設定
+                    window.hoshibaSpots = data;
+                    console.log(`Loaded ${data.length} spots from API`);
+
+                    // H_1174_2017の所属確認
+                    const spot = data.find(s => s.name === 'H_1174_2017');
+                    if (spot) {
+                        console.log(`H_1174_2017: ${spot.town}, ${spot.district}, ${spot.buraku}`);
+                    }
+
+                    // マーカーを再描画
+                    addHoshibaMarkers();
+                } else {
+                    console.error('Failed to load spots data from API');
+                }
+            } catch (error) {
+                console.error('Error loading spots from API:', error);
+            }
+        }
+
+        // グローバル関数として露出（HTML onchangeから呼び出し可能にする）
+        window.filterByTown = filterByTown;
+        window.filterByDistrict = filterByDistrict;
+        window.filterByBuraku = filterByBuraku;
+
+        // イベントリスナー
+        document.addEventListener('DOMContentLoaded', () => {
+            // all_spots_array.jsからのデータ読み込み確認
+            if (typeof hoshibaSpots !== 'undefined') {
+                console.log(`Loaded ${hoshibaSpots.length} hoshiba spots from all_spots_array.js`);
+                // H_1174_2017の所属確認
+                const spot = hoshibaSpots.find(s => s.name === 'H_1174_2017');
+                if (spot) {
+                    console.log(`H_1174_2017: ${spot.town}, ${spot.district}, ${spot.buraku}`);
+                }
+            } else {
+                console.error('hoshibaSpots not loaded from all_spots_array.js');
+            }
+
+            addHoshibaMarkers();
+            switchMode(currentMode); // 保存されたモードを復元
+
+            document.getElementById('showFavoritesBtn').addEventListener('click', showFavorites);
+            document.getElementById('clearFavoritesBtn').addEventListener('click', clearAllFavorites);
+        });
+
+        // フィードバック送信機能
+        function submitFeedback(date, rating) {
+            if (!selectedSpot) return;
+
+            const feedbackKey = `${selectedSpot.name}_${date}`;
+
+            // フィードバックデータ保存
+            feedbackData[feedbackKey] = {
+                spot: selectedSpot.name,
+                date: date,
+                rating: rating,
+                timestamp: new Date().toISOString()
+            };
+
+            localStorage.setItem('forecastFeedback', JSON.stringify(feedbackData));
+
+            // ボタンの状態を変更
+            const buttons = document.querySelectorAll(`[onclick*="${date}"]`);
+            buttons.forEach(btn => {
+                btn.classList.add('feedback-submitted');
+                btn.textContent = '送信済み';
+                btn.onclick = null;
+            });
+
+            // 確認メッセージ
+            showFeedbackMessage(`${date}の乾燥状況フィードバックを送信しました`);
+
+            // サーバーに送信（実装時）
+            sendFeedbackToServer(feedbackKey, feedbackData[feedbackKey]);
+        }
+
+        function showFeedbackMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 5px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                z-index: 1000;
+                font-size: 14px;
+            `;
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
+
+            setTimeout(() => {
+                document.body.removeChild(messageDiv);
+            }, 3000);
+        }
+
+        async function sendFeedbackToServer(key, data) {
+            try {
+                await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ key, data })
+                });
+            } catch (error) {
+                console.log('フィードバックはローカルに保存されました');
+            }
+        }
+
+        // 干場管理機能
+        let addSpotMode = false;
+
+        function enableAddSpotMode() {
+            addSpotMode = !addSpotMode;
+            const btn = document.getElementById('addSpotBtn');
+            const instructions = document.getElementById('addSpotInstructions');
+
+            if (addSpotMode) {
+                btn.textContent = '❌ 追加モードを終了';
+                btn.style.background = '#dc3545';
+                instructions.style.display = 'block';
+                map.getContainer().style.cursor = 'crosshair';
+            } else {
+                btn.textContent = '➕ 新しい干場を追加';
+                btn.style.background = '#28a745';
+                instructions.style.display = 'none';
+                map.getContainer().style.cursor = '';
+            }
+        }
+
+        async function addSpotAtLocation(lat, lon) {
+            try {
+                const response = await fetch('/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        lat: lat,
+                        lon: lon,
+                        town: '',
+                        district: '',
+                        buraku: ''
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert(`新しい干場が追加されました: ${result.spot.name}`);
+                    // ページをリロードして新しい干場を表示
+                    location.reload();
+                } else {
+                    alert(`エラー: ${result.message}`);
+                }
+            } catch (error) {
+                alert(`エラーが発生しました: ${error.message}`);
+            }
+        }
+
+        async function deleteSpot(index) {
+            const spot = hoshibaSpots[index];
+
+            if (!confirm(`本当に「${spot.name}」を削除しますか？この操作は取り消せません。`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: spot.name
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    alert(`干場「${spot.name}」が削除されました`);
+                    // ページをリロードして変更を反映
+                    location.reload();
+                } else {
+                    alert(`エラー: ${result.message}`);
+                }
+            } catch (error) {
+                alert(`エラーが発生しました: ${error.message}`);
+            }
+        }
+
+        // 地図クリックイベントリスナー
+        map.on('click', function(e) {
+            if (addSpotMode) {
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+                addSpotAtLocation(lat, lon);
+                enableAddSpotMode(); // 追加モードを終了
+            }
+        });
+
+        // 記録機能
+        let currentRecordSpotIndex = null;
+
+        function showRecordForm(index) {
+            console.log('showRecordForm called with index:', index);
+            currentRecordSpotIndex = index;
+            const spot = hoshibaSpots[index];
+            console.log('Selected spot:', spot);
+
+            const container = document.getElementById('recordFormContainer');
+            const spotInfo = document.getElementById('recordSpotInfo');
+            const dateInput = document.getElementById('recordDate');
+            const existingInfo = document.getElementById('existingRecordInfo');
+
+            console.log('Container element:', container);
+
+            if (!container) {
+                console.error('Record form container not found!');
+                return;
+            }
+
+            // 干場情報を表示
+            spotInfo.innerHTML = `<strong>${spot.name}</strong><br><small>${spot.town} ${spot.district}</small>`;
+
+            // 今日の日付をデフォルトに設定
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.value = today;
+
+            // 既存記録をクリア
+            existingInfo.innerHTML = '';
+
+            // フォームを表示
+            container.style.display = 'block';
+            console.log('Record form should be visible now');
+
+            // 日付変更時のイベントリスナー
+            dateInput.onchange = function() {
+                checkExistingRecord(spot.name, this.value);
+            };
+
+            // 初期チェック
+            checkExistingRecord(spot.name, today);
+        }
+
+        async function checkExistingRecord(name, date) {
+            try {
+                const response = await fetch(`/record/${name}/${date}`);
+                const data = await response.json();
+                const existingInfo = document.getElementById('existingRecordInfo');
+
+                if (data.exists) {
+                    existingInfo.innerHTML = `
+                        <div class="existing-record">
+                            <strong>既存の記録:</strong><br>
+                            ${data.record.date}: ${data.record.result}<br>
+                            <small>記録を変更する場合は、下のボタンを選択してください</small>
+                        </div>
+                    `;
+                } else {
+                    existingInfo.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('記録確認エラー:', error);
+            }
+        }
+
+        async function submitRecord(result) {
+            if (currentRecordSpotIndex === null) return;
+
+            const spot = hoshibaSpots[currentRecordSpotIndex];
+            const date = document.getElementById('recordDate').value;
+
+            if (!date) {
+                alert('日付を選択してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/record', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: spot.name,
+                        date: date,
+                        result: result
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    alert(data.message);
+                    closeRecordForm();
+                } else {
+                    alert(`エラー: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`エラーが発生しました: ${error.message}`);
+            }
+        }
+
+        function closeRecordForm() {
+            document.getElementById('recordFormContainer').style.display = 'none';
+            currentRecordSpotIndex = null;
+        }
+
+        // ============================================================
+        // 等値線マップ表示機能
+        // ============================================================
+
+        let currentContourType = '500hpa';
+        let currentContourTime = 0;
+        let calibrationData = null;
+
+        // 予報補正情報を取得
+        async function loadCalibrationData() {
+            try {
+                const response = await fetch('/api/forecast_calibration');
+                calibrationData = await response.json();
+                updateCalibrationDisplay();
+            } catch (error) {
+                console.error('補正情報の取得に失敗:', error);
+            }
+        }
+
+        // 補正情報の表示を更新
+        function updateCalibrationDisplay() {
+            if (!calibrationData) return;
+
+            const detailsDiv = document.getElementById('calibrationDetails');
+            const weights = calibrationData.weights;
+
+            detailsDiv.innerHTML = `
+                <div style="margin-top: 8px;">
+                    <div style="margin-bottom: 5px;">
+                        <strong>500hPa 渦度:</strong>
+                        信頼度 ${(weights.vorticity_500hPa * 100).toFixed(0)}%
+                        ${weights.vorticity_500hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
+                    </div>
+                    <div>
+                        <strong>700hPa 鉛直流:</strong>
+                        信頼度 ${(weights.omega_700hPa * 100).toFixed(0)}%
+                        ${weights.omega_700hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 等値線マップの種類を切り替え
+        function showContourMap(type) {
+            currentContourType = type;
+
+            // ボタンのスタイルを更新
+            document.getElementById('contour500Btn').style.background = type === '500hpa' ? '#667eea' : '#e9ecef';
+            document.getElementById('contour500Btn').style.color = type === '500hpa' ? 'white' : '#333';
+            document.getElementById('contour700Btn').style.background = type === '700hpa' ? '#667eea' : '#e9ecef';
+            document.getElementById('contour700Btn').style.color = type === '700hpa' ? 'white' : '#333';
+
+            // マップ画像を更新
+            updateContourImage();
+        }
+
+        // 等値線マップ画像を更新
+        function updateContourImage() {
+            const img = document.getElementById('contourMapImage');
+            const caption = document.getElementById('contourMapCaption');
+
+            const timeStr = `t${String(currentContourTime).padStart(4, '0')}`;
+
+            if (currentContourType === '500hpa') {
+                img.src = `/api/contour/contour_500hpa_${timeStr}.png`;
+                caption.textContent = '500hPa 高度場・相対渦度（2024年8月）';
+            } else {
+                img.src = `/api/contour/contour_700hpa_omega_${timeStr}.png`;
+                caption.textContent = '700hPa 高度場・鉛直P速度（2024年8月）';
+            }
+        }
+
+        // 干場選択時に等値線マップを表示
+        const originalSelectSpot = selectSpot;
+        selectSpot = function(spotId) {
+            originalSelectSpot(spotId);
+
+            // 等値線マップセクションを表示
+            document.getElementById('contourMapSection').style.display = 'block';
+
+            // 初回ロード時
+            if (!calibrationData) {
+                loadCalibrationData();
+            }
+
+            // 最初のマップを表示
+            showContourMap('500hpa');
+        };
+
+        // グローバル関数として公開（popup内で使用するため）
+        window.selectSpot = selectSpot;
+        window.toggleFavorite = toggleFavorite;
+        window.submitFeedback = submitFeedback;
+        window.switchMode = switchMode;
+        window.enableAddSpotMode = enableAddSpotMode;
+        window.deleteSpot = deleteSpot;
+        window.showRecordForm = showRecordForm;
+        window.submitRecord = submitRecord;
+        window.closeRecordForm = closeRecordForm;
+        window.showContourMap = showContourMap;
+    </script>
+
+    <!-- 統合海洋予報JavaScript -->
+    <script src="/ocean_forecast_integration.js"></script>
+</body>
+</html>

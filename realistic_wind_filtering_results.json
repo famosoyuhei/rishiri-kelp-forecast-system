@@ -1,0 +1,289 @@
+{
+  "normal_conditions": [
+    {
+      "date": "2025-07-29",
+      "classification": {
+        "category": "normal",
+        "category_description": "Normal kelp drying conditions",
+        "reason": "Within normal working conditions",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 14.5,
+          "max_wind": 18.2,
+          "max_gust": 25.1,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 14.5,
+        "wind_speed_max": 18.2,
+        "wind_gust_max": 25.1,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-07-11",
+      "classification": {
+        "category": "normal",
+        "category_description": "Normal kelp drying conditions",
+        "reason": "Within normal working conditions",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 12.3,
+          "max_wind": 16.8,
+          "max_gust": 22.4,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 12.3,
+        "wind_speed_max": 16.8,
+        "wind_gust_max": 22.4,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-07-10",
+      "classification": {
+        "category": "normal",
+        "category_description": "Normal kelp drying conditions",
+        "reason": "Within normal working conditions",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 8.9,
+          "max_wind": 12.1,
+          "max_gust": 16.7,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 8.9,
+        "wind_speed_max": 12.1,
+        "wind_gust_max": 16.7,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-07-09",
+      "classification": {
+        "category": "normal",
+        "category_description": "Normal kelp drying conditions",
+        "reason": "Within normal working conditions",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 11.2,
+          "max_wind": 14.6,
+          "max_gust": 19.8,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 11.2,
+        "wind_speed_max": 14.6,
+        "wind_gust_max": 19.8,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-07-08",
+      "classification": {
+        "category": "normal",
+        "category_description": "Normal kelp drying conditions",
+        "reason": "Within normal working conditions",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 9.7,
+          "max_wind": 13.2,
+          "max_gust": 18.1,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 9.7,
+        "wind_speed_max": 13.2,
+        "wind_gust_max": 18.1,
+        "severe_weather_hours": 0
+      }
+    }
+  ],
+  "marginal_conditions": [
+    {
+      "date": "2025-07-07",
+      "classification": {
+        "category": "marginal",
+        "category_description": "Marginal conditions - monitor closely",
+        "reason": "Strong but workable wind: 15.4 m/s",
+        "is_realistic": true,
+        "wind_metrics": {
+          "average_wind": 15.4,
+          "max_wind": 19.8,
+          "max_gust": 26.3,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 15.4,
+        "wind_speed_max": 19.8,
+        "wind_gust_max": 26.3,
+        "severe_weather_hours": 0
+      }
+    }
+  ],
+  "storm_conditions": [
+    {
+      "date": "2025-07-25",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 27.8 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 27.8,
+          "max_wind": 32.5,
+          "max_gust": 46.1,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 27.8,
+        "wind_speed_max": 32.5,
+        "wind_gust_max": 46.1,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-07-15",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 29.7 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 29.7,
+          "max_wind": 32.8,
+          "max_gust": 45.7,
+          "severe_hours": 2
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 29.7,
+        "wind_speed_max": 32.8,
+        "wind_gust_max": 45.7,
+        "severe_weather_hours": 2
+      }
+    },
+    {
+      "date": "2025-07-12",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 27.4 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 27.4,
+          "max_wind": 32.1,
+          "max_gust": 45.0,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 27.4,
+        "wind_speed_max": 32.1,
+        "wind_gust_max": 45.0,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-06-22",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 38.3 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 38.3,
+          "max_wind": 43.9,
+          "max_gust": 63.4,
+          "severe_hours": 2
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 38.3,
+        "wind_speed_max": 43.9,
+        "wind_gust_max": 63.4,
+        "severe_weather_hours": 2
+      }
+    },
+    {
+      "date": "2025-06-23",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 29.0 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 29.0,
+          "max_wind": 35.1,
+          "max_gust": 48.6,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 29.0,
+        "wind_speed_max": 35.1,
+        "wind_gust_max": 48.6,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-06-25",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 31.2 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 31.2,
+          "max_wind": 36.5,
+          "max_gust": 50.8,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 31.2,
+        "wind_speed_max": 36.5,
+        "wind_gust_max": 50.8,
+        "severe_weather_hours": 0
+      }
+    },
+    {
+      "date": "2025-06-29",
+      "classification": {
+        "category": "storm",
+        "category_description": "Storm conditions - no kelp drying possible",
+        "reason": "Average wind too high: 30.6 m/s (limit: 20.0 m/s)",
+        "is_realistic": false,
+        "wind_metrics": {
+          "average_wind": 30.6,
+          "max_wind": 34.0,
+          "max_gust": 49.3,
+          "severe_hours": 0
+        }
+      },
+      "weather_data": {
+        "wind_speed_avg": 30.6,
+        "wind_speed_max": 34.0,
+        "wind_gust_max": 49.3,
+        "severe_weather_hours": 0
+      }
+    }
+  ],
+  "summary": {
+    "total_analyzed_days": 13,
+    "normal_days": 5,
+    "marginal_days": 1,
+    "storm_days": 7,
+    "realistic_percentage": 46.2,
+    "storm_percentage": 53.8
+  }
+}

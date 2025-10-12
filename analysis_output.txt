@@ -1,0 +1,261 @@
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 27671 (\N{CJK UNIFIED IDEOGRAPH-6C17}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 28201 (\N{CJK UNIFIED IDEOGRAPH-6E29}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12398 (\N{HIRAGANA LETTER NO}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 27161 (\N{CJK UNIFIED IDEOGRAPH-6A19}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 28310 (\N{CJK UNIFIED IDEOGRAPH-6E96}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 20559 (\N{CJK UNIFIED IDEOGRAPH-504F}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 24046 (\N{CJK UNIFIED IDEOGRAPH-5DEE}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 22311 (\N{CJK UNIFIED IDEOGRAPH-5727}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 38754 (\N{CJK UNIFIED IDEOGRAPH-9762}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12372 (\N{HIRAGANA LETTER GO}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12392 (\N{HIRAGANA LETTER TO}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 65288 (\N{FULLWIDTH LEFT PARENTHESIS}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 20840 (\N{CJK UNIFIED IDEOGRAPH-5168}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 24178 (\N{CJK UNIFIED IDEOGRAPH-5E72}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 22580 (\N{CJK UNIFIED IDEOGRAPH-5834}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 38291 (\N{CJK UNIFIED IDEOGRAPH-9593}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12400 (\N{HIRAGANA LETTER BA}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12425 (\N{HIRAGANA LETTER RA}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12388 (\N{HIRAGANA LETTER TU}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 12365 (\N{HIRAGANA LETTER KI}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 65289 (\N{FULLWIDTH RIGHT PARENTHESIS}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 19979 (\N{CJK UNIFIED IDEOGRAPH-4E0B}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 23652 (\N{CJK UNIFIED IDEOGRAPH-5C64}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 22659 (\N{CJK UNIFIED IDEOGRAPH-5883}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 30028 (\N{CJK UNIFIED IDEOGRAPH-754C}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 19978 (\N{CJK UNIFIED IDEOGRAPH-4E0A}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 31684 (\N{CJK UNIFIED IDEOGRAPH-7BC4}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 22258 (\N{CJK UNIFIED IDEOGRAPH-56F2}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 26368 (\N{CJK UNIFIED IDEOGRAPH-6700}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 22823 (\N{CJK UNIFIED IDEOGRAPH-5927}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:208: UserWarning: Glyph 23567 (\N{CJK UNIFIED IDEOGRAPH-5C0F}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 27671 (\N{CJK UNIFIED IDEOGRAPH-6C17}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 22311 (\N{CJK UNIFIED IDEOGRAPH-5727}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 38754 (\N{CJK UNIFIED IDEOGRAPH-9762}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12372 (\N{HIRAGANA LETTER GO}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12392 (\N{HIRAGANA LETTER TO}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12398 (\N{HIRAGANA LETTER NO}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 28201 (\N{CJK UNIFIED IDEOGRAPH-6E29}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 27161 (\N{CJK UNIFIED IDEOGRAPH-6A19}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 28310 (\N{CJK UNIFIED IDEOGRAPH-6E96}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 20559 (\N{CJK UNIFIED IDEOGRAPH-504F}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 24046 (\N{CJK UNIFIED IDEOGRAPH-5DEE}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 65288 (\N{FULLWIDTH LEFT PARENTHESIS}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 20840 (\N{CJK UNIFIED IDEOGRAPH-5168}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 24178 (\N{CJK UNIFIED IDEOGRAPH-5E72}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 22580 (\N{CJK UNIFIED IDEOGRAPH-5834}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 38291 (\N{CJK UNIFIED IDEOGRAPH-9593}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12400 (\N{HIRAGANA LETTER BA}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12425 (\N{HIRAGANA LETTER RA}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12388 (\N{HIRAGANA LETTER TU}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 12365 (\N{HIRAGANA LETTER KI}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 65289 (\N{FULLWIDTH RIGHT PARENTHESIS}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 19979 (\N{CJK UNIFIED IDEOGRAPH-4E0B}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 23652 (\N{CJK UNIFIED IDEOGRAPH-5C64}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 22659 (\N{CJK UNIFIED IDEOGRAPH-5883}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 30028 (\N{CJK UNIFIED IDEOGRAPH-754C}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 19978 (\N{CJK UNIFIED IDEOGRAPH-4E0A}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 31684 (\N{CJK UNIFIED IDEOGRAPH-7BC4}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 22258 (\N{CJK UNIFIED IDEOGRAPH-56F2}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 26368 (\N{CJK UNIFIED IDEOGRAPH-6700}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 22823 (\N{CJK UNIFIED IDEOGRAPH-5927}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py:212: UserWarning: Glyph 23567 (\N{CJK UNIFIED IDEOGRAPH-5C0F}) missing from font(s) DejaVu Sans.
+  plt.savefig(output_file, dpi=300, bbox_inches='tight')
+Total spots loaded: 331
+
+【分析開始】
+注意: 331地点全てを取得すると時間がかかります（約3分）
+最初は50地点でテストすることを推奨
+
+
+============================================================
+エマグラム地点間偏差分析（時刻オフセット: 0h）
+============================================================
+
+Sampling 50 spots from 331 total spots
+Fetching 26/50: H_1144_2856 (45.1144, 141.2857)
+Request failed (attempt 1/3): HTTPSConnectionPool(host='rishiri-kelp-forecast-system.onrender.com', port=443): Read timed out. (read timeout=30)
+Request failed (attempt 2/3): HTTPSConnectionPool(host='rishiri-kelp-forecast-system.onrender.com', port=443): Read timed out. (read timeout=30)
+Fetching 308/50: H_0999_2282 (45.1000, 141.2282)
+Fetching 74/50: H_2224_2845 (45.2224, 141.2846)
+Fetching 220/50: H_1788_1372 (45.1788, 141.1373)
+Fetching 58/50: H_2042_3110 (45.2043, 141.3110)
+Fetching 165/50: H_2449_1787 (45.2450, 141.1788)
+Fetching 280/50: H_1135_2085 (45.1135, 141.2085)
+Fetching 204/50: H_1857_1317 (45.1857, 141.1317)
+Fetching 267/50: H_1168_2021 (45.1169, 141.2022)
+Fetching 195/50: H_2065_1375 (45.2066, 141.1376)
+Fetching 76/50: H_2227_2825 (45.2227, 141.2825)
+Fetching 10/50: H_1089_2721 (45.1089, 141.2722)
+Fetching 318/50: H_0989_2335 (45.0990, 141.2336)
+Fetching 127/50: H_2339_2382 (45.2339, 141.2382)
+Fetching 268/50: H_1163_2023 (45.1164, 141.2023)
+Fetching 133/50: H_2449_2267 (45.2449, 141.2268)
+Fetching 115/50: H_2334_2676 (45.2334, 141.2677)
+Fetching 147/50: H_2581_1934 (45.2581, 141.1934)
+Fetching 77/50: H_2239_2811 (45.2239, 141.2811)
+Fetching 199/50: H_2020_1404 (45.2021, 141.1405)
+Fetching 110/50: H_2341_2689 (45.2341, 141.2690)
+Fetching 138/50: H_2467_2209 (45.2468, 141.2210)
+Fetching 327/50: H_0976_2378 (45.0976, 141.2378)
+Fetching 197/50: H_2052_1384 (45.2052, 141.1384)
+Fetching 6/50: H_1048_2519 (45.1049, 141.2519)
+Fetching 111/50: H_2349_2692 (45.2349, 141.2692)
+Fetching 279/50: H_1138_2086 (45.1138, 141.2087)
+Fetching 256/50: H_1264_1862 (45.1265, 141.1863)
+Fetching 245/50: H_1370_1684 (45.1371, 141.1684)
+Fetching 321/50: H_0988_2353 (45.0989, 141.2353)
+Fetching 295/50: H_1068_2198 (45.1069, 141.2198)
+Fetching 300/50: H_1064_2238 (45.1064, 141.2239)
+Fetching 64/50: H_2199_2928 (45.2200, 141.2929)
+Fetching 85/50: H_2293_2788 (45.2293, 141.2789)
+Fetching 223/50: H_1745_1387 (45.1746, 141.1387)
+Fetching 185/50: H_2088_1443 (45.2089, 141.1444)
+Fetching 181/50: H_2153_1377 (45.2154, 141.1378)
+Fetching 250/50: H_1356_1687 (45.1356, 141.1687)
+Fetching 47/50: H_1753_3251 (45.1754, 141.3251)
+Fetching 119/50: H_2337_2440 (45.2338, 141.2440)
+Fetching 34/50: H_1304_3063 (45.1304, 141.3063)
+Fetching 43/50: H_1524_3268 (45.1525, 141.3268)
+Fetching 196/50: H_2065_1369 (45.2065, 141.1369)
+Fetching 180/50: H_2162_1369 (45.2163, 141.1369)
+Fetching 114/50: H_2311_2669 (45.2312, 141.2670)
+Fetching 73/50: H_2221_2854 (45.2222, 141.2854)
+Fetching 177/50: H_2183_1381 (45.2183, 141.1382)
+Fetching 46/50: H_1742_3256 (45.1742, 141.3257)
+Fetching 102/50: H_2336_2709 (45.2336, 141.2709)
+Fetching 311/50: H_1021_2294 (45.1022, 141.2294)
+
+✓ Successfully fetched data for 50 spots
+
+
+================================================================================
+気圧面ごとの気温偏差分析
+================================================================================
+      気圧    高度(m)      気温平均      標準偏差        範囲       最小値       最大値
+--------------------------------------------------------------------------------
+    1000      134      9.97     0.076      0.20      9.90     10.10
+     975      343      7.86     0.069      0.20      7.80      8.00
+     950      557      5.66     0.069      0.20      5.60      5.80
+     925      774      3.55     0.050      0.10      3.50      3.60
+     900      996      1.44     0.049      0.10      1.40      1.50
+     850     1453     -2.90     0.109      0.30     -3.00     -2.70
+     800     1930     -5.07     0.268      0.90     -5.30     -4.40
+     700     2970    -10.90     0.109      0.30    -11.10    -10.80
+     600     4138    -17.76     0.192      0.60    -17.90    -17.30
+     500     5484    -22.93     0.410      1.10    -23.30    -22.20
+     400     7106    -26.68     0.349      0.90    -27.00    -26.10
+     300     9141    -35.91     0.192      0.50    -36.00    -35.50
+     250    10385    -45.00     0.000      0.00    -45.00    -45.00
+     200    11847    -51.06     0.162      0.50    -51.50    -51.00
+
+================================================================================
+仮説検証: 下層ほど偏差が大きく、上層ほど一様か？
+================================================================================
+
+下層（≥850hPa）:
+  平均標準偏差: 0.070°C
+  平均範囲: 0.18°C
+
+上層（≤500hPa）:
+  平均標準偏差: 0.223°C
+  平均範囲: 0.60°C
+
+偏差比（下層/上層）:
+  標準偏差比: 0.32倍
+  範囲比: 0.31倍
+
+✗ 仮説不支持: 下層と上層で偏差に有意差なし
+
+✓ グラフを保存: emagram_variance_by_altitude_20251009_190430.png
+Traceback (most recent call last):
+  File "C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py", line 252, in <module>
+    stats_df, result = analyze_variance_by_pressure_level(
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        spots_df,
+        ^^^^^^^^^
+        time_offset=0,  # 現在時刻
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        sample_size=sample_size
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\ichry\OneDrive\Desktop\rishiri_konbu_weather_tool\analyze_emagram_variance_by_altitude.py", line 234, in analyze_variance_by_pressure_level
+    json.dump(result, f, indent=2, ensure_ascii=False)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\__init__.py", line 179, in dump
+    for chunk in iterable:
+                 ^^^^^^^^
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py", line 433, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py", line 407, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py", line 407, in _iterencode_dict
+    yield from chunks
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py", line 440, in _iterencode
+    o = _default(o)
+  File "C:\Users\ichry\AppData\Local\Programs\Python\Python313\Lib\json\encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+                    f'is not JSON serializable')
+TypeError: Object of type bool is not JSON serializable

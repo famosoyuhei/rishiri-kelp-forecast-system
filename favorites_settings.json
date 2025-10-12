@@ -1,0 +1,10 @@
+{
+  "max_favorites": 20,
+  "quick_access_count": 5,
+  "auto_sort": true,
+  "show_weather_preview": true,
+  "show_last_record": true,
+  "notification_for_favorites": true,
+  "export_enabled": true,
+  "sync_across_devices": false
+}

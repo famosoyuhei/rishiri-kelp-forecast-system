@@ -1,0 +1,170 @@
+{
+  "1": {
+    "days_ahead": 1,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 1.0
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 1.0
+      }
+    ]
+  },
+  "2": {
+    "days_ahead": 2,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.9
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.9
+      }
+    ]
+  },
+  "3": {
+    "days_ahead": 3,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.8
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.8
+      }
+    ]
+  },
+  "4": {
+    "days_ahead": 4,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.7
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.7
+      }
+    ]
+  },
+  "5": {
+    "days_ahead": 5,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.6
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.6
+      }
+    ]
+  },
+  "6": {
+    "days_ahead": 6,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.5
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.5
+      }
+    ]
+  },
+  "7": {
+    "days_ahead": 7,
+    "accuracy_percentage": 100.0,
+    "correct_predictions": 2,
+    "total_predictions": 2,
+    "detailed_results": [
+      {
+        "target_date": "2025-07-29",
+        "location": "Oshidomari",
+        "predicted_success": false,
+        "actual_success": false,
+        "correct": true,
+        "accuracy_factor": 0.5
+      },
+      {
+        "target_date": "2025-07-29",
+        "location": "Kutsugata",
+        "predicted_success": true,
+        "actual_success": true,
+        "correct": true,
+        "accuracy_factor": 0.5
+      }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "ground_level": {
+    "api_std": 0.076,
+    "corrected_std": 0.5353703657949594,
+    "expected_range": [
+      0.5,
+      1.5
+    ],
+    "physically_reasonable": true
+  },
+  "upper_level": {
+    "api_std_500hpa": 0.41,
+    "expected_std": 0.1,
+    "problem": "API grid interpolation error",
+    "solution": "Use reference point or spatial smoothing"
+  },
+  "recommended_approach": {
+    "lower_atmosphere": "Apply theta_e correction",
+    "middle_atmosphere": "Apply weak theta_e correction (weight=0.5)",
+    "upper_atmosphere": "Use reference point or smoothing"
+  }
+}

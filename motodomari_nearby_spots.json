@@ -1,0 +1,11 @@
+{
+  "amedas_location": {
+    "name": "motodomari",
+    "lat": 45.24209764880011,
+    "lon": 141.18907022521688,
+    "amedas_id": "0102"
+  },
+  "search_radius_meters": 500,
+  "spots_count": 0,
+  "spots": []
+}

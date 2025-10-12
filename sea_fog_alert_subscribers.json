@@ -1,0 +1,59 @@
+[
+  {
+    "id": 1,
+    "name": "Test Fisherman",
+    "contact_info": {
+      "email": "test@example.com"
+    },
+    "alert_preferences": {
+      "minimum_level": "warning",
+      "zones": [
+        "oshidomari",
+        "senposhi"
+      ],
+      "notification_methods": [
+        "console",
+        "file"
+      ]
+    },
+    "created_at": "2025-07-20T23:13:05.281964"
+  },
+  {
+    "id": 2,
+    "name": "Test Fisherman",
+    "contact_info": {
+      "email": "test@example.com"
+    },
+    "alert_preferences": {
+      "minimum_level": "warning",
+      "zones": [
+        "oshidomari",
+        "senposhi"
+      ],
+      "notification_methods": [
+        "console",
+        "file"
+      ]
+    },
+    "created_at": "2025-07-20T23:13:37.289133"
+  },
+  {
+    "id": 3,
+    "name": "Test Fisherman",
+    "contact_info": {
+      "email": "test@example.com"
+    },
+    "alert_preferences": {
+      "minimum_level": "warning",
+      "zones": [
+        "oshidomari",
+        "senposhi"
+      ],
+      "notification_methods": [
+        "console",
+        "file"
+      ]
+    },
+    "created_at": "2025-07-20T23:15:00.723672"
+  }
+]

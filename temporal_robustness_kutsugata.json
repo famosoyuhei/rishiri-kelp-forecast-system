@@ -1,0 +1,68 @@
+{
+  "timestamp": "2025-10-06T18:48:16.088787",
+  "location": "Kutsugata AMeDAS (West side)",
+  "coordinates": {
+    "lat": 45.2422,
+    "lon": 141.1088
+  },
+  "mountain_azimuth": 114.26883804622376,
+  "historical_data": {
+    "sampling": {
+      "total_samples": 65,
+      "n_dates": 18,
+      "n_hours": 13,
+      "sampled_date_hours": [
+        "2024-06-09_13:00",
+        "2024-06-09_12:00",
+        "2024-06-09_07:00",
+        "2024-06-17_11:00",
+        "2024-06-17_14:00",
+        "2024-06-17_13:00",
+        "2024-06-17_05:00",
+        "2024-06-17_12:00",
+        "2024-06-18_06:00",
+        "2024-06-18_15:00",
+        "2024-06-18_11:00",
+        "2024-06-21_16:00",
+        "2024-06-21_06:00",
+        "2024-06-21_11:00",
+        "2024-06-30_09:00",
+        "2024-06-30_14:00",
+        "2024-06-30_12:00",
+        "2024-06-30_04:00",
+        "2024-07-07_14:00",
+        "2024-07-07_06:00"
+      ]
+    },
+    "statistics": {
+      "cos_angle": {
+        "mean": -0.07887331217625033,
+        "std": 0.5339530672998299,
+        "median": 0.012760837106414454,
+        "min": -0.9896041549744213,
+        "max": 0.9154438470898721
+      },
+      "wind_direction": {
+        "mean": 181.63076923076923,
+        "median": 195.0,
+        "min": 2.0,
+        "max": 360.0
+      }
+    },
+    "temporal_robustness": "low"
+  },
+  "forecast_data": {
+    "n_samples": 13,
+    "correlations": {
+      "cos_angle_vs_omega_700hPa": 0.5393281259675382,
+      "cos_angle_vs_vorticity_500hPa": 0.7880432827078231,
+      "omega_700hPa_vs_vorticity_500hPa": 0.6144188271354657
+    },
+    "dominant_scale": "synoptic"
+  },
+  "interpretation": {
+    "temporal_consistency": "variable",
+    "dominant_scale": "synoptic",
+    "mountain_effect": "variable"
+  }
+}

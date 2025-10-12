@@ -1,0 +1,25 @@
+{
+  "timestamp": "2025-10-06T19:44:00.151481",
+  "method": "ERA5 spatial derivative analysis",
+  "location": "Kutsugata (West side)",
+  "n_samples": 31,
+  "correlations": {
+    "cos_angle_vs_vorticity_500hPa_spatial": -0.23276576335242222,
+    "cos_angle_vs_omega_700hPa": 0.1502820173746714,
+    "vorticity_500hPa_vs_omega_700hPa": -0.04050790691262356
+  },
+  "statistics": {
+    "cos_angle": {
+      "mean": 0.713811558670672,
+      "std": 0.3322982040311612
+    },
+    "vorticity_500hPa_spatial": {
+      "mean": 0.017577133162803026,
+      "std": 4.233801779431489
+    },
+    "omega_700hPa": {
+      "mean": -0.012792986817657948,
+      "std": 0.28416845202445984
+    }
+  }
+}

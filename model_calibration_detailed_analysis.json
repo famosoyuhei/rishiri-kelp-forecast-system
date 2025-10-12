@@ -1,0 +1,552 @@
+{
+  "calibration_date": "2025-07-30T07:54:13.119748",
+  "total_cases": 26,
+  "cases": [
+    {
+      "date": "2025-07-29",
+      "location": "H_2489_2198",
+      "actual_success": false,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 21.8,
+        "humidity_avg": 90.8,
+        "wind_speed_avg": 17.8,
+        "cloud_cover_avg": 68.6
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": true
+    },
+    {
+      "date": "2025-07-29",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 22.3,
+        "humidity_avg": 88.8,
+        "wind_speed_avg": 16.1,
+        "cloud_cover_avg": 39.0
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-25",
+      "location": "H_2321_2696",
+      "actual_success": false,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 23.1,
+        "humidity_avg": 89.7,
+        "wind_speed_avg": 27.8,
+        "cloud_cover_avg": 94.8
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": true
+    },
+    {
+      "date": "2025-07-25",
+      "location": "H_2304_2689",
+      "actual_success": false,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 23.0,
+        "humidity_avg": 89.7,
+        "wind_speed_avg": 27.8,
+        "cloud_cover_avg": 94.8
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": true
+    },
+    {
+      "date": "2025-07-15",
+      "location": "H_1278_3025",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 20.6,
+        "humidity_avg": 86.0,
+        "wind_speed_avg": 24.1,
+        "cloud_cover_avg": 97.8
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-12",
+      "location": "H_2065_1369",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 19.4,
+        "humidity_avg": 80.8,
+        "wind_speed_avg": 27.4,
+        "cloud_cover_avg": 52.4
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-12",
+      "location": "H_2480_2198",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 19.4,
+        "humidity_avg": 80.8,
+        "wind_speed_avg": 27.4,
+        "cloud_cover_avg": 52.4
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-11",
+      "location": "H_2065_1369",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.8,
+        "humidity_avg": 75.5,
+        "wind_speed_avg": 14.4,
+        "cloud_cover_avg": 42.3
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-11",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.1,
+        "humidity_avg": 79.3,
+        "wind_speed_avg": 11.8,
+        "cloud_cover_avg": 36.2
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-10",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.5,
+        "humidity_avg": 73.0,
+        "wind_speed_avg": 23.5,
+        "cloud_cover_avg": 46.1
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-09",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 18.7,
+        "humidity_avg": 72.6,
+        "wind_speed_avg": 21.4,
+        "cloud_cover_avg": 62.2
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-08",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 19.7,
+        "humidity_avg": 80.2,
+        "wind_speed_avg": 6.6,
+        "cloud_cover_avg": 15.4
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-07",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 18.8,
+        "humidity_avg": 87.8,
+        "wind_speed_avg": 10.7,
+        "cloud_cover_avg": 24.2
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-07-07",
+      "location": "H_2480_2198",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 21.3,
+        "humidity_avg": 72.7,
+        "wind_speed_avg": 12.4,
+        "cloud_cover_avg": 31.7
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-19",
+      "location": "H_2446_1774",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 15.8,
+        "humidity_avg": 92.7,
+        "wind_speed_avg": 16.7,
+        "cloud_cover_avg": 54.5
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-20",
+      "location": "H_2080_1451",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.4,
+        "humidity_avg": 96.5,
+        "wind_speed_avg": 6.9,
+        "cloud_cover_avg": 96.6
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-20",
+      "location": "H_2065_1375",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.6,
+        "humidity_avg": 96.5,
+        "wind_speed_avg": 6.9,
+        "cloud_cover_avg": 96.6
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-22",
+      "location": "H_1631_1434",
+      "actual_success": false,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 15.7,
+        "humidity_avg": 92.7,
+        "wind_speed_avg": 34.7,
+        "cloud_cover_avg": 100.0
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": true
+    },
+    {
+      "date": "2025-06-23",
+      "location": "H_2480_2198",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.4,
+        "humidity_avg": 88.0,
+        "wind_speed_avg": 29.0,
+        "cloud_cover_avg": 24.8
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-23",
+      "location": "H_2478_2195",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.4,
+        "humidity_avg": 88.0,
+        "wind_speed_avg": 29.0,
+        "cloud_cover_avg": 24.8
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-25",
+      "location": "H_2446_1774",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 18.5,
+        "humidity_avg": 78.3,
+        "wind_speed_avg": 31.2,
+        "cloud_cover_avg": 50.2
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-27",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.2,
+        "humidity_avg": 94.0,
+        "wind_speed_avg": 13.2,
+        "cloud_cover_avg": 47.6
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-28",
+      "location": "H_1631_1434",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 16.5,
+        "humidity_avg": 90.8,
+        "wind_speed_avg": 8.4,
+        "cloud_cover_avg": 3.7
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-29",
+      "location": "H_2480_2198",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.7,
+        "humidity_avg": 94.5,
+        "wind_speed_avg": 30.6,
+        "cloud_cover_avg": 88.1
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-29",
+      "location": "H_2478_2195",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.7,
+        "humidity_avg": 94.5,
+        "wind_speed_avg": 30.6,
+        "cloud_cover_avg": 88.1
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    },
+    {
+      "date": "2025-06-29",
+      "location": "H_2479_2191",
+      "actual_success": true,
+      "predicted_condition": "Very Poor",
+      "predicted_score": 1,
+      "weather_conditions": {
+        "temperature_avg": 17.7,
+        "humidity_avg": 94.5,
+        "wind_speed_avg": 30.6,
+        "cloud_cover_avg": 88.1
+      },
+      "terrain_effects": {
+        "temperature_correction": 0,
+        "humidity_correction": 0,
+        "wind_speed_correction": 0,
+        "is_forest": false,
+        "elevation": 0
+      },
+      "prediction_correct": false
+    }
+  ]
+}

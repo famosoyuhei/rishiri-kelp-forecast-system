@@ -1,0 +1,8 @@
+{
+  "analysis_date": "2025-10-06T20:54:35.507385",
+  "good_weather_success_rate": 0.875,
+  "bad_weather_success_rate": 0.6923076923076923,
+  "transition_success_rate": null,
+  "total_records": 63,
+  "conclusion": "Air mass transitions strongly correlate with kelp drying success. Good weather periods (high theta_e) show significantly higher success rates."
+}

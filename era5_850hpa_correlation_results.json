@@ -1,0 +1,24 @@
+{
+  "timestamp": "2025-10-06T20:18:01.916251",
+  "method": "ERA5 850hPa terrain analysis",
+  "location": "Kutsugata (West side)",
+  "n_samples": 31,
+  "correlations": {
+    "cos_angle_vs_wind_speed_850hPa": 0.11686204615306996,
+    "cos_angle_vs_temperature_850hPa": 0.04021184350578295
+  },
+  "statistics": {
+    "cos_angle": {
+      "mean": 0.19588584841485868,
+      "std": 0.5205122197514171
+    },
+    "wind_speed_850hPa": {
+      "mean": 7.799273490905762,
+      "std": 5.117897987365723
+    },
+    "temperature_850hPa": {
+      "mean": 16.017187118530273,
+      "std": 2.3682875633239746
+    }
+  }
+}

@@ -1,0 +1,29 @@
+Fetching JMA Amedas master file...
+
+Total Amedas stations in Japan: 1286
+
+================================================================================
+Amedas stations in Rishiri Island / Wakkanai area:
+================================================================================
+
+Station: 礼文
+  ID: 11046
+  Coordinates: 45.305000N, 141.045000E
+  Elevation: N/Am
+
+Station: 本泊
+  ID: 11091
+  Coordinates: 45.241667N, 141.186667E
+  Elevation: N/Am
+
+Station: 沓形
+  ID: 11151
+  Coordinates: 45.178333N, 141.138333E
+  Elevation: N/Am
+
+================================================================================
+Kutsugata candidate details:
+================================================================================
+
+No station named 'Kutsugata' found.
+Manual selection from nearby stations required.

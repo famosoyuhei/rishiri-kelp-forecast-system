@@ -1,0 +1,181 @@
+{
+  "validation_score": 40.0,
+  "validation_criteria": {
+    "geographic_differentiation": "False",
+    "temporal_variation": true,
+    "atmospheric_sensitivity": "False",
+    "recommendation_diversity": true,
+    "statistical_significance": "False"
+  },
+  "location_stats": [
+    {
+      "location": "H_0988_2398",
+      "district": "Senposhi",
+      "lat": 45.0988,
+      "lon": 141.2399,
+      "avg_final_score": 45.214285714285715,
+      "std_final_score": 21.855314271470952,
+      "avg_base_score": 50.714285714285715,
+      "avg_stability_penalty": 6.857142857142857,
+      "avg_instability_risk": 22.857142857142858,
+      "avg_cape": 345.7142857142857,
+      "avg_li": -0.7000000000000001,
+      "avg_temp": 23.548051948051945,
+      "avg_humidity": 78.25974025974027,
+      "avg_wind": 15.937662337662337,
+      "good_days": 4,
+      "avoid_days": 2,
+      "total_warnings": 13
+    },
+    {
+      "location": "H_1109_2745",
+      "district": "Oniwaki",
+      "lat": 45.1109,
+      "lon": 141.2746,
+      "avg_final_score": 45.214285714285715,
+      "std_final_score": 21.855314271470952,
+      "avg_base_score": 50.714285714285715,
+      "avg_stability_penalty": 6.857142857142857,
+      "avg_instability_risk": 22.857142857142858,
+      "avg_cape": 345.7142857142857,
+      "avg_li": -0.7000000000000001,
+      "avg_temp": 23.596103896103898,
+      "avg_humidity": 78.25974025974027,
+      "avg_wind": 15.937662337662337,
+      "good_days": 4,
+      "avoid_days": 2,
+      "total_warnings": 13
+    },
+    {
+      "location": "H_2065_1368",
+      "district": "Original",
+      "lat": 45.2065,
+      "lon": 141.1368,
+      "avg_final_score": 46.92857142857143,
+      "std_final_score": 21.78766579862058,
+      "avg_base_score": 53.57142857142857,
+      "avg_stability_penalty": 6.642857142857143,
+      "avg_instability_risk": 22.142857142857142,
+      "avg_cape": 368.57142857142856,
+      "avg_li": -0.057142857142857106,
+      "avg_temp": 23.68831168831169,
+      "avg_humidity": 78.1038961038961,
+      "avg_wind": 17.564935064935064,
+      "good_days": 5,
+      "avoid_days": 2,
+      "total_warnings": 12
+    },
+    {
+      "location": "H_2321_2696",
+      "district": "Oshidomari",
+      "lat": 45.2321,
+      "lon": 141.2696,
+      "avg_final_score": 46.92857142857143,
+      "std_final_score": 21.78766579862058,
+      "avg_base_score": 53.57142857142857,
+      "avg_stability_penalty": 6.642857142857143,
+      "avg_instability_risk": 22.142857142857142,
+      "avg_cape": 368.57142857142856,
+      "avg_li": -0.057142857142857106,
+      "avg_temp": 23.588311688311688,
+      "avg_humidity": 78.1038961038961,
+      "avg_wind": 17.564935064935064,
+      "good_days": 5,
+      "avoid_days": 2,
+      "total_warnings": 12
+    }
+  ],
+  "daily_variance": [
+    {
+      "date": "2025-08-11",
+      "score_range": 0.5,
+      "score_std": 0.28867513459481287,
+      "instability_range": "0",
+      "cape_range": 40.0,
+      "temp_range": 0.20000000000000284,
+      "wind_range": 1.3909090909090924,
+      "recommendations": [
+        "AVOID"
+      ]
+    },
+    {
+      "date": "2025-08-12",
+      "score_range": 1.5,
+      "score_std": 0.8660254037844386,
+      "instability_range": "5",
+      "cape_range": 10.0,
+      "temp_range": 0.17272727272727195,
+      "wind_range": 0.7545454545454504,
+      "recommendations": [
+        "FAIR"
+      ]
+    },
+    {
+      "date": "2025-08-13",
+      "score_range": 5.0,
+      "score_std": 2.886751345948129,
+      "instability_range": "0",
+      "cape_range": 10.0,
+      "temp_range": 0.1363636363636367,
+      "wind_range": 0.4272727272727268,
+      "recommendations": [
+        "FAIR"
+      ]
+    },
+    {
+      "date": "2025-08-14",
+      "score_range": 0.0,
+      "score_std": 0.0,
+      "instability_range": "0",
+      "cape_range": 0.0,
+      "temp_range": 0.2727272727272734,
+      "wind_range": 1.6818181818181834,
+      "recommendations": [
+        "FAIR"
+      ]
+    },
+    {
+      "date": "2025-08-15",
+      "score_range": 13.0,
+      "score_std": 7.505553499465135,
+      "instability_range": "10",
+      "cape_range": 50.0,
+      "temp_range": 0.24545454545454248,
+      "wind_range": 2.854545454545459,
+      "recommendations": [
+        "FAIR",
+        "POOR"
+      ]
+    },
+    {
+      "date": "2025-08-16",
+      "score_range": 3.0,
+      "score_std": 1.7320508075688772,
+      "instability_range": "10",
+      "cape_range": 60.0,
+      "temp_range": 0.14545454545454106,
+      "wind_range": 4.218181818181819,
+      "recommendations": [
+        "AVOID"
+      ]
+    },
+    {
+      "date": "2025-08-17",
+      "score_range": 5.0,
+      "score_std": 2.886751345948129,
+      "instability_range": "0",
+      "cape_range": 30.0,
+      "temp_range": 0.1545454545454561,
+      "wind_range": 0.918181818181818,
+      "recommendations": [
+        "FAIR"
+      ]
+    }
+  ],
+  "geographic_correlations": {
+    "north_south_score": 0.9850401653792327,
+    "east_west_score": -0.4865349643297155,
+    "cape_latitude": 0.9850401653792327
+  },
+  "analysis_timestamp": "2025-08-10T20:55:47.321543"
+}

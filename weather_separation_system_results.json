@@ -1,0 +1,213 @@
+{
+  "total_tests": 4,
+  "correct_classifications": 4,
+  "accuracy_percentage": 100.0,
+  "category_distribution": {
+    "normal": 1,
+    "marginal": 1,
+    "storm": 2
+  },
+  "detailed_results": [
+    {
+      "test_case": "Normal Summer Day",
+      "weather_data": {
+        "wind_speed_avg": 12.5,
+        "humidity_avg": 78,
+        "temperature_avg": 20
+      },
+      "forecast": {
+        "forecast_type": "normal_conditions",
+        "classification": {
+          "category": "normal",
+          "risk_level": "low",
+          "work_recommendation": "Normal kelp drying operations possible",
+          "classification_reasons": [
+            "Moderate winds (12.5 m/s) suitable for normal operations"
+          ],
+          "applicable_model": "Normal Kelp Drying Model",
+          "wind_metrics": {
+            "average": 12.5,
+            "maximum": 16.25,
+            "gust": 24.375,
+            "severe_hours": 0
+          }
+        },
+        "drying_evaluation": {
+          "condition": "Excellent",
+          "score": 9.0,
+          "confidence": 90,
+          "reason": "Ideal temperature (20.0°C); Good humidity (78.0%); Good wind (12.5 m/s)",
+          "category": "normal",
+          "calibrated_parameters": {
+            "adjusted_temperature": 20,
+            "adjusted_humidity": 78,
+            "adjusted_wind_speed": 12.5
+          }
+        },
+        "optimal_timing": "Excellent timing - start early for full day drying",
+        "work_recommendations": [
+          "Normal kelp drying operations recommended",
+          "Follow standard procedures",
+          "Monitor conditions as usual"
+        ],
+        "efficiency_notes": [
+          "Wind conditions (12.5 m/s) support good drying",
+          "Standard work schedule applicable",
+          "Good conditions for quality kelp production"
+        ]
+      },
+      "correct_classification": true
+    },
+    {
+      "test_case": "Strong Wind Day",
+      "weather_data": {
+        "wind_speed_avg": 17.2,
+        "humidity_avg": 75,
+        "temperature_avg": 18
+      },
+      "forecast": {
+        "forecast_type": "marginal_conditions",
+        "classification": {
+          "category": "marginal",
+          "risk_level": "moderate",
+          "work_recommendation": "Monitor closely - experienced operators only",
+          "classification_reasons": [
+            "Strong winds (17.2 m/s) require experienced handling"
+          ],
+          "applicable_model": "Marginal Conditions Model",
+          "wind_metrics": {
+            "average": 17.2,
+            "maximum": 22.36,
+            "gust": 33.54,
+            "severe_hours": 0
+          }
+        },
+        "drying_evaluation": {
+          "condition": "Excellent",
+          "score": 9.5,
+          "confidence": 90,
+          "reason": "Ideal temperature (18.0°C); Good humidity (75.0%); Strong beneficial wind (17.2 m/s)",
+          "category": "normal",
+          "calibrated_parameters": {
+            "adjusted_temperature": 18,
+            "adjusted_humidity": 75,
+            "adjusted_wind_speed": 17.2
+          }
+        },
+        "special_considerations": [
+          "Strong wind conditions - experienced operators recommended",
+          "Monitor wind speed changes throughout the day",
+          "Have backup indoor drying ready",
+          "Check equipment security frequently"
+        ],
+        "timing_recommendations": [
+          "Start early when winds are typically calmer",
+          "Complete critical phases before peak wind hours",
+          "Be prepared to suspend operations if winds increase"
+        ],
+        "risk_factors": [
+          "Wind speeds 17.2 m/s approach upper limits",
+          "Conditions may deteriorate rapidly",
+          "Equipment stress from strong winds"
+        ]
+      },
+      "correct_classification": true
+    },
+    {
+      "test_case": "Storm Conditions",
+      "weather_data": {
+        "wind_speed_avg": 28.5,
+        "wind_speed_max": 35.2,
+        "wind_gust_max": 45.8,
+        "severe_weather_hours": 4
+      },
+      "forecast": {
+        "forecast_type": "storm_warning",
+        "classification": {
+          "category": "storm",
+          "risk_level": "extreme",
+          "work_recommendation": "Suspend all kelp drying operations",
+          "classification_reasons": [
+            "Average wind 28.5 m/s exceeds safe working limit",
+            "Maximum wind 35.2 m/s indicates storm conditions",
+            "Wind gusts 45.8 m/s pose safety risks",
+            "Extended severe weather (4h) disrupts operations"
+          ],
+          "applicable_model": "Storm Warning System",
+          "wind_metrics": {
+            "average": 28.5,
+            "maximum": 35.2,
+            "gust": 45.8,
+            "severe_hours": 4
+          }
+        },
+        "storm_details": {
+          "intensity": "Violent Storm",
+          "danger_level": "Severe",
+          "wind_description": "Average 28.5 m/s, gusts up to 45.8 m/s"
+        },
+        "recommendations": [
+          "DO NOT attempt kelp drying operations",
+          "Secure all equipment and materials",
+          "Monitor weather updates frequently",
+          "Wait for conditions to improve below 20 m/s average wind"
+        ],
+        "safety_alerts": [
+          "Extreme wind conditions present",
+          "Risk of equipment damage",
+          "Personnel safety priority"
+        ],
+        "estimated_duration": "3-6 hours (passing storm)"
+      },
+      "correct_classification": true
+    },
+    {
+      "test_case": "Hurricane Conditions",
+      "weather_data": {
+        "wind_speed_avg": 42.1,
+        "wind_speed_max": 48.7,
+        "wind_gust_max": 67.3,
+        "severe_weather_hours": 8
+      },
+      "forecast": {
+        "forecast_type": "storm_warning",
+        "classification": {
+          "category": "storm",
+          "risk_level": "extreme",
+          "work_recommendation": "Suspend all kelp drying operations",
+          "classification_reasons": [
+            "Average wind 42.1 m/s exceeds safe working limit",
+            "Maximum wind 48.7 m/s indicates storm conditions",
+            "Wind gusts 67.3 m/s pose safety risks",
+            "Extended severe weather (8h) disrupts operations"
+          ],
+          "applicable_model": "Storm Warning System",
+          "wind_metrics": {
+            "average": 42.1,
+            "maximum": 48.7,
+            "gust": 67.3,
+            "severe_hours": 8
+          }
+        },
+        "storm_details": {
+          "intensity": "Hurricane",
+          "danger_level": "Extreme",
+          "wind_description": "Average 42.1 m/s, gusts up to 67.3 m/s"
+        },
+        "recommendations": [
+          "DO NOT attempt kelp drying operations",
+          "Secure all equipment and materials",
+          "Monitor weather updates frequently",
+          "Wait for conditions to improve below 20 m/s average wind"
+        ],
+        "safety_alerts": [
+          "Extreme wind conditions present",
+          "Risk of equipment damage",
+          "Personnel safety priority"
+        ],
+        "estimated_duration": "12-24 hours (major storm system)"
+      },
+      "correct_classification": true
+    }
+  ]
+}

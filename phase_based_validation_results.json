@@ -1,0 +1,32 @@
+{
+  "total_scenarios": 3,
+  "fisherman_wins": 0,
+  "literature_wins": 0,
+  "ties": 3,
+  "avg_fisherman_score": 10.0,
+  "avg_literature_score": 10.0,
+  "conclusion": "Both models show comparable performance",
+  "detailed_results": [
+    {
+      "scenario": "Strong morning wind, calm afternoon",
+      "fisherman_score": 10.0,
+      "literature_score": 10.0,
+      "winner": "Tie",
+      "advantage": 0
+    },
+    {
+      "scenario": "Weak morning wind, strong afternoon wind",
+      "fisherman_score": 10.0,
+      "literature_score": 10.0,
+      "winner": "Tie",
+      "advantage": 0
+    },
+    {
+      "scenario": "Consistent moderate conditions",
+      "fisherman_score": 10.0,
+      "literature_score": 10.0,
+      "winner": "Tie",
+      "advantage": 0
+    }
+  ]
+}

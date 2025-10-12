@@ -1,0 +1,17 @@
+{
+  "weather_summary": {
+    "minimal": "{location}の天気: {condition}, 風{wind_speed}m/s, 降水確率{rain_prob}%",
+    "standard": "【{location}】天気: {condition}, 気温{temp}℃, 風{wind_speed}m/s, 降水確率{rain_prob}%. {recommendation}",
+    "detailed": "【{location} 詳細予報】\n天気: {condition}\n気温: {temp}℃ (体感{feels_like}℃)\n風速: {wind_speed}m/s ({wind_dir})\n降水確率: {rain_prob}%\n湿度: {humidity}%\n推奨: {recommendation}\n注意事項: {warnings}"
+  },
+  "fog_alert": {
+    "minimal": "海霧注意: {location} {alert_level} {probability}%",
+    "standard": "【海霧{alert_level}警報】{location}にて発生確率{probability}%. {main_recommendation}",
+    "detailed": "【海霧詳細警報】\n地点: {location}\n警報レベル: {alert_level}\n発生確率: {probability}%\n予想時刻: {peak_time}\n持続時間: {duration}\n推奨事項:\n{detailed_recommendations}\n緊急連絡先: {emergency_contact}"
+  },
+  "work_schedule": {
+    "minimal": "{time}から作業開始予定. 天候:{condition}",
+    "standard": "【作業開始通知】{time}からの{location}での作業について: 天候{condition}, {work_recommendation}",
+    "detailed": "【本日の作業計画】\n時間: {time}\n場所: {location}\n天候: {condition}\n海況: {sea_condition}\n作業適性: {work_suitability}\n推奨作業時間: {recommended_hours}\n注意事項: {precautions}\n代替計画: {alternative_plan}"
+  }
+}

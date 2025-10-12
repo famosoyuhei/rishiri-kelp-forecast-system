@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "name": "H_2480_2198",
+    "lat": 45.2480376,
+    "lon": 141.2198462,
+    "added_at": "2025-08-04T16:16:22.531107",
+    "access_count": 0,
+    "last_accessed": null,
+    "last_forecast_result": null,
+    "last_record": null,
+    "custom_note": "",
+    "color_tag": "default",
+    "quick_access": true,
+    "notification_enabled": true
+  },
+  {
+    "id": 2,
+    "name": "H_1631_1434",
+    "lat": 45.1631035,
+    "lon": 141.1434784,
+    "added_at": "2025-08-04T16:17:04.938590",
+    "access_count": 0,
+    "last_accessed": null,
+    "last_forecast_result": null,
+    "last_record": null,
+    "custom_note": "",
+    "color_tag": "default",
+    "quick_access": true,
+    "notification_enabled": true
+  }
+]

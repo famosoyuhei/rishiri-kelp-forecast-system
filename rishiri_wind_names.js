@@ -8,22 +8,22 @@
 
 // 利尻島16方位伝統風名データベース（仕様書より）
 const RISHIRI_WIND_NAMES = [
-    { meteoDirection: 0,     kanbaTheta: 177.2, name: "アイ",         reading: "ai",            cardinal: "北" },
-    { meteoDirection: 22.5,  kanbaTheta: 154.7, name: "アイシモ",     reading: "aishimo",       cardinal: "北北東" },
-    { meteoDirection: 45,    kanbaTheta: 132.2, name: "シモ",         reading: "shimo",         cardinal: "北東" },
-    { meteoDirection: 67.5,  kanbaTheta: 109.7, name: "シモヤマセ",   reading: "shimoyamase",   cardinal: "東北東" },
-    { meteoDirection: 90,    kanbaTheta: 87.2,  name: "ホンヤマセ",   reading: "honyamase",     cardinal: "東" },
-    { meteoDirection: 112.5, kanbaTheta: 64.7,  name: "ヤマセ",       reading: "yamase",        cardinal: "東南東" },
-    { meteoDirection: 135,   kanbaTheta: 42.2,  name: "ミナミヤマセ", reading: "minamiyamase",  cardinal: "南東" },
-    { meteoDirection: 157.5, kanbaTheta: 19.7,  name: "ミナミヤマ",   reading: "minamiyama",    cardinal: "南南東" },
-    { meteoDirection: 180,   kanbaTheta: 357.2, name: "クダリ",       reading: "kudari",        cardinal: "南" },
-    { meteoDirection: 202.5, kanbaTheta: 334.7, name: "クダリヒカタ", reading: "kudarihikata",  cardinal: "南南西" },
-    { meteoDirection: 225,   kanbaTheta: 312.2, name: "ヒカタ",       reading: "hikata",        cardinal: "南西" },
-    { meteoDirection: 247.5, kanbaTheta: 289.7, name: "ニシヒカタ",   reading: "nishihikata",   cardinal: "西南西" },
-    { meteoDirection: 270,   kanbaTheta: 267.2, name: "ニシ",         reading: "nishi",         cardinal: "西" },
-    { meteoDirection: 292.5, kanbaTheta: 244.7, name: "ニシタマ",     reading: "nishitama",     cardinal: "西北西" },
-    { meteoDirection: 315,   kanbaTheta: 222.2, name: "タマ",         reading: "tama",          cardinal: "北西" },
-    { meteoDirection: 337.5, kanbaTheta: 199.7, name: "アイタマ",     reading: "aitama",        cardinal: "北北西" }
+    { meteoDirection: 0,     kanbaTheta: 177.2, name: "アイ",         reading: "ai",            cardinal: "北",   cardinal16: "N" },
+    { meteoDirection: 22.5,  kanbaTheta: 154.7, name: "アイシモ",     reading: "aishimo",       cardinal: "北北東", cardinal16: "NNE" },
+    { meteoDirection: 45,    kanbaTheta: 132.2, name: "シモ",         reading: "shimo",         cardinal: "北東",  cardinal16: "NE" },
+    { meteoDirection: 67.5,  kanbaTheta: 109.7, name: "シモヤマセ",   reading: "shimoyamase",   cardinal: "東北東", cardinal16: "ENE" },
+    { meteoDirection: 90,    kanbaTheta: 87.2,  name: "ホンヤマセ",   reading: "honyamase",     cardinal: "東",   cardinal16: "E" },
+    { meteoDirection: 112.5, kanbaTheta: 64.7,  name: "ヤマセ",       reading: "yamase",        cardinal: "東南東", cardinal16: "ESE" },
+    { meteoDirection: 135,   kanbaTheta: 42.2,  name: "ミナミヤマセ", reading: "minamiyamase",  cardinal: "南東",  cardinal16: "SE" },
+    { meteoDirection: 157.5, kanbaTheta: 19.7,  name: "ミナミヤマ",   reading: "minamiyama",    cardinal: "南南東", cardinal16: "SSE" },
+    { meteoDirection: 180,   kanbaTheta: 357.2, name: "クダリ",       reading: "kudari",        cardinal: "南",   cardinal16: "S" },
+    { meteoDirection: 202.5, kanbaTheta: 334.7, name: "クダリヒカタ", reading: "kudarihikata",  cardinal: "南南西", cardinal16: "SSW" },
+    { meteoDirection: 225,   kanbaTheta: 312.2, name: "ヒカタ",       reading: "hikata",        cardinal: "南西",  cardinal16: "SW" },
+    { meteoDirection: 247.5, kanbaTheta: 289.7, name: "ニシヒカタ",   reading: "nishihikata",   cardinal: "西南西", cardinal16: "WSW" },
+    { meteoDirection: 270,   kanbaTheta: 267.2, name: "ニシ",         reading: "nishi",         cardinal: "西",   cardinal16: "W" },
+    { meteoDirection: 292.5, kanbaTheta: 244.7, name: "ニシタマ",     reading: "nishitama",     cardinal: "西北西", cardinal16: "WNW" },
+    { meteoDirection: 315,   kanbaTheta: 222.2, name: "タマ",         reading: "tama",          cardinal: "北西",  cardinal16: "NW" },
+    { meteoDirection: 337.5, kanbaTheta: 199.7, name: "アイタマ",     reading: "aitama",        cardinal: "北北西", cardinal16: "NNW" }
 ];
 
 /**
@@ -88,6 +88,7 @@ function getRishiriWindDetails(meteorologicalDirection) {
             name: "--",
             reading: "--",
             cardinal: "--",
+            cardinal16: "--",
             kanbaTheta: null
         };
     }
@@ -111,6 +112,7 @@ function getRishiriWindDetails(meteorologicalDirection) {
         name: closestWind.name,
         reading: closestWind.reading,
         cardinal: closestWind.cardinal,
+        cardinal16: closestWind.cardinal16,
         kanbaTheta: meteorologicalToKanbaTheta(meteorologicalDirection)
     };
 }

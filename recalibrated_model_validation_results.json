@@ -1,0 +1,155 @@
+{
+  "total_predictions": 9,
+  "correct_predictions": 8,
+  "accuracy_percentage": 88.88888888888889,
+  "condition_wise_accuracy": {
+    "Excellent": {
+      "correct": 6,
+      "total": 7
+    },
+    "Good": {
+      "correct": 2,
+      "total": 2
+    }
+  },
+  "average_score": 8.555555555555555,
+  "realistic_conditions_only": true,
+  "excluded_storm_days": 7,
+  "detailed_results": [
+    {
+      "date": "2025-07-29",
+      "location": "Oshidomari",
+      "weather": {
+        "temperature_avg": 18,
+        "humidity_avg": 85,
+        "wind_speed_avg": 14.5
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": false,
+      "correct": false,
+      "score": 8.5,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-29",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 18,
+        "humidity_avg": 85,
+        "wind_speed_avg": 14.5
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 8.5,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-11",
+      "location": "Oshidomari",
+      "weather": {
+        "temperature_avg": 20,
+        "humidity_avg": 78,
+        "wind_speed_avg": 12.3
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 9.0,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-11",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 20,
+        "humidity_avg": 78,
+        "wind_speed_avg": 12.3
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 9.0,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-10",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 16,
+        "humidity_avg": 82,
+        "wind_speed_avg": 8.9
+      },
+      "predicted_condition": "Good",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 7.5,
+      "confidence": 80
+    },
+    {
+      "date": "2025-07-09",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 19,
+        "humidity_avg": 80,
+        "wind_speed_avg": 11.2
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 8.0,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-08",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 17,
+        "humidity_avg": 83,
+        "wind_speed_avg": 9.7
+      },
+      "predicted_condition": "Good",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 7.5,
+      "confidence": 80
+    },
+    {
+      "date": "2025-07-07",
+      "location": "Oshidomari",
+      "weather": {
+        "temperature_avg": 21,
+        "humidity_avg": 75,
+        "wind_speed_avg": 15.4
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 9.5,
+      "confidence": 90
+    },
+    {
+      "date": "2025-07-07",
+      "location": "Kutsugata",
+      "weather": {
+        "temperature_avg": 21,
+        "humidity_avg": 75,
+        "wind_speed_avg": 15.4
+      },
+      "predicted_condition": "Excellent",
+      "predicted_success": true,
+      "actual_success": true,
+      "correct": true,
+      "score": 9.5,
+      "confidence": 90
+    }
+  ]
+}

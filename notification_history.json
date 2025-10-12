@@ -1,0 +1,27 @@
+[
+  {
+    "notification_id": 1,
+    "user_id": 1,
+    "type": "weather_update",
+    "status": "failed",
+    "sent_at": "2025-07-20T23:30:25.718842",
+    "content_preview": "【鴛泊港周辺】天気: 晴れ時々曇り, 気温18℃, 風5.2m/s, 降水確率20%. 作業に適した条件です",
+    "channels_used": [
+      "email",
+      "console"
+    ],
+    "priority": "normal"
+  },
+  {
+    "notification_id": 2,
+    "user_id": 2,
+    "type": "weather_update",
+    "status": "sent",
+    "sent_at": "2025-07-20T23:37:56.329967",
+    "content_preview": "【鴛泊港周辺】天気: Clear, 気温18℃, 風5m/s, 降水確率20%. 作業に適した条件です",
+    "channels_used": [
+      "console"
+    ],
+    "priority": "normal"
+  }
+]

@@ -1,0 +1,78 @@
+{
+  "timestamp": "2025-10-06T18:10:29.448265",
+  "analysis": "3-variable correlation: cos(wind-mountain angle), 700hPa omega, 500hPa vorticity",
+  "regions": {
+    "east": {
+      "n_samples": 130,
+      "correlations": {
+        "cos_angle_vs_omega_700hPa": -0.3040357974249645,
+        "cos_angle_vs_vorticity_500hPa": -0.5721829545157038,
+        "omega_700hPa_vs_vorticity_500hPa": 0.6017188659934501
+      },
+      "statistics": {
+        "cos_angle": {
+          "mean": -0.9720031193174318,
+          "std": 0.04366247251116195,
+          "range": [
+            -0.9999602395198542,
+            -0.829979843934496
+          ]
+        },
+        "omega_700hPa": {
+          "mean": 0.0054487179487179484,
+          "std": 0.008252124580054494,
+          "range": [
+            -0.004166666666666665,
+            0.020833333333333336
+          ]
+        },
+        "vorticity_500hPa": {
+          "mean": -2.870071180558545e-10,
+          "std": 9.942218215272717e-10,
+          "range": [
+            -1.8656337509978245e-09,
+            1.2915925968446479e-09
+          ]
+        }
+      }
+    },
+    "west": {
+      "n_samples": 130,
+      "correlations": {
+        "cos_angle_vs_omega_700hPa": 0.31296494471862674,
+        "cos_angle_vs_vorticity_500hPa": 0.5135556375343212,
+        "omega_700hPa_vs_vorticity_500hPa": 0.6144188247851892
+      },
+      "statistics": {
+        "cos_angle": {
+          "mean": 0.963846939677284,
+          "std": 0.04865420589266106,
+          "range": [
+            0.7723131620049511,
+            0.9999518833575148
+          ]
+        },
+        "omega_700hPa": {
+          "mean": 0.005555555555555555,
+          "std": 0.008509533227239264,
+          "range": [
+            -0.004166666666666677,
+            0.02222222222222223
+          ]
+        },
+        "vorticity_500hPa": {
+          "mean": -3.098374960364322e-10,
+          "std": 1.05234034627438e-09,
+          "range": [
+            -1.8703330006277575e-09,
+            1.2948459235115245e-09
+          ]
+        }
+      }
+    }
+  },
+  "interpretation": {
+    "east": "Mesoscale dominated (mountain effect)",
+    "west": "Synoptic scale dominated (large-scale pressure systems)"
+  }
+}

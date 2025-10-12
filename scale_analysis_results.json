@@ -1,0 +1,23 @@
+{
+  "hypothesis": "東側はシノプティックスケール支配、西側はメソスケール支配",
+  "region_statistics": {
+    "east": {
+      "count": 331,
+      "mean_corr": 0.07920941621315798,
+      "std_corr": 0.46097042498966667,
+      "min_corr": -0.5830788285025419,
+      "max_corr": 0.5485914186899653,
+      "mean_azimuth": 76.93034748314655,
+      "azimuth_range": [
+        73.21868726959634,
+        80.97033478087883
+      ]
+    }
+  },
+  "conclusion": {
+    "east_mean_correlation": 0.07920941621315798,
+    "west_mean_correlation": 0,
+    "difference": 0.07920941621315798,
+    "hypothesis_supported": false
+  }
+}
