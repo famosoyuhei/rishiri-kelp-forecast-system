@@ -2281,13 +2281,12 @@
                             pointBorderWidth: 2
                         },
                         {
-                            label: '最低湿度 (%)',
+                            label: '最低湿度 (%) - 負相関',
                             data: forecasts.map(f => f.daily_summary.min_humidity),
+                            type: 'bar',
+                            backgroundColor: 'rgba(78, 205, 196, 0.5)',
                             borderColor: '#4ecdc4',
-                            backgroundColor: 'rgba(78, 205, 196, 0.1)',
-                            fill: false,
-                            tension: 0.3,
-                            borderWidth: 2,
+                            borderWidth: 1,
                             yAxisID: 'y1'
                         },
                         {
@@ -2298,10 +2297,11 @@
                             fill: false,
                             tension: 0.3,
                             borderWidth: 2,
+                            borderDash: [8, 4],
                             yAxisID: 'y1'
                         },
                         {
-                            label: '降水量 (mm)',
+                            label: '降水量 (mm) - 負相関',
                             data: forecasts.map(f => f.daily_summary.precipitation),
                             type: 'bar',
                             backgroundColor: 'rgba(52, 152, 219, 0.6)',
@@ -2310,7 +2310,7 @@
                             yAxisID: 'y1'
                         },
                         {
-                            label: '最高気温 (°C)',
+                            label: '最高気温 (°C) - 正相関',
                             data: forecasts.map(f => f.daily_summary.temperature_max),
                             borderColor: '#ff6b6b',
                             backgroundColor: 'rgba(255, 107, 107, 0.1)',
