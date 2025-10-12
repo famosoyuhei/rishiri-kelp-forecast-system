@@ -3209,10 +3209,11 @@
 
         // エマグラムデータを読み込み
         async function loadEmagramData() {
-            const timeOffset = document.getElementById('emagramTimeSelect').value;
+            const timeSelect = document.getElementById('emagramTimeSelect');
+            const timeOffset = timeSelect ? timeSelect.value : null;
             const spot = hoshibaSpots[currentSpotId];
 
-            if (!spot) return;
+            if (!spot || !timeOffset || timeOffset === '') return;
 
             try {
                 const response = await fetch(`/api/emagram?lat=${spot.lat}&lon=${spot.lon}&time=${timeOffset}`);
