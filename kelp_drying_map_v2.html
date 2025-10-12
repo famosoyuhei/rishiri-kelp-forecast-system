@@ -3279,15 +3279,26 @@
         function calculateCloudLevels(pressures, temps, dewpoints) {
             // 地上（最も高い気圧）のデータを取得
             const surfaceIdx = pressures.length - 1; // 配列の最後が地上（最高気圧）
-            if (surfaceIdx < 0 || pressures[surfaceIdx] < 900) return null; // 地上データがない場合
+            console.log('Surface index:', surfaceIdx, 'Pressure:', pressures[surfaceIdx]);
+            console.log('Pressures array:', pressures);
+
+            if (surfaceIdx < 0 || pressures[surfaceIdx] < 900) {
+                console.log('No valid surface data');
+                return null;
+            }
 
             const Psurface = pressures[surfaceIdx];
             const Tsurface = temps[surfaceIdx];
             const Tdsurface = dewpoints[surfaceIdx];
+            console.log('Surface conditions: P=', Psurface, 'T=', Tsurface, 'Td=', Tdsurface);
 
             // LCL (雲底高度) を計算 - 地上からスタート
             const lcl = calculateLCL(Tsurface, Tdsurface, Psurface);
-            if (!lcl) return null;
+            console.log('LCL result:', lcl);
+            if (!lcl) {
+                console.log('LCL calculation failed');
+                return null;
+            }
 
             // 地上からLCLまでの乾燥断熱線を計算
             const dryAdiabatLine = [];
@@ -3360,6 +3371,7 @@
 
             // 雲底・雲頂高度を計算
             const cloudLevels = calculateCloudLevels(pressures, temps, dewpoints);
+            console.log('Cloud levels result:', cloudLevels);
 
             // データセットを準備
             const datasets = [
