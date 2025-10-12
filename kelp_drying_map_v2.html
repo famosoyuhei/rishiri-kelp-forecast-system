@@ -3278,7 +3278,8 @@
 
         function calculateCloudLevels(pressures, temps, dewpoints) {
             // 地上（最も高い気圧）のデータを取得
-            const surfaceIdx = pressures.length - 1; // 配列の最後が地上（最高気圧）
+            // 気圧配列は降順（1000hPa→200hPa）なので、最初の要素が地上
+            const surfaceIdx = 0;
             console.log('Surface index:', surfaceIdx, 'Pressure:', pressures[surfaceIdx]);
             console.log('Pressures array:', pressures);
 
