@@ -3313,6 +3313,7 @@
             let lfc = null;
             let el = null;
             let crossCount = 0;
+            const crossDebug = [];
 
             for (let P = lcl.pressure; P >= 100; P -= 10) {
                 const T_moist = calculateMoistAdiabat(lcl.temperature, lcl.pressure, P);
@@ -3329,8 +3330,22 @@
                         const prevEnvIdx = pressures.findIndex(p => Math.abs(p - moistAdiabatLine[prevIdx].y) < 15);
                         const prevEnvTemp = prevEnvIdx !== -1 ? temps[prevEnvIdx] : envTemp;
 
+                        const diff = T_moist - envTemp;
+                        const prevDiff = prevMoist - prevEnvTemp;
+
+                        // デバッグ用（200hPa以上のみ）
+                        if (P >= 200) {
+                            crossDebug.push({
+                                P: P,
+                                T_moist: T_moist.toFixed(1),
+                                envTemp: envTemp.toFixed(1),
+                                diff: diff.toFixed(1),
+                                sign: diff > 0 ? '+' : '-'
+                            });
+                        }
+
                         // 交点判定（符号が変わる）
-                        if ((T_moist - envTemp) * (prevMoist - prevEnvTemp) < 0) {
+                        if (diff * prevDiff < 0) {
                             crossCount++;
                             if (crossCount === 1) {
                                 lfc = { pressure: P, temperature: T_moist };
@@ -3342,6 +3357,9 @@
                     }
                 }
             }
+
+            console.log('Crossing detection (200hPa+):', crossDebug);
+            console.log('Total crossings found:', crossCount);
 
             return {
                 lcl: lcl,
