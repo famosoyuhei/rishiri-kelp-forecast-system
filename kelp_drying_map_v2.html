@@ -3378,6 +3378,11 @@
             // 雲底・雲頂高度を計算
             const cloudLevels = calculateCloudLevels(pressures, temps, dewpoints);
             console.log('Cloud levels result:', cloudLevels);
+            if (cloudLevels) {
+                console.log('LCL:', cloudLevels.lcl ? `${cloudLevels.lcl.pressure}hPa, ${cloudLevels.lcl.temperature.toFixed(1)}°C` : 'none');
+                console.log('LFC:', cloudLevels.lfc ? `${cloudLevels.lfc.pressure}hPa, ${cloudLevels.lfc.temperature.toFixed(1)}°C` : 'none');
+                console.log('EL:', cloudLevels.el ? `${cloudLevels.el.pressure}hPa, ${cloudLevels.el.temperature.toFixed(1)}°C` : 'none (unstable atmosphere)');
+            }
 
             // データセットを準備
             const datasets = [
@@ -3466,6 +3471,16 @@
                         borderWidth: 0,
                         pointRadius: 8,
                         pointStyle: 'star'
+                    });
+                } else if (cloudLevels.lfc) {
+                    // ELが検出されない = 大気不安定継続
+                    datasets.push({
+                        label: '雲頂 (EL: 検出不可 - 大気不安定継続)',
+                        data: [],
+                        borderColor: '#6f42c1',
+                        backgroundColor: '#6f42c1',
+                        borderWidth: 0,
+                        pointRadius: 0
                     });
                 }
             }
