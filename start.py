@@ -360,7 +360,12 @@ def hoshiba_map():
 @app.route("/drying-map")
 def drying_map():
     """Serve the interactive kelp drying map"""
-    return send_file("kelp_drying_map.html")
+    response = send_file("kelp_drying_map.html")
+    # Prevent caching to ensure users always get the latest version
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # Static file routes for JavaScript files
 @app.route('/all_spots_array.js')
