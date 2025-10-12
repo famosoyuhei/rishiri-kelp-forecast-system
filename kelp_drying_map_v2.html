@@ -979,7 +979,7 @@
             </div>
 
             <div class="chart-container">
-                <canvas id="forecastChart" width="350" height="200"></canvas>
+                <canvas id="forecastChart" width="350" height="300"></canvas>
             </div>
         </div>
     </div>
@@ -2264,13 +2264,18 @@
                     labels: labels,
                     datasets: [
                         {
-                            label: '乾燥適性スコア',
+                            label: '🌟 乾燥適性スコア',
                             data: forecasts.map(f => f.daily_summary.drying_score),
                             borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.25)',
                             fill: true,
-                            tension: 0.3,
-                            borderWidth: 3
+                            tension: 0.4,
+                            borderWidth: 4,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: '#667eea',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
                         },
                         {
                             label: '最低湿度 (%)',
