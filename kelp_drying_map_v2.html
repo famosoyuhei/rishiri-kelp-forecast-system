@@ -2281,12 +2281,13 @@
                             pointBorderWidth: 2
                         },
                         {
-                            label: '乾燥度 (100-湿度%)',
+                            label: '乾燥度 (100-湿度%) - 正相関',
                             data: forecasts.map(f => 100 - f.daily_summary.min_humidity),
-                            type: 'bar',
-                            backgroundColor: 'rgba(78, 205, 196, 0.5)',
                             borderColor: '#4ecdc4',
-                            borderWidth: 1,
+                            backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            borderWidth: 2,
                             yAxisID: 'y1'
                         },
                         {
