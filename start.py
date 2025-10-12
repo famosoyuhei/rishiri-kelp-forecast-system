@@ -388,6 +388,11 @@ def serve_offline():
     """Serve the offline fallback page"""
     return send_file('offline.html')
 
+@app.route('/favicon.svg')
+def serve_favicon():
+    """Serve the favicon"""
+    return send_file('favicon.svg', mimetype='image/svg+xml')
+
 @app.route('/')
 def home():
     return {
