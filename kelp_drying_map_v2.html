@@ -3277,17 +3277,24 @@
         }
 
         function calculateCloudLevels(pressures, temps, dewpoints) {
-            // 850hPa付近のデータを取得
-            const idx850 = pressures.findIndex(p => p <= 850);
-            if (idx850 === -1) return null;
+            // 地上（最も高い気圧）のデータを取得
+            const surfaceIdx = pressures.length - 1; // 配列の最後が地上（最高気圧）
+            if (surfaceIdx < 0 || pressures[surfaceIdx] < 900) return null; // 地上データがない場合
 
-            const P850 = pressures[idx850];
-            const T850 = temps[idx850];
-            const Td850 = dewpoints[idx850];
+            const Psurface = pressures[surfaceIdx];
+            const Tsurface = temps[surfaceIdx];
+            const Tdsurface = dewpoints[surfaceIdx];
 
-            // LCL (雲底高度) を計算
-            const lcl = calculateLCL(T850, Td850, P850);
+            // LCL (雲底高度) を計算 - 地上からスタート
+            const lcl = calculateLCL(Tsurface, Tdsurface, Psurface);
             if (!lcl) return null;
+
+            // 地上からLCLまでの乾燥断熱線を計算
+            const dryAdiabatLine = [];
+            for (let P = Psurface; P >= lcl.pressure; P -= 10) {
+                const T_dry = calculateDryAdiabat(Tsurface, Psurface, P);
+                dryAdiabatLine.push({ x: T_dry, y: P });
+            }
 
             // LCLから湿潤断熱線を計算
             const moistAdiabatLine = [];
@@ -3328,6 +3335,7 @@
                 lcl: lcl,
                 lfc: lfc,
                 el: el,
+                dryAdiabatLine: dryAdiabatLine,
                 moistAdiabatLine: moistAdiabatLine
             };
         }
@@ -3377,7 +3385,21 @@
                 }
             ];
 
-            // 湿潤断熱線を追加
+            // 乾燥断熱線を追加（地上→LCL）
+            if (cloudLevels && cloudLevels.dryAdiabatLine.length > 0) {
+                datasets.push({
+                    label: '乾燥断熱線 (地上→雲底)',
+                    data: cloudLevels.dryAdiabatLine,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                    borderWidth: 2,
+                    borderDash: [10, 5],
+                    pointRadius: 0,
+                    tension: 0.1
+                });
+            }
+
+            // 湿潤断熱線を追加（LCL→上空）
             if (cloudLevels && cloudLevels.moistAdiabatLine.length > 0) {
                 datasets.push({
                     label: '湿潤断熱線 (雲内)',
