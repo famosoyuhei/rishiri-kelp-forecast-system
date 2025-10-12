@@ -3366,6 +3366,11 @@
             const temps = data.temperature;
             const dewpoints = data.dewpoint;
 
+            console.log('Emagram raw data:');
+            console.log('Pressures:', pressures);
+            console.log('Temperatures:', temps);
+            console.log('Dewpoints:', dewpoints);
+
             // 気温と気圧のペアを作成（X軸=気温、Y軸=気圧）
             const tempPoints = temps.map((t, i) => ({ x: t, y: pressures[i] }));
             const dewpointPoints = dewpoints.map((d, i) => ({ x: d, y: pressures[i] }));
