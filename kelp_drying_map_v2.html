@@ -3250,13 +3250,52 @@
         }
 
         function calculateMoistAdiabat(T0, P0, P1) {
-            // 湿潤断熱減率: 約 6°C/km (簡易計算)
-            // 厳密にはΓs = g(1 + Lws/RT) / (cp + L²ws/RvT²)
-            // ここでは簡易的に一定の減率を使用
-            const gamma_s = 0.6; // °C/100m (湿潤断熱減率)
-            const dP = P0 - P1; // 気圧差
-            const dZ = dP * 8; // 簡易的な高度差 (1hPa ≈ 8m)
-            return T0 - gamma_s * (dZ / 100);
+            // 湿潤断熱線の物理的に正確な計算
+            // Γs = g(1 + Lws/RdT) / (cp + L²wsε/RdT²)
+            //
+            // 定数:
+            // g = 9.81 m/s² (重力加速度)
+            // L = 2.5×10⁶ J/kg (蒸発潜熱)
+            // Rd = 287 J/(kg·K) (乾燥空気の気体定数)
+            // cp = 1004 J/(kg·K) (定圧比熱)
+            // ε = 0.622 (分子量比 Mw/Md)
+
+            const g = 9.81;           // m/s²
+            const L = 2.5e6;          // J/kg
+            const Rd = 287;           // J/(kg·K)
+            const cp = 1004;          // J/(kg·K)
+            const epsilon = 0.622;    // 無次元
+
+            // 反復計算で湿潤断熱線を追跡
+            let T = T0;  // 現在の温度 (°C)
+            let P = P0;  // 現在の気圧 (hPa)
+            const dP = -5; // 気圧刻み幅 (hPa) - 小さくして精度向上
+
+            while (P > P1) {
+                const T_K = T + 273.15; // ケルビン温度
+                const ws = calculateSaturationMixingRatio(T, P) / 1000; // g/kg → kg/kg
+
+                // 湿潤断熱減率 (K/Pa)
+                const numerator = 1 + (L * ws) / (Rd * T_K);
+                const denominator = cp + (L * L * ws * epsilon) / (Rd * T_K * T_K);
+                const gamma_s = numerator / denominator; // K/Pa (厳密な定義)
+
+                // 温度変化を計算
+                const dT = gamma_s * dP * 100; // dP (hPa) → Pa に変換
+
+                T += dT;
+                P += dP;
+
+                // 収束チェック（目標気圧に到達）
+                if (P <= P1) {
+                    // 線形補間で正確な温度を求める
+                    const overshoot = P1 - P;
+                    T += (dT / dP) * overshoot;
+                    break;
+                }
+            }
+
+            return T;
         }
 
         function calculateLCL(T_surface, Td_surface, P_surface) {
