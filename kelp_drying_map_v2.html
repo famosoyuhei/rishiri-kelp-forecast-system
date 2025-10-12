@@ -2295,12 +2295,10 @@
                         {
                             label: '降水量 (mm)',
                             data: forecasts.map(f => f.daily_summary.precipitation),
+                            type: 'bar',
+                            backgroundColor: 'rgba(52, 152, 219, 0.6)',
                             borderColor: '#3498db',
-                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                            fill: false,
-                            tension: 0.3,
-                            borderWidth: 2,
-                            borderDash: [5, 5],
+                            borderWidth: 1,
                             yAxisID: 'y1'
                         },
                         {
