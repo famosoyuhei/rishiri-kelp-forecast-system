@@ -2196,6 +2196,9 @@
             updateEmagramTimeOptions();
         }
 
+        // グローバルスコープに関数を公開（onclick から呼び出せるように）
+        window.showForecastDay = showForecastDay;
+
         // 作業スケジュール最適化
         function calculateWorkSchedule(forecast) {
             const scheduleElement = document.getElementById(`workSchedule_${forecast.date}`);
