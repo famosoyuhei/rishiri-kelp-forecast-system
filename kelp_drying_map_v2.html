@@ -970,30 +970,6 @@
                 </div>
             </div>
 
-            <!-- 等値線マップ表示セクション -->
-            <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
-
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button onclick="showContourMap('500hpa')" id="contour500Btn" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        500hPa 渦度
-                    </button>
-                    <button onclick="showContourMap('700hpa')" id="contour700Btn" style="flex: 1; padding: 8px; background: #e9ecef; color: #333; border: none; border-radius: 5px; cursor: pointer;">
-                        700hPa 鉛直流
-                    </button>
-                </div>
-
-                <div id="contourMapContainer" style="text-align: center;">
-                    <img id="contourMapImage" src="" alt="等値線マップ" style="max-width: 100%; border-radius: 5px;">
-                    <p id="contourMapCaption" style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;"></p>
-                </div>
-
-                <div id="calibrationInfo" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #555;">
-                    <strong>予報補正情報:</strong>
-                    <div id="calibrationDetails"></div>
-                </div>
-            </div>
-
             <div id="forecastContent">
                 <div class="loading">
                     <div class="spinner"></div>
@@ -3142,76 +3118,8 @@
         }
 
         // ============================================================
-        // 等値線マップ表示機能
+        // エマグラム表示機能
         // ============================================================
-
-        let currentContourType = '500hpa';
-        let currentContourTime = 0;
-        let calibrationData = null;
-
-        // 予報補正情報を取得
-        async function loadCalibrationData() {
-            try {
-                const response = await fetch('/api/forecast_calibration');
-                calibrationData = await response.json();
-                updateCalibrationDisplay();
-            } catch (error) {
-                console.error('補正情報の取得に失敗:', error);
-            }
-        }
-
-        // 補正情報の表示を更新
-        function updateCalibrationDisplay() {
-            if (!calibrationData) return;
-
-            const detailsDiv = document.getElementById('calibrationDetails');
-            const weights = calibrationData.weights;
-
-            detailsDiv.innerHTML = `
-                <div style="margin-top: 8px;">
-                    <div style="margin-bottom: 5px;">
-                        <strong>500hPa 渦度:</strong>
-                        信頼度 ${(weights.vorticity_500hPa * 100).toFixed(0)}%
-                        ${weights.vorticity_500hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
-                    </div>
-                    <div>
-                        <strong>700hPa 鉛直流:</strong>
-                        信頼度 ${(weights.omega_700hPa * 100).toFixed(0)}%
-                        ${weights.omega_700hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
-                    </div>
-                </div>
-            `;
-        }
-
-        // 等値線マップの種類を切り替え
-        function showContourMap(type) {
-            currentContourType = type;
-
-            // ボタンのスタイルを更新
-            document.getElementById('contour500Btn').style.background = type === '500hpa' ? '#667eea' : '#e9ecef';
-            document.getElementById('contour500Btn').style.color = type === '500hpa' ? 'white' : '#333';
-            document.getElementById('contour700Btn').style.background = type === '700hpa' ? '#667eea' : '#e9ecef';
-            document.getElementById('contour700Btn').style.color = type === '700hpa' ? 'white' : '#333';
-
-            // マップ画像を更新
-            updateContourImage();
-        }
-
-        // 等値線マップ画像を更新
-        function updateContourImage() {
-            const img = document.getElementById('contourMapImage');
-            const caption = document.getElementById('contourMapCaption');
-
-            const timeStr = `t${String(currentContourTime).padStart(4, '0')}`;
-
-            if (currentContourType === '500hpa') {
-                img.src = `/api/contour/contour_500hpa_${timeStr}.png`;
-                caption.textContent = '500hPa 高度場・相対渦度';
-            } else {
-                img.src = `/api/contour/contour_700hpa_omega_${timeStr}.png`;
-                caption.textContent = '700hPa 高度場・鉛直P速度';
-            }
-        }
 
         // エマグラム用Chart.jsインスタンス
         let emagramChart = null;
@@ -3474,7 +3382,7 @@
             infoDiv.innerHTML = analysisHTML;
         }
 
-        // 干場選択時にエマグラムと等値線マップを表示
+        // 干場選択時にエマグラムを表示
         const originalSelectSpot = selectSpot;
         selectSpot = function(spotId) {
             originalSelectSpot(spotId);
@@ -3488,17 +3396,6 @@
 
             // エマグラムデータを読み込み
             loadEmagramData();
-
-            // 等値線マップセクションを表示
-            document.getElementById('contourMapSection').style.display = 'block';
-
-            // 初回ロード時
-            if (!calibrationData) {
-                loadCalibrationData();
-            }
-
-            // 最初のマップを表示
-            showContourMap('500hpa');
         };
 
         // サイドバータブ切り替え機能
