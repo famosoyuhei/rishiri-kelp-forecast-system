@@ -388,6 +388,17 @@ def serve_offline():
     """Serve the offline fallback page"""
     return send_file('offline.html')
 
+@app.route('/debug/files')
+def debug_files():
+    """Debug: List available HTML files"""
+    import os
+    files = [f for f in os.listdir('.') if f.endswith('.html')]
+    return jsonify({
+        'html_files': files,
+        'v2_exists': os.path.exists('kelp_drying_map_v2.html'),
+        'v2_size': os.path.getsize('kelp_drying_map_v2.html') if os.path.exists('kelp_drying_map_v2.html') else 0
+    })
+
 @app.route('/')
 def home():
     return {
