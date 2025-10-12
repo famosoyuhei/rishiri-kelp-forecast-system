@@ -2166,6 +2166,8 @@
             return 'reliability-low';
         }
 
+        let currentForecastDay = 0;  // 現在選択されている予報日
+
         function showForecastDay(dayIndex) {
             // Hide all content
             document.querySelectorAll('.forecast-content').forEach(content => {
@@ -2183,6 +2185,12 @@
 
             if (selectedContent) selectedContent.classList.add('active');
             if (selectedTab) selectedTab.classList.add('active');
+
+            // 現在選択されている日を保存
+            currentForecastDay = dayIndex;
+
+            // エマグラム時刻選択肢を更新
+            updateEmagramTimeOptions();
         }
 
         // 作業スケジュール最適化
@@ -3206,6 +3214,11 @@
 
         // エマグラム時刻選択肢を生成（固定時刻: 各日の6, 9, 12, 15, 18時JST）
         function generateEmagramTimeOptions() {
+            updateEmagramTimeOptions();
+        }
+
+        // エマグラム時刻選択肢を更新（選択された予報日に基づく）
+        function updateEmagramTimeOptions() {
             const select = document.getElementById('emagramTimeSelect');
             const now = new Date();
             const currentHour = now.getHours();
@@ -3215,28 +3228,32 @@
             // 作業時間帯の固定時刻（JST）
             const workHours = [6, 9, 12, 15, 18];
 
-            // 7日間分
-            for (let day = 0; day < 7; day++) {
-                const dayLabel = day === 0 ? '今日' : day === 1 ? '明日' : day === 2 ? '明後日' : `${day}日後`;
+            // 選択された日のみの時刻を表示
+            const day = currentForecastDay;
+            const dayLabel = day === 0 ? '今日' : day === 1 ? '明日' : day === 2 ? '明後日' : `${day}日後`;
 
-                workHours.forEach(hour => {
-                    // 今日の場合、過去の時刻はスキップ
-                    if (day === 0 && hour <= currentHour) {
-                        return;
-                    }
+            workHours.forEach(hour => {
+                // 今日の場合、過去の時刻はスキップ
+                if (day === 0 && hour <= currentHour) {
+                    return;
+                }
 
-                    // 現在時刻からの経過時間を計算
-                    let hoursFromNow = (day * 24) + (hour - currentHour);
+                // 現在時刻からの経過時間を計算
+                let hoursFromNow = (day * 24) + (hour - currentHour);
 
-                    // 168時間（7日間）以内
-                    if (hoursFromNow >= 0 && hoursFromNow <= 168) {
-                        const timeLabel = `${dayLabel} ${hour}時`;
-                        options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
-                    }
-                });
-            }
+                // 168時間（7日間）以内
+                if (hoursFromNow >= 0 && hoursFromNow <= 168) {
+                    const timeLabel = `${hour}時`;
+                    options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
+                }
+            });
 
             select.innerHTML = options;
+
+            // エマグラムを自動的に更新
+            if (options && selectedSpot) {
+                loadEmagramData();
+            }
         }
 
         // エマグラムデータを読み込み
