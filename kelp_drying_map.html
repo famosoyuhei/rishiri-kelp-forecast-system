@@ -2169,6 +2169,8 @@
         let currentForecastDay = 0;  // 現在選択されている予報日
 
         function showForecastDay(dayIndex) {
+            console.log('showForecastDay called with dayIndex:', dayIndex);
+
             // Hide all content
             document.querySelectorAll('.forecast-content').forEach(content => {
                 content.classList.remove('active');
@@ -2188,6 +2190,7 @@
 
             // 現在選択されている日を保存
             currentForecastDay = dayIndex;
+            console.log('currentForecastDay updated to:', currentForecastDay);
 
             // エマグラム時刻選択肢を更新
             updateEmagramTimeOptions();
@@ -3219,9 +3222,17 @@
 
         // エマグラム時刻選択肢を更新（選択された予報日に基づく）
         function updateEmagramTimeOptions() {
+            console.log('updateEmagramTimeOptions called, currentForecastDay:', currentForecastDay);
+
             const select = document.getElementById('emagramTimeSelect');
+            if (!select) {
+                console.log('emagramTimeSelect element not found');
+                return;
+            }
+
             const now = new Date();
             const currentHour = now.getHours();
+            console.log('Current hour:', currentHour);
 
             let options = '';
 
@@ -3231,10 +3242,12 @@
             // 選択された日のみの時刻を表示
             const day = currentForecastDay;
             const dayLabel = day === 0 ? '今日' : day === 1 ? '明日' : day === 2 ? '明後日' : `${day}日後`;
+            console.log('Generating options for day:', day, '(', dayLabel, ')');
 
             workHours.forEach(hour => {
                 // 今日の場合、過去の時刻はスキップ
                 if (day === 0 && hour <= currentHour) {
+                    console.log('Skipping past hour:', hour);
                     return;
                 }
 
@@ -3245,14 +3258,19 @@
                 if (hoursFromNow >= 0 && hoursFromNow <= 168) {
                     const timeLabel = `${hour}時`;
                     options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
+                    console.log('Added option:', hour, 'h (', hoursFromNow, 'h from now)');
                 }
             });
 
+            console.log('Total options generated:', options ? 'yes' : 'no');
             select.innerHTML = options;
 
             // エマグラムを自動的に更新
             if (options && selectedSpot) {
+                console.log('Calling loadEmagramData()');
                 loadEmagramData();
+            } else {
+                console.log('Not loading emagram - options:', !!options, 'selectedSpot:', !!selectedSpot);
             }
         }
 
