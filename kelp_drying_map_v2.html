@@ -3395,11 +3395,21 @@
                     // 交点判定（符号が変わる）
                     if (diff * prevDiff < 0) {
                         crossCount++;
-                        if (crossCount === 1) {
+
+                        // LFC: 負→正（冷→暖）への変化 = 自由対流開始
+                        if (crossCount === 1 && prevDiff < 0 && diff > 0) {
                             lfc = { pressure: P, temperature: T_moist };
-                        } else if (crossCount === 2) {
+                            console.log(`LFC detected: ${P}hPa, prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}`);
+                        }
+                        // EL: 正→負（暖→冷）への変化 = 中立高度
+                        else if (crossCount === 2 && prevDiff > 0 && diff < 0) {
                             el = { pressure: P, temperature: T_moist };
+                            console.log(`EL detected: ${P}hPa, prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}`);
                             break;
+                        }
+                        // 想定外の順序の場合は警告
+                        else {
+                            console.warn(`Unexpected crossing at ${P}hPa: prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}, count=${crossCount}`);
                         }
                     }
                 }
