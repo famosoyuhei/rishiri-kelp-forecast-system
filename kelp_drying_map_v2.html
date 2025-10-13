@@ -3234,6 +3234,32 @@
         }
 
         // 気象計算関数
+        function interpolateTemperature(pressures, temps, targetP) {
+            // 線形補間で任意の気圧における環境温度を取得
+            // pressures: 降順の気圧配列 (1000→100hPa)
+            // temps: 対応する温度配列
+            // targetP: 目標気圧
+
+            // 目標気圧を挟む2つのレベルを探す
+            for (let i = 0; i < pressures.length - 1; i++) {
+                if (pressures[i] >= targetP && pressures[i + 1] <= targetP) {
+                    const P1 = pressures[i];
+                    const P2 = pressures[i + 1];
+                    const T1 = temps[i];
+                    const T2 = temps[i + 1];
+
+                    // 線形補間
+                    const ratio = (targetP - P1) / (P2 - P1);
+                    return T1 + ratio * (T2 - T1);
+                }
+            }
+
+            // 範囲外の場合は最も近い値を返す
+            if (targetP >= pressures[0]) return temps[0];
+            if (targetP <= pressures[pressures.length - 1]) return temps[temps.length - 1];
+            return null;
+        }
+
         function calculateSaturationMixingRatio(T, P) {
             // 飽和混合比の計算 (g/kg)
             // Magnus式で飽和水蒸気圧を計算
@@ -3358,40 +3384,40 @@
                 const T_moist = calculateMoistAdiabat(lcl.temperature, lcl.pressure, P);
                 moistAdiabatLine.push({ x: T_moist, y: P });
 
-                // 環境気温との交点を探す
-                const envTempIdx = pressures.findIndex(p => Math.abs(p - P) < 15);
-                if (envTempIdx !== -1) {
-                    const envTemp = temps[envTempIdx];
-                    const prevIdx = moistAdiabatLine.length - 2;
+                // 環境気温を線形補間で取得
+                const envTemp = interpolateTemperature(pressures, temps, P);
+                if (envTemp === null) continue;
 
-                    if (prevIdx >= 0) {
-                        const prevMoist = moistAdiabatLine[prevIdx].x;
-                        const prevEnvIdx = pressures.findIndex(p => Math.abs(p - moistAdiabatLine[prevIdx].y) < 15);
-                        const prevEnvTemp = prevEnvIdx !== -1 ? temps[prevEnvIdx] : envTemp;
+                const prevIdx = moistAdiabatLine.length - 2;
+                if (prevIdx >= 0) {
+                    const prevMoist = moistAdiabatLine[prevIdx].x;
+                    const prevP = moistAdiabatLine[prevIdx].y;
+                    const prevEnvTemp = interpolateTemperature(pressures, temps, prevP);
 
-                        const diff = T_moist - envTemp;
-                        const prevDiff = prevMoist - prevEnvTemp;
+                    if (prevEnvTemp === null) continue;
 
-                        // デバッグ用（200hPa以上のみ）
-                        if (P >= 200) {
-                            crossDebug.push({
-                                P: P,
-                                T_moist: T_moist.toFixed(1),
-                                envTemp: envTemp.toFixed(1),
-                                diff: diff.toFixed(1),
-                                sign: diff > 0 ? '+' : '-'
-                            });
-                        }
+                    const diff = T_moist - envTemp;
+                    const prevDiff = prevMoist - prevEnvTemp;
 
-                        // 交点判定（符号が変わる）
-                        if (diff * prevDiff < 0) {
-                            crossCount++;
-                            if (crossCount === 1) {
-                                lfc = { pressure: P, temperature: T_moist };
-                            } else if (crossCount === 2) {
-                                el = { pressure: P, temperature: T_moist };
-                                break;
-                            }
+                    // デバッグ用（200hPa以上のみ）
+                    if (P >= 200) {
+                        crossDebug.push({
+                            P: P,
+                            T_moist: T_moist.toFixed(1),
+                            envTemp: envTemp.toFixed(1),
+                            diff: diff.toFixed(1),
+                            sign: diff > 0 ? '+' : '-'
+                        });
+                    }
+
+                    // 交点判定（符号が変わる）
+                    if (diff * prevDiff < 0) {
+                        crossCount++;
+                        if (crossCount === 1) {
+                            lfc = { pressure: P, temperature: T_moist };
+                        } else if (crossCount === 2) {
+                            el = { pressure: P, temperature: T_moist };
+                            break;
                         }
                     }
                 }
