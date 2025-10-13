@@ -3345,24 +3345,18 @@
             // 地上（最も高い気圧）のデータを取得
             // 気圧配列は降順（1000hPa→200hPa）なので、最初の要素が地上
             const surfaceIdx = 0;
-            console.log('Surface index:', surfaceIdx, 'Pressure:', pressures[surfaceIdx]);
-            console.log('Pressures array:', pressures);
 
             if (surfaceIdx < 0 || pressures[surfaceIdx] < 900) {
-                console.log('No valid surface data');
                 return null;
             }
 
             const Psurface = pressures[surfaceIdx];
             const Tsurface = temps[surfaceIdx];
             const Tdsurface = dewpoints[surfaceIdx];
-            console.log('Surface conditions: P=', Psurface, 'T=', Tsurface, 'Td=', Tdsurface);
 
             // LCL (雲底高度) を計算 - 地上からスタート
             const lcl = calculateLCL(Tsurface, Tdsurface, Psurface);
-            console.log('LCL result:', lcl);
             if (!lcl) {
-                console.log('LCL calculation failed');
                 return null;
             }
 
@@ -3378,7 +3372,6 @@
             let lfc = null;
             let el = null;
             let crossCount = 0;
-            const crossDebug = [];
 
             for (let P = lcl.pressure; P >= 100; P -= 10) {
                 const T_moist = calculateMoistAdiabat(lcl.temperature, lcl.pressure, P);
@@ -3399,17 +3392,6 @@
                     const diff = T_moist - envTemp;
                     const prevDiff = prevMoist - prevEnvTemp;
 
-                    // デバッグ用（200hPa以上のみ）
-                    if (P >= 200) {
-                        crossDebug.push({
-                            P: P,
-                            T_moist: T_moist.toFixed(1),
-                            envTemp: envTemp.toFixed(1),
-                            diff: diff.toFixed(1),
-                            sign: diff > 0 ? '+' : '-'
-                        });
-                    }
-
                     // 交点判定（符号が変わる）
                     if (diff * prevDiff < 0) {
                         crossCount++;
@@ -3422,10 +3404,6 @@
                     }
                 }
             }
-
-            console.log('Crossing detection (200hPa+):');
-            console.table(crossDebug);
-            console.log('Total crossings found:', crossCount);
 
             return {
                 lcl: lcl,
@@ -3450,23 +3428,12 @@
             const temps = data.temperature;
             const dewpoints = data.dewpoint;
 
-            console.log('Emagram raw data:');
-            console.log('Pressures:', pressures);
-            console.log('Temperatures:', temps);
-            console.log('Dewpoints:', dewpoints);
-
             // 気温と気圧のペアを作成（X軸=気温、Y軸=気圧）
             const tempPoints = temps.map((t, i) => ({ x: t, y: pressures[i] }));
             const dewpointPoints = dewpoints.map((d, i) => ({ x: d, y: pressures[i] }));
 
             // 雲底・雲頂高度を計算
             const cloudLevels = calculateCloudLevels(pressures, temps, dewpoints);
-            console.log('Cloud levels result:', cloudLevels);
-            if (cloudLevels) {
-                console.log('LCL:', cloudLevels.lcl ? `${cloudLevels.lcl.pressure}hPa, ${cloudLevels.lcl.temperature.toFixed(1)}°C` : 'none');
-                console.log('LFC:', cloudLevels.lfc ? `${cloudLevels.lfc.pressure}hPa, ${cloudLevels.lfc.temperature.toFixed(1)}°C` : 'none');
-                console.log('EL:', cloudLevels.el ? `${cloudLevels.el.pressure}hPa, ${cloudLevels.el.temperature.toFixed(1)}°C` : 'none (unstable atmosphere)');
-            }
 
             // データセットを準備
             const datasets = [
@@ -3557,9 +3524,9 @@
                         pointStyle: 'star'
                     });
                 } else if (cloudLevels.lfc) {
-                    // ELが検出されない = 大気不安定継続
+                    // ELが検出されない = 大気不安定継続（100hPa以上に雲頂がある可能性）
                     datasets.push({
-                        label: '雲頂 (EL: 検出不可 - 大気不安定継続)',
+                        label: '雲頂 (EL): 検出不可 - 対流が100hPa以上に達する可能性',
                         data: [],
                         borderColor: '#6f42c1',
                         backgroundColor: '#6f42c1',
