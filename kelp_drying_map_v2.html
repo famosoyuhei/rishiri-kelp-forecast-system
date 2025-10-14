@@ -2069,10 +2069,10 @@
             html += `
                                 </tr>
                                 <tr class="expert-row">
-                                    <td class="time-cell">⬆️ 鉛直速度(Pa/s)</td>
+                                    <td class="time-cell">⬆️ 鉛直p速度 700hPa (Pa/s)</td>
             `;
 
-            // 鉛直p速度行
+            // 鉛直p速度行（700hPa）
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
                     html += `<td>${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}</td>`;
@@ -2097,10 +2097,10 @@
             html += `
                                 </tr>
                                 <tr class="expert-row">
-                                    <td class="time-cell">🌡️ 相当温位(K)</td>
+                                    <td class="time-cell">🌡️ 相当温位 850hPa (K)</td>
             `;
 
-            // 相当温位行
+            // 相当温位行（850hPa）
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
                     html += `<td>${hour.equivalent_potential_temperature !== undefined && hour.equivalent_potential_temperature !== null ? hour.equivalent_potential_temperature.toFixed(1) : '--'}</td>`;
