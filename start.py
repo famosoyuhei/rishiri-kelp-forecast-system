@@ -27,6 +27,8 @@ CORS(app)
 # Configuration
 CSV_FILE = "hoshiba_spots.csv"
 RECORD_FILE = "hoshiba_records.csv"
+KML_FILE = "hoshiba_spots_named.kml"
+JS_ARRAY_FILE = "all_spots_array.js"
 
 # ============================================================================
 # Theta-e Correction System (相当温位保存による気象補正)
@@ -342,6 +344,111 @@ def calculate_wind_angle_difference(wind_direction, spot_theta):
 
     return diff
 
+# ============================================================================
+# 4-File Synchronization Functions (4ファイル自動同期)
+# ============================================================================
+
+def sync_kml_file(df):
+    """
+    CSVデータからKMLファイルを生成（hoshiba_spots.csvと同期）
+
+    Args:
+        df: hoshiba_spots.csvのDataFrame
+    """
+    try:
+        kml_header = """<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns='http://www.opengis.net/kml/2.2'>
+<Document>
+"""
+        kml_footer = """</Document>
+</kml>"""
+
+        placemark_entries = []
+        for _, row in df.iterrows():
+            placemark = f"""<Placemark>
+<name>{row['name']}</name>
+<Point><coordinates>{row['lon']:.7f},{row['lat']:.7f}</coordinates></Point>
+</Placemark>"""
+            placemark_entries.append(placemark)
+
+        kml_content = kml_header + "\n".join(placemark_entries) + "\n" + kml_footer
+
+        with open(KML_FILE, 'w', encoding='utf-8') as f:
+            f.write(kml_content)
+
+        return True
+    except Exception as e:
+        print(f"KML sync error: {e}")
+        return False
+
+
+def sync_js_array_file(df):
+    """
+    CSVデータからJavaScript配列ファイルを生成（hoshiba_spots.csvと同期）
+
+    Args:
+        df: hoshiba_spots.csvのDataFrame
+    """
+    try:
+        js_header = "const hoshibaSpots = [\n"
+        js_footer = "];\n"
+
+        js_entries = []
+        for _, row in df.iterrows():
+            # Handle NaN values
+            town = row.get('town', '')
+            district = row.get('district', '')
+            buraku = row.get('buraku', '')
+
+            if pd.isna(town):
+                town = ''
+            if pd.isna(district):
+                district = ''
+            if pd.isna(buraku):
+                buraku = ''
+
+            js_entry = f'    {{ name: "{row["name"]}", lat: {row["lat"]:.7f}, lon: {row["lon"]:.7f}, town: "{town}", district: "{district}", buraku: "{buraku}" }}'
+            js_entries.append(js_entry)
+
+        js_content = js_header + ",\n".join(js_entries) + "\n" + js_footer
+
+        with open(JS_ARRAY_FILE, 'w', encoding='utf-8') as f:
+            f.write(js_content)
+
+        return True
+    except Exception as e:
+        print(f"JS array sync error: {e}")
+        return False
+
+
+def sync_all_files_from_csv():
+    """
+    CSVを基準として全4ファイルを同期
+
+    Returns:
+        dict: 同期結果 {"csv": True, "kml": bool, "js": bool}
+    """
+    try:
+        df = pd.read_csv(CSV_FILE)
+
+        kml_success = sync_kml_file(df)
+        js_success = sync_js_array_file(df)
+
+        return {
+            "csv": True,
+            "kml": kml_success,
+            "js": js_success,
+            "total_spots": len(df)
+        }
+    except Exception as e:
+        print(f"Sync all files error: {e}")
+        return {
+            "csv": False,
+            "kml": False,
+            "js": False,
+            "error": str(e)
+        }
+
 # Web UI Routes
 @app.route('/dashboard')
 def dashboard():
@@ -353,14 +460,12 @@ def mobile():
     """Serve mobile interface"""
     return send_file('mobile_forecast_interface.html')
 
-@app.route('/map')
-def hoshiba_map():
-    """Serve the complete hoshiba map"""
-    return send_file('hoshiba_map_complete.html')
 @app.route("/drying-map")
+@app.route("/map")
+@app.route("/")
 def drying_map():
-    """Serve the interactive kelp drying map (v2 with emagram sync)"""
-    response = send_file("kelp_drying_map_v2.html")
+    """Serve the unified kelp drying map (production version with all features)"""
+    response = send_file("kelp_drying_map.html")
     # Prevent caching to ensure users always get the latest version
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
@@ -378,6 +483,13 @@ def serve_wind_names_js():
     """Serve the rishiri_wind_names.js file"""
     return send_file('rishiri_wind_names.js', mimetype='application/javascript')
 
+@app.route('/manifest.json')
+def serve_manifest():
+    """Serve the PWA manifest file"""
+    response = send_file('manifest.json', mimetype='application/manifest+json')
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
 @app.route('/service-worker.js')
 def serve_service_worker():
     """Serve the service worker for PWA and offline functionality"""
@@ -388,17 +500,23 @@ def serve_offline():
     """Serve the offline fallback page"""
     return send_file('offline.html')
 
+@app.route('/static/icons/<path:filename>')
+def serve_icon(filename):
+    """Serve PWA icon files"""
+    return send_file(f'static/icons/{filename}')
+
 @app.route('/favicon.svg')
 def serve_favicon():
     """Serve the favicon"""
     return send_file('favicon.svg', mimetype='image/svg+xml')
 
-@app.route('/')
-def home():
+@app.route('/api/info')
+def api_info():
+    """API information and available endpoints"""
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.1.0',
+        'version': '2.4.1',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -407,16 +525,20 @@ def home():
             'contours': '/api/analysis/contours',
             'spot_differences': '/api/analysis/spot-differences',
             'accuracy': '/api/validation/accuracy',
+            'emagram': '/api/emagram',
+            'forecast_calibration': '/api/forecast_calibration',
             'record': '/record',
             'add_spot': '/add',
             'delete_spot': '/delete',
-            'health': '/health'
+            'health': '/health',
+            'info': '/api/info'
         },
         'web_ui': {
+            'main': '/',
+            'drying_map': '/drying-map',
+            'map': '/map',
             'dashboard': '/dashboard',
             'mobile': '/mobile',
-            'map': '/map',
-            'drying_map': '/drying-map',
             'offline': '/offline.html'
         },
         'features': {
@@ -426,7 +548,9 @@ def home():
             'stage_based_assessment': '段階別乾燥判定（初期/後半）',
             'offline_support': 'PWA対応・オフライン機能',
             'deletion_restrictions': '4条件制限付き干場削除',
-            'wind_angle_diff': '風向とθ値の角度差表示'
+            'wind_angle_diff': '風向と方位角の角度差表示（2025年11月：気象方位角に統一）',
+            'four_file_sync': '4ファイル自動同期（CSV/KML/JS/Records、2025年12月実装）',
+            'unified_html': '統合版HTML（v1/v2統合、等値線マップ・エマグラム全機能搭載）'
         }
     }
 
@@ -533,7 +657,7 @@ def get_forecast():
             # Calculate daily representative wind direction (average of working hours)
             daily_wind_directions = []
             start_hour = i * 24 + 4  # 4AM of the day
-            end_hour = start_hour + 12  # Until 4PM (12 hours)
+            end_hour = start_hour + 13  # Until 4PM inclusive (13 hours: 4,5,6,...,16)
 
             for h in range(start_hour, min(end_hour, len(hourly.get('wind_direction_10m', [])))):
                 if h < len(hourly['wind_direction_10m']) and hourly['wind_direction_10m'][h] is not None:
@@ -550,7 +674,7 @@ def get_forecast():
                     mean_rad = math.atan2(sin_sum, cos_sum)
                     representative_wind_dir = (math.degrees(mean_rad) + 360) % 360
 
-            # Hourly data for 4AM-4PM (working hours)
+            # Hourly data for 4AM-4PM inclusive (working hours: 13 hours)
             hourly_data = []
 
             for h in range(start_hour, min(end_hour, len(hourly.get('temperature_2m', [])))):
@@ -823,9 +947,12 @@ def add_spot():
         df = pd.concat([df, new_row], ignore_index=True)
         df.to_csv(CSV_FILE, index=False, encoding="utf-8")
 
+        # 4ファイル自動同期: KMLとJSファイルも更新
+        sync_result = sync_all_files_from_csv()
+
         return jsonify({
             "status": "success",
-            "message": "新しい干場が追加されました",
+            "message": "新しい干場が追加されました（4ファイル同期完了）",
             "spot": {
                 "name": name,
                 "lat": lat,
@@ -833,7 +960,8 @@ def add_spot():
                 "town": data.get("town", ""),
                 "district": data.get("district", ""),
                 "buraku": data.get("buraku", "")
-            }
+            },
+            "sync_status": sync_result
         })
 
     except Exception as e:
@@ -844,11 +972,14 @@ def delete_spot():
     """
     干場を削除（制限付き削除）
 
-    削除不可条件（仕様書 lines 5-27）:
+    削除不可条件（仕様書 lines 24-45）:
     1. 記録データが存在する場合
     2. お気に入り登録されている場合
     3. 通知設定で使用されている場合
     4. 同時編集が発生している場合（5分間ロック）
+    5. 機械学習の訓練データとして使用されている場合
+       - 条件1（記録データ存在）と実質的に同一
+       - hoshiba_records.csvに記録がある = 訓練データとして使用される
     """
     try:
         data = request.get_json()
@@ -866,7 +997,8 @@ def delete_spot():
         if name not in df["name"].values:
             return jsonify({"status": "error", "message": "指定された干場が見つかりません"}), 404
 
-        # 制限1: 記録データ存在チェック
+        # 制限1 & 5: 記録データ存在チェック（機械学習訓練データとしても使用）
+        # hoshiba_records.csvに記録がある = 二重フィードバックループ（ループ2）の訓練データ
         try:
             records_df = pd.read_csv(RECORD_FILE)
             if name in records_df["name"].values:
@@ -944,9 +1076,13 @@ def delete_spot():
         df = df[df["name"] != name]
         df.to_csv(CSV_FILE, index=False, encoding="utf-8")
 
+        # 4ファイル自動同期: KMLとJSファイルも更新
+        sync_result = sync_all_files_from_csv()
+
         return jsonify({
             "status": "success",
-            "message": f"干場 {name} が削除されました"
+            "message": f"干場 {name} が削除されました（4ファイル同期完了）",
+            "sync_status": sync_result
         })
 
     except Exception as e:
@@ -2702,7 +2838,7 @@ def calculate_stage_based_drying_assessment(hourly_data, day_number):
     Calculate stage-based drying assessment according to specification
 
     Parameters:
-    - hourly_data: List of hourly data for the day (4AM-4PM)
+    - hourly_data: List of hourly data for the day (4AM-4PM inclusive, 13 hours)
     - day_number: Day number for reliability weighting
 
     Returns:

@@ -12,13 +12,6 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#667eea">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="利尻昆布予報">
-
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
@@ -977,30 +970,6 @@
                         <li><strong>気温が上に向かって上昇</strong>: 逆転層（霧・汚染物質の閉じ込め）</li>
                         <li><strong>気温と露点の差が大きい</strong>: 乾燥した空気（乾燥に有利）</li>
                     </ul>
-                </div>
-            </div>
-
-            <!-- 等値線マップ表示セクション -->
-            <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
-
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button onclick="showContourMap('500hpa')" id="contour500Btn" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        500hPa 渦度
-                    </button>
-                    <button onclick="showContourMap('700hpa')" id="contour700Btn" style="flex: 1; padding: 8px; background: #e9ecef; color: #333; border: none; border-radius: 5px; cursor: pointer;">
-                        700hPa 鉛直流
-                    </button>
-                </div>
-
-                <div id="contourMapContainer" style="text-align: center;">
-                    <img id="contourMapImage" src="" alt="等値線マップ" style="max-width: 100%; border-radius: 5px;">
-                    <p id="contourMapCaption" style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;"></p>
-                </div>
-
-                <div id="calibrationInfo" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #555;">
-                    <strong>予報補正情報:</strong>
-                    <div id="calibrationDetails"></div>
                 </div>
             </div>
 
@@ -2708,34 +2677,19 @@
             localStorage.setItem('hoshibaNotificationData', JSON.stringify(notificationData));
         }
 
-        // 午後4時の通知スケジューリング（常にJST基準）
-        // 開発者が世界のどこにいても、利尻島の16:00 JSTに通知を送る
+        // 午後4時の通知スケジューリング
         function scheduleNextNotification() {
             if (!notificationData.enabled) return;
 
-            // 現在のUTC時刻を取得
-            const nowUTC = new Date();
+            const now = new Date();
+            const today4PM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0);
 
-            // 現在のJST時刻を計算（UTC+9）
-            const offsetJST = 9 * 60 * 60 * 1000;  // 9時間をミリ秒に変換
-            const nowJST_ms = nowUTC.getTime() + offsetJST;
-            const nowJST = new Date(nowJST_ms);
-
-            // 今日の16:00 JSTをUTCミリ秒で計算
-            const year = nowJST.getUTCFullYear();
-            const month = nowJST.getUTCMonth();
-            const date = nowJST.getUTCDate();
-
-            // 16:00 JST = 07:00 UTC (16 - 9 = 7)
-            const today4PM_JST_ms = Date.UTC(year, month, date, 7, 0, 0);
-
-            // 今日の16:00 JSTが既に過ぎていれば、明日の16:00 JSTに設定
-            let target4PM_ms = today4PM_JST_ms;
-            if (nowUTC.getTime() > today4PM_JST_ms) {
-                target4PM_ms = today4PM_JST_ms + (24 * 60 * 60 * 1000);  // +24時間
+            // 今日の4時が過ぎていれば明日の4時に設定
+            if (now > today4PM) {
+                today4PM.setDate(today4PM.getDate() + 1);
             }
 
-            const timeUntilNotification = target4PM_ms - nowUTC.getTime();
+            const timeUntilNotification = today4PM - now;
 
             setTimeout(() => {
                 checkAndSendNotification();
@@ -2743,37 +2697,30 @@
                 scheduleNextNotification();
             }, timeUntilNotification);
 
-            // デバッグ用：次回通知予定時刻をJSTで表示
-            const targetDate = new Date(target4PM_ms);
-            const targetJST = new Date(target4PM_ms + offsetJST);
-            console.log(`次回通知予定 (JST): ${targetJST.getUTCFullYear()}/${String(targetJST.getUTCMonth()+1).padStart(2,'0')}/${String(targetJST.getUTCDate()).padStart(2,'0')} ${String(targetJST.getUTCHours()).padStart(2,'0')}:${String(targetJST.getUTCMinutes()).padStart(2,'0')} JST`);
-            console.log(`（あと${Math.floor(timeUntilNotification/1000/60/60)}時間${Math.floor((timeUntilNotification/1000/60)%60)}分）`);
+            console.log(`次回通知予定: ${today4PM.toLocaleString()}`);
         }
 
         function checkAndSendNotification() {
-            // 現在のJST日付を取得（UTC+9）
-            const offsetJST = 9 * 60 * 60 * 1000;
-            const nowUTC = new Date();
-            const nowJST = new Date(nowUTC.getTime() + offsetJST);
-            const todayJST = nowJST.toISOString().split('T')[0];
+            // 漁期チェック
+            const today = new Date().toISOString().split('T')[0];
 
-            // 漁期チェック（JST基準）
-            if (notificationData.seasonStart && todayJST < notificationData.seasonStart) {
-                console.log('漁期前のため通知をスキップ (JST)');
+            if (notificationData.seasonStart && today < notificationData.seasonStart) {
+                console.log('漁期前のため通知をスキップ');
                 return;
             }
 
-            if (notificationData.seasonEnd && todayJST > notificationData.seasonEnd) {
-                console.log('漁期後のため通知をスキップ (JST)');
+            if (notificationData.seasonEnd && today > notificationData.seasonEnd) {
+                console.log('漁期後のため通知をスキップ');
                 return;
             }
 
-            // 沖止め日チェック（明日JSTが沖止めなら今日JSTは通知しない）
-            const tomorrowJST = new Date(nowJST.getTime() + (24 * 60 * 60 * 1000));
-            const tomorrowJSTStr = tomorrowJST.toISOString().split('T')[0];
+            // 沖止め日チェック（明日が沖止めなら今日は通知しない）
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-            if (notificationData.offDays.includes(tomorrowJSTStr)) {
-                console.log('明日は沖止めのため通知をスキップ (JST)');
+            if (notificationData.offDays.includes(tomorrowStr)) {
+                console.log('明日は沖止めのため通知をスキップ');
                 return;
             }
 
@@ -3211,78 +3158,6 @@
         function closeRecordForm() {
             document.getElementById('recordFormContainer').style.display = 'none';
             currentRecordSpotIndex = null;
-        }
-
-        // ============================================================
-        // 等値線マップ表示機能
-        // ============================================================
-
-        let currentContourType = '500hpa';
-        let currentContourTime = 0;
-        let calibrationData = null;
-
-        // 予報補正情報を取得
-        async function loadCalibrationData() {
-            try {
-                const response = await fetch('/api/forecast_calibration');
-                calibrationData = await response.json();
-                updateCalibrationDisplay();
-            } catch (error) {
-                console.error('補正情報の取得に失敗:', error);
-            }
-        }
-
-        // 補正情報の表示を更新
-        function updateCalibrationDisplay() {
-            if (!calibrationData) return;
-
-            const detailsDiv = document.getElementById('calibrationDetails');
-            const weights = calibrationData.weights;
-
-            detailsDiv.innerHTML = `
-                <div style="margin-top: 8px;">
-                    <div style="margin-bottom: 5px;">
-                        <strong>500hPa 渦度:</strong>
-                        信頼度 ${(weights.vorticity_500hPa * 100).toFixed(0)}%
-                        ${weights.vorticity_500hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
-                    </div>
-                    <div>
-                        <strong>700hPa 鉛直流:</strong>
-                        信頼度 ${(weights.omega_700hPa * 100).toFixed(0)}%
-                        ${weights.omega_700hPa < 0.5 ? '⚠️ 要注意' : '✓ 使用可'}
-                    </div>
-                </div>
-            `;
-        }
-
-        // 等値線マップの種類を切り替え
-        function showContourMap(type) {
-            currentContourType = type;
-
-            // ボタンのスタイルを更新
-            document.getElementById('contour500Btn').style.background = type === '500hpa' ? '#667eea' : '#e9ecef';
-            document.getElementById('contour500Btn').style.color = type === '500hpa' ? 'white' : '#333';
-            document.getElementById('contour700Btn').style.background = type === '700hpa' ? '#667eea' : '#e9ecef';
-            document.getElementById('contour700Btn').style.color = type === '700hpa' ? 'white' : '#333';
-
-            // マップ画像を更新
-            updateContourImage();
-        }
-
-        // 等値線マップ画像を更新
-        function updateContourImage() {
-            const img = document.getElementById('contourMapImage');
-            const caption = document.getElementById('contourMapCaption');
-
-            const timeStr = `t${String(currentContourTime).padStart(4, '0')}`;
-
-            if (currentContourType === '500hpa') {
-                img.src = `/api/contour/contour_500hpa_${timeStr}.png`;
-                caption.textContent = '500hPa 高度場・相対渦度';
-            } else {
-                img.src = `/api/contour/contour_700hpa_omega_${timeStr}.png`;
-                caption.textContent = '700hPa 高度場・鉛直P速度';
-            }
         }
 
         // ============================================================
@@ -3823,7 +3698,7 @@
             infoDiv.innerHTML = analysisHTML;
         }
 
-        // 干場選択時にエマグラムと等値線マップを表示
+        // 干場選択時にエマグラムを表示
         const originalSelectSpot = selectSpot;
         selectSpot = function(spotId) {
             originalSelectSpot(spotId);
@@ -3837,17 +3712,6 @@
 
             // エマグラムデータを読み込み
             loadEmagramData();
-
-            // 等値線マップセクションを表示
-            document.getElementById('contourMapSection').style.display = 'block';
-
-            // 初回ロード時
-            if (!calibrationData) {
-                loadCalibrationData();
-            }
-
-            // 最初のマップを表示
-            showContourMap('500hpa');
         };
 
         // サイドバータブ切り替え機能
@@ -3906,15 +3770,15 @@
 
             if (isSurface || isMarine) {
                 // 地上レベル・海域レベル（漁師向け）：1時間刻み、0-168時間（7日間）
-                options += '<optgroup label="短期詳細（1時間刻み、0-48時間）">';
+                options += '<optgroup label="短期詳細（1時間刻み）">';
                 options += '<option value="0">現在</option>';
                 for (let h = 1; h <= 48; h++) {
                     options += `<option value="${h}">${h}時間後</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="週間予報（1時間刻み、49-168時間）">';
-                for (let h = 49; h <= 168; h++) {
+                options += '<optgroup label="週間予報（3時間刻み）">';
+                for (let h = 51; h <= 168; h += 3) {
                     const days = Math.floor(h / 24);
                     const hours = h % 24;
                     options += `<option value="${h}">${h}時間後 (${days}日${hours}時間後)</option>`;
@@ -3922,22 +3786,22 @@
                 options += '</optgroup>';
             } else if (isUpperAir) {
                 // 高層レベル（専門家向け）：3時間刻み、0-384時間（16日間）
-                options += '<optgroup label="短期予報（3時間刻み、0-72時間）">';
+                options += '<optgroup label="短期予報（3時間刻み）">';
                 options += '<option value="0">現在</option>';
                 for (let h = 3; h <= 72; h += 3) {
                     options += `<option value="${h}">${h}時間後</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="週間予報（3時間刻み、75-168時間）">';
-                for (let h = 75; h <= 168; h += 3) {
+                options += '<optgroup label="週間予報（6時間刻み）">';
+                for (let h = 78; h <= 168; h += 6) {
                     const days = Math.floor(h / 24);
                     options += `<option value="${h}">${h}時間後 (${days}日目)</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="長期傾向（3時間刻み、171-384時間・参考）">';
-                for (let h = 171; h <= 384; h += 3) {
+                options += '<optgroup label="長期傾向（12時間刻み・参考）">';
+                for (let h = 180; h <= 384; h += 12) {
                     const days = Math.floor(h / 24);
                     options += `<option value="${h}">${h}時間後 (${days}日目・参考)</option>`;
                 }
@@ -4113,53 +3977,6 @@
         window.switchSidebarTab = switchSidebarTab;
         window.loadContourAnalysis = loadContourAnalysis;
         window.updateContourDisplay = updateContourDisplay;
-    </script>
-
-    <!-- PWA Service Worker Registration -->
-    <script>
-        // Service Worker registration for PWA functionality
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('✅ Service Worker registered successfully:', registration.scope);
-
-                        // Check for updates periodically
-                        setInterval(() => {
-                            registration.update();
-                        }, 60 * 60 * 1000); // Check every hour
-                    })
-                    .catch(error => {
-                        console.error('❌ Service Worker registration failed:', error);
-                    });
-            });
-
-            // Handle Service Worker updates
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log('🔄 Service Worker updated, reloading page...');
-                window.location.reload();
-            });
-        } else {
-            console.warn('⚠️ Service Worker not supported in this browser');
-        }
-
-        // PWA install prompt handling
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            console.log('💾 PWA install prompt available');
-
-            // Optionally show install button
-            // You can add UI to trigger deferredPrompt.prompt()
-        });
-
-        window.addEventListener('appinstalled', () => {
-            console.log('✅ PWA installed successfully');
-            deferredPrompt = null;
-        });
     </script>
 
 </body>

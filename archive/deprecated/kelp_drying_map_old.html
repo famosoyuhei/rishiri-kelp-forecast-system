@@ -1,23 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <!-- Version: 2025-10-12T10:50:00+09:00 - Emagram time sync (production) -->
+    <!-- Version: 2025-10-12T10:25:00+09:00 - Emagram time sync fix -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>利尻島昆布干場マップ - 7日間予報システム</title>
-
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#667eea">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="利尻昆布予報">
 
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1013,7 +1003,7 @@
             </div>
 
             <div class="chart-container">
-                <canvas id="forecastChart" width="350" height="300"></canvas>
+                <canvas id="forecastChart" width="350" height="200"></canvas>
             </div>
         </div>
     </div>
@@ -2100,10 +2090,10 @@
             html += `
                                 </tr>
                                 <tr class="expert-row">
-                                    <td class="time-cell">⬆️ 鉛直p速度 700hPa (Pa/s)</td>
+                                    <td class="time-cell">⬆️ 鉛直速度(Pa/s)</td>
             `;
 
-            // 鉛直p速度行（700hPa）
+            // 鉛直p速度行
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
                     html += `<td>${hour.vertical_p_velocity !== undefined ? hour.vertical_p_velocity.toFixed(3) : '--'}</td>`;
@@ -2128,10 +2118,10 @@
             html += `
                                 </tr>
                                 <tr class="expert-row">
-                                    <td class="time-cell">🌡️ 相当温位 850hPa (K)</td>
+                                    <td class="time-cell">🌡️ 相当温位(K)</td>
             `;
 
-            // 相当温位行（850hPa）
+            // 相当温位行
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
                     html += `<td>${hour.equivalent_potential_temperature !== undefined && hour.equivalent_potential_temperature !== null ? hour.equivalent_potential_temperature.toFixed(1) : '--'}</td>`;
@@ -2180,6 +2170,8 @@
         let currentForecastDay = 0;  // 現在選択されている予報日
 
         function showForecastDay(dayIndex) {
+            console.log('showForecastDay called with dayIndex:', dayIndex);
+
             // Hide all content
             document.querySelectorAll('.forecast-content').forEach(content => {
                 content.classList.remove('active');
@@ -2199,6 +2191,7 @@
 
             // 現在選択されている日を保存
             currentForecastDay = dayIndex;
+            console.log('currentForecastDay updated to:', currentForecastDay);
 
             // エマグラム時刻選択肢を更新
             updateEmagramTimeOptions();
@@ -2298,60 +2291,20 @@
                     labels: labels,
                     datasets: [
                         {
-                            label: '🌟 乾燥適性スコア',
+                            label: '乾燥適性スコア',
                             data: forecasts.map(f => f.daily_summary.drying_score),
                             borderColor: '#667eea',
-                            backgroundColor: 'rgba(102, 126, 234, 0.25)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
                             fill: true,
-                            tension: 0.4,
-                            borderWidth: 4,
-                            pointRadius: 5,
-                            pointHoverRadius: 7,
-                            pointBackgroundColor: '#667eea',
-                            pointBorderColor: '#fff',
-                            pointBorderWidth: 2
+                            tension: 0.3
                         },
                         {
-                            label: '乾燥度 (100-湿度%) - 正相関',
-                            data: forecasts.map(f => {
-                                const humidity = f.daily_summary.min_humidity || f.daily_summary.humidity || 0;
-                                return humidity > 0 ? 100 - humidity : 0;
-                            }),
-                            borderColor: '#f39c12',
-                            backgroundColor: 'rgba(243, 156, 18, 0.1)',
-                            fill: false,
-                            tension: 0.3,
-                            borderWidth: 3,
-                            yAxisID: 'y1'
-                        },
-                        {
-                            label: '平均風速 (m/s)',
-                            data: forecasts.map(f => f.daily_summary.wind_speed),
-                            borderColor: '#95e1d3',
-                            backgroundColor: 'rgba(149, 225, 211, 0.1)',
-                            fill: false,
-                            tension: 0.3,
-                            borderWidth: 2,
-                            borderDash: [8, 4],
-                            yAxisID: 'y1'
-                        },
-                        {
-                            label: '降水量 (mm) - 負相関',
-                            data: forecasts.map(f => f.daily_summary.precipitation),
-                            type: 'bar',
-                            backgroundColor: 'rgba(52, 152, 219, 0.6)',
-                            borderColor: '#3498db',
-                            borderWidth: 1,
-                            yAxisID: 'y1'
-                        },
-                        {
-                            label: '最高気温 (°C) - 正相関',
+                            label: '最高気温 (°C)',
                             data: forecasts.map(f => f.daily_summary.temperature_max),
                             borderColor: '#ff6b6b',
                             backgroundColor: 'rgba(255, 107, 107, 0.1)',
                             fill: false,
                             tension: 0.3,
-                            borderWidth: 2,
                             yAxisID: 'y1'
                         }
                     ]
@@ -2380,7 +2333,7 @@
                             position: 'right',
                             title: {
                                 display: true,
-                                text: '気象要素'
+                                text: '気温 (°C)'
                             },
                             grid: {
                                 drawOnChartArea: false,
@@ -2708,34 +2661,19 @@
             localStorage.setItem('hoshibaNotificationData', JSON.stringify(notificationData));
         }
 
-        // 午後4時の通知スケジューリング（常にJST基準）
-        // 開発者が世界のどこにいても、利尻島の16:00 JSTに通知を送る
+        // 午後4時の通知スケジューリング
         function scheduleNextNotification() {
             if (!notificationData.enabled) return;
 
-            // 現在のUTC時刻を取得
-            const nowUTC = new Date();
+            const now = new Date();
+            const today4PM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 16, 0, 0);
 
-            // 現在のJST時刻を計算（UTC+9）
-            const offsetJST = 9 * 60 * 60 * 1000;  // 9時間をミリ秒に変換
-            const nowJST_ms = nowUTC.getTime() + offsetJST;
-            const nowJST = new Date(nowJST_ms);
-
-            // 今日の16:00 JSTをUTCミリ秒で計算
-            const year = nowJST.getUTCFullYear();
-            const month = nowJST.getUTCMonth();
-            const date = nowJST.getUTCDate();
-
-            // 16:00 JST = 07:00 UTC (16 - 9 = 7)
-            const today4PM_JST_ms = Date.UTC(year, month, date, 7, 0, 0);
-
-            // 今日の16:00 JSTが既に過ぎていれば、明日の16:00 JSTに設定
-            let target4PM_ms = today4PM_JST_ms;
-            if (nowUTC.getTime() > today4PM_JST_ms) {
-                target4PM_ms = today4PM_JST_ms + (24 * 60 * 60 * 1000);  // +24時間
+            // 今日の4時が過ぎていれば明日の4時に設定
+            if (now > today4PM) {
+                today4PM.setDate(today4PM.getDate() + 1);
             }
 
-            const timeUntilNotification = target4PM_ms - nowUTC.getTime();
+            const timeUntilNotification = today4PM - now;
 
             setTimeout(() => {
                 checkAndSendNotification();
@@ -2743,37 +2681,30 @@
                 scheduleNextNotification();
             }, timeUntilNotification);
 
-            // デバッグ用：次回通知予定時刻をJSTで表示
-            const targetDate = new Date(target4PM_ms);
-            const targetJST = new Date(target4PM_ms + offsetJST);
-            console.log(`次回通知予定 (JST): ${targetJST.getUTCFullYear()}/${String(targetJST.getUTCMonth()+1).padStart(2,'0')}/${String(targetJST.getUTCDate()).padStart(2,'0')} ${String(targetJST.getUTCHours()).padStart(2,'0')}:${String(targetJST.getUTCMinutes()).padStart(2,'0')} JST`);
-            console.log(`（あと${Math.floor(timeUntilNotification/1000/60/60)}時間${Math.floor((timeUntilNotification/1000/60)%60)}分）`);
+            console.log(`次回通知予定: ${today4PM.toLocaleString()}`);
         }
 
         function checkAndSendNotification() {
-            // 現在のJST日付を取得（UTC+9）
-            const offsetJST = 9 * 60 * 60 * 1000;
-            const nowUTC = new Date();
-            const nowJST = new Date(nowUTC.getTime() + offsetJST);
-            const todayJST = nowJST.toISOString().split('T')[0];
+            // 漁期チェック
+            const today = new Date().toISOString().split('T')[0];
 
-            // 漁期チェック（JST基準）
-            if (notificationData.seasonStart && todayJST < notificationData.seasonStart) {
-                console.log('漁期前のため通知をスキップ (JST)');
+            if (notificationData.seasonStart && today < notificationData.seasonStart) {
+                console.log('漁期前のため通知をスキップ');
                 return;
             }
 
-            if (notificationData.seasonEnd && todayJST > notificationData.seasonEnd) {
-                console.log('漁期後のため通知をスキップ (JST)');
+            if (notificationData.seasonEnd && today > notificationData.seasonEnd) {
+                console.log('漁期後のため通知をスキップ');
                 return;
             }
 
-            // 沖止め日チェック（明日JSTが沖止めなら今日JSTは通知しない）
-            const tomorrowJST = new Date(nowJST.getTime() + (24 * 60 * 60 * 1000));
-            const tomorrowJSTStr = tomorrowJST.toISOString().split('T')[0];
+            // 沖止め日チェック（明日が沖止めなら今日は通知しない）
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-            if (notificationData.offDays.includes(tomorrowJSTStr)) {
-                console.log('明日は沖止めのため通知をスキップ (JST)');
+            if (notificationData.offDays.includes(tomorrowStr)) {
+                console.log('明日は沖止めのため通知をスキップ');
                 return;
             }
 
@@ -3285,10 +3216,6 @@
             }
         }
 
-        // ============================================================
-        // エマグラム表示機能
-        // ============================================================
-
         // エマグラム用Chart.jsインスタンス
         let emagramChart = null;
 
@@ -3299,11 +3226,18 @@
 
         // エマグラム時刻選択肢を更新（選択された予報日に基づく）
         function updateEmagramTimeOptions() {
+            console.log('updateEmagramTimeOptions called, currentForecastDay:', currentForecastDay);
+
             const select = document.getElementById('emagramTimeSelect');
-            if (!select) return;
+            if (!select) {
+                console.log('emagramTimeSelect element not found');
+                return;
+            }
 
             const now = new Date();
             const currentHour = now.getHours();
+            console.log('Current hour:', currentHour);
+
             let options = '';
 
             // 作業時間帯の固定時刻（JST）
@@ -3311,10 +3245,13 @@
 
             // 選択された日のみの時刻を表示
             const day = currentForecastDay;
+            const dayLabel = day === 0 ? '今日' : day === 1 ? '明日' : day === 2 ? '明後日' : `${day}日後`;
+            console.log('Generating options for day:', day, '(', dayLabel, ')');
 
             workHours.forEach(hour => {
                 // 今日の場合、過去の時刻はスキップ
                 if (day === 0 && hour <= currentHour) {
+                    console.log('Skipping past hour:', hour);
                     return;
                 }
 
@@ -3325,24 +3262,28 @@
                 if (hoursFromNow >= 0 && hoursFromNow <= 168) {
                     const timeLabel = `${hour}時`;
                     options += `<option value="${hoursFromNow}">${timeLabel} (${hoursFromNow}h後)</option>`;
+                    console.log('Added option:', hour, 'h (', hoursFromNow, 'h from now)');
                 }
             });
 
+            console.log('Total options generated:', options ? 'yes' : 'no');
             select.innerHTML = options;
 
             // エマグラムを自動的に更新
             if (options && selectedSpot) {
+                console.log('Calling loadEmagramData()');
                 loadEmagramData();
+            } else {
+                console.log('Not loading emagram - options:', !!options, 'selectedSpot:', !!selectedSpot);
             }
         }
 
         // エマグラムデータを読み込み
         async function loadEmagramData() {
-            const timeSelect = document.getElementById('emagramTimeSelect');
-            const timeOffset = timeSelect ? timeSelect.value : null;
+            const timeOffset = document.getElementById('emagramTimeSelect').value;
             const spot = hoshibaSpots[currentSpotId];
 
-            if (!spot || !timeOffset || timeOffset === '') return;
+            if (!spot) return;
 
             try {
                 const response = await fetch(`/api/emagram?lat=${spot.lat}&lon=${spot.lon}&time=${timeOffset}`);
@@ -3356,195 +3297,6 @@
             } catch (error) {
                 console.error('Error loading emagram:', error);
             }
-        }
-
-        // 気象計算関数
-        function interpolateTemperature(pressures, temps, targetP) {
-            // 線形補間で任意の気圧における環境温度を取得
-            // pressures: 降順の気圧配列 (1000→100hPa)
-            // temps: 対応する温度配列
-            // targetP: 目標気圧
-
-            // 目標気圧を挟む2つのレベルを探す
-            for (let i = 0; i < pressures.length - 1; i++) {
-                if (pressures[i] >= targetP && pressures[i + 1] <= targetP) {
-                    const P1 = pressures[i];
-                    const P2 = pressures[i + 1];
-                    const T1 = temps[i];
-                    const T2 = temps[i + 1];
-
-                    // 線形補間
-                    const ratio = (targetP - P1) / (P2 - P1);
-                    return T1 + ratio * (T2 - T1);
-                }
-            }
-
-            // 範囲外の場合は最も近い値を返す
-            if (targetP >= pressures[0]) return temps[0];
-            if (targetP <= pressures[pressures.length - 1]) return temps[temps.length - 1];
-            return null;
-        }
-
-        function calculateSaturationMixingRatio(T, P) {
-            // 飽和混合比の計算 (g/kg)
-            // Magnus式で飽和水蒸気圧を計算
-            const es = 6.112 * Math.exp((17.67 * T) / (T + 243.5)); // hPa
-            const ws = 621.97 * es / (P - es); // g/kg
-            return ws;
-        }
-
-        function calculateDryAdiabat(T0, P0, P1) {
-            // 乾燥断熱減率: 約 9.8°C/km または 0.98°C/100m
-            // ポアソンの式: T = T0 * (P/P0)^(R/cp)
-            const kappa = 0.286; // R/cp
-            return (T0 + 273.15) * Math.pow(P1 / P0, kappa) - 273.15;
-        }
-
-        function calculateMoistAdiabat(T0, P0, P1) {
-            // 湿潤断熱線の物理的に正確な計算
-            // Γs = g(1 + Lws/RdT) / (cp + L²wsε/RdT²)
-            //
-            // 定数:
-            // g = 9.81 m/s² (重力加速度)
-            // L = 2.5×10⁶ J/kg (蒸発潜熱)
-            // Rd = 287 J/(kg·K) (乾燥空気の気体定数)
-            // cp = 1004 J/(kg·K) (定圧比熱)
-            // ε = 0.622 (分子量比 Mw/Md)
-
-            const g = 9.81;           // m/s²
-            const L = 2.5e6;          // J/kg
-            const Rd = 287;           // J/(kg·K)
-            const cp = 1004;          // J/(kg·K)
-            const epsilon = 0.622;    // 無次元
-
-            // 反復計算で湿潤断熱線を追跡
-            let T = T0;  // 現在の温度 (°C)
-            let P = P0;  // 現在の気圧 (hPa)
-            const dP = -5; // 気圧刻み幅 (hPa) - 小さくして精度向上
-
-            while (P > P1) {
-                const T_K = T + 273.15; // ケルビン温度
-                const ws = calculateSaturationMixingRatio(T, P) / 1000; // g/kg → kg/kg
-
-                // 湿潤断熱減率 (K/Pa)
-                const numerator = 1 + (L * ws) / (Rd * T_K);
-                const denominator = cp + (L * L * ws * epsilon) / (Rd * T_K * T_K);
-                const gamma_s = numerator / denominator; // K/Pa (厳密な定義)
-
-                // 温度変化を計算
-                const dT = gamma_s * dP * 100; // dP (hPa) → Pa に変換
-
-                T += dT;
-                P += dP;
-
-                // 収束チェック（目標気圧に到達）
-                if (P <= P1) {
-                    // 線形補間で正確な温度を求める
-                    const overshoot = P1 - P;
-                    T += (dT / dP) * overshoot;
-                    break;
-                }
-            }
-
-            return T;
-        }
-
-        function calculateLCL(T_surface, Td_surface, P_surface) {
-            // LCL (持ち上げ凝結高度) の計算
-            // 地上の温度と露点から計算
-            const ws_surface = calculateSaturationMixingRatio(Td_surface, P_surface);
-
-            // 乾燥断熱的に上昇させながら、飽和混合比線と交わる点を探す
-            for (let P = P_surface; P >= 100; P -= 10) {
-                const T_dry = calculateDryAdiabat(T_surface, P_surface, P);
-                const ws = calculateSaturationMixingRatio(T_dry, P);
-
-                if (ws <= ws_surface * 1.01) { // 1%の許容誤差
-                    return { pressure: P, temperature: T_dry };
-                }
-            }
-            return null;
-        }
-
-        function calculateCloudLevels(pressures, temps, dewpoints) {
-            // 地上（最も高い気圧）のデータを取得
-            // 気圧配列は降順（1000hPa→200hPa）なので、最初の要素が地上
-            const surfaceIdx = 0;
-
-            if (surfaceIdx < 0 || pressures[surfaceIdx] < 900) {
-                return null;
-            }
-
-            const Psurface = pressures[surfaceIdx];
-            const Tsurface = temps[surfaceIdx];
-            const Tdsurface = dewpoints[surfaceIdx];
-
-            // LCL (雲底高度) を計算 - 地上からスタート
-            const lcl = calculateLCL(Tsurface, Tdsurface, Psurface);
-            if (!lcl) {
-                return null;
-            }
-
-            // 地上からLCLまでの乾燥断熱線を計算
-            const dryAdiabatLine = [];
-            for (let P = Psurface; P >= lcl.pressure; P -= 10) {
-                const T_dry = calculateDryAdiabat(Tsurface, Psurface, P);
-                dryAdiabatLine.push({ x: T_dry, y: P });
-            }
-
-            // LCLから湿潤断熱線を計算
-            const moistAdiabatLine = [];
-            let lfc = null;
-            let el = null;
-            let crossCount = 0;
-
-            for (let P = lcl.pressure; P >= 100; P -= 10) {
-                const T_moist = calculateMoistAdiabat(lcl.temperature, lcl.pressure, P);
-                moistAdiabatLine.push({ x: T_moist, y: P });
-
-                // 環境気温を線形補間で取得
-                const envTemp = interpolateTemperature(pressures, temps, P);
-                if (envTemp === null) continue;
-
-                const prevIdx = moistAdiabatLine.length - 2;
-                if (prevIdx >= 0) {
-                    const prevMoist = moistAdiabatLine[prevIdx].x;
-                    const prevP = moistAdiabatLine[prevIdx].y;
-                    const prevEnvTemp = interpolateTemperature(pressures, temps, prevP);
-
-                    if (prevEnvTemp === null) continue;
-
-                    const diff = T_moist - envTemp;
-                    const prevDiff = prevMoist - prevEnvTemp;
-
-                    // 交点判定（符号が変わる）
-                    if (diff * prevDiff < 0) {
-                        // LFC: 負→正（冷→暖）への変化 = 自由対流開始
-                        if (!lfc && prevDiff < 0 && diff > 0) {
-                            lfc = { pressure: P, temperature: T_moist };
-                            console.log(`LFC detected: ${P}hPa, prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}`);
-                        }
-                        // EL: 正→負（暖→冷）への変化 = 中立高度（LFC検出後のみ）
-                        else if (lfc && !el && prevDiff > 0 && diff < 0) {
-                            el = { pressure: P, temperature: T_moist };
-                            console.log(`EL detected: ${P}hPa, prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}`);
-                            break;
-                        }
-                        // 想定外の順序の場合は警告（デバッグ用）
-                        else {
-                            console.warn(`Unexpected crossing at ${P}hPa: prevDiff=${prevDiff.toFixed(2)}, diff=${diff.toFixed(2)}, lfc=${!!lfc}, el=${!!el}`);
-                        }
-                    }
-                }
-            }
-
-            return {
-                lcl: lcl,
-                lfc: lfc,
-                el: el,
-                dryAdiabatLine: dryAdiabatLine,
-                moistAdiabatLine: moistAdiabatLine
-            };
         }
 
         // エマグラムを描画
@@ -3565,114 +3317,31 @@
             const tempPoints = temps.map((t, i) => ({ x: t, y: pressures[i] }));
             const dewpointPoints = dewpoints.map((d, i) => ({ x: d, y: pressures[i] }));
 
-            // 雲底・雲頂高度を計算
-            const cloudLevels = calculateCloudLevels(pressures, temps, dewpoints);
-
-            // データセットを準備
-            const datasets = [
-                {
-                    label: '気温 (°C)',
-                    data: tempPoints,
-                    borderColor: '#dc3545',
-                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
-                    borderWidth: 3,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#dc3545',
-                    tension: 0.1
-                },
-                {
-                    label: '露点温度 (°C)',
-                    data: dewpointPoints,
-                    borderColor: '#007bff',
-                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
-                    borderWidth: 3,
-                    pointRadius: 4,
-                    pointBackgroundColor: '#007bff',
-                    tension: 0.1
-                }
-            ];
-
-            // 乾燥断熱線を追加（地上→LCL）
-            if (cloudLevels && cloudLevels.dryAdiabatLine.length > 0) {
-                datasets.push({
-                    label: '乾燥断熱線 (地上→雲底)',
-                    data: cloudLevels.dryAdiabatLine,
-                    borderColor: '#17a2b8',
-                    backgroundColor: 'rgba(23, 162, 184, 0.1)',
-                    borderWidth: 2,
-                    borderDash: [10, 5],
-                    pointRadius: 0,
-                    tension: 0.1
-                });
-            }
-
-            // 湿潤断熱線を追加（LCL→上空）
-            if (cloudLevels && cloudLevels.moistAdiabatLine.length > 0) {
-                datasets.push({
-                    label: '湿潤断熱線 (雲内)',
-                    data: cloudLevels.moistAdiabatLine,
-                    borderColor: '#28a745',
-                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    tension: 0.1
-                });
-
-                // LCL (雲底) マーカー
-                if (cloudLevels.lcl) {
-                    datasets.push({
-                        label: `雲底 (LCL: ${cloudLevels.lcl.pressure.toFixed(0)}hPa)`,
-                        data: [{ x: cloudLevels.lcl.temperature, y: cloudLevels.lcl.pressure }],
-                        borderColor: '#ffc107',
-                        backgroundColor: '#ffc107',
-                        borderWidth: 0,
-                        pointRadius: 8,
-                        pointStyle: 'triangle'
-                    });
-                }
-
-                // LFC (自由対流高度) マーカー
-                if (cloudLevels.lfc) {
-                    datasets.push({
-                        label: `自由対流高度 (LFC: ${cloudLevels.lfc.pressure.toFixed(0)}hPa)`,
-                        data: [{ x: cloudLevels.lfc.temperature, y: cloudLevels.lfc.pressure }],
-                        borderColor: '#fd7e14',
-                        backgroundColor: '#fd7e14',
-                        borderWidth: 0,
-                        pointRadius: 8,
-                        pointStyle: 'rectRot'
-                    });
-                }
-
-                // EL (雲頂) マーカー
-                if (cloudLevels.el) {
-                    datasets.push({
-                        label: `雲頂 (EL: ${cloudLevels.el.pressure.toFixed(0)}hPa)`,
-                        data: [{ x: cloudLevels.el.temperature, y: cloudLevels.el.pressure }],
-                        borderColor: '#6f42c1',
-                        backgroundColor: '#6f42c1',
-                        borderWidth: 0,
-                        pointRadius: 8,
-                        pointStyle: 'star'
-                    });
-                } else if (cloudLevels.lfc) {
-                    // ELが検出されない = 大気不安定継続（100hPa以上に雲頂がある可能性）
-                    datasets.push({
-                        label: '雲頂 (EL): 検出不可 - 対流が100hPa以上に達する可能性',
-                        data: [],
-                        borderColor: '#6f42c1',
-                        backgroundColor: '#6f42c1',
-                        borderWidth: 0,
-                        pointRadius: 0
-                    });
-                }
-            }
-
             emagramChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    datasets: datasets
+                    datasets: [
+                        {
+                            label: '気温 (°C)',
+                            data: tempPoints,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#dc3545',
+                            tension: 0.1
+                        },
+                        {
+                            label: '露点温度 (°C)',
+                            data: dewpointPoints,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#007bff',
+                            tension: 0.1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -3906,15 +3575,15 @@
 
             if (isSurface || isMarine) {
                 // 地上レベル・海域レベル（漁師向け）：1時間刻み、0-168時間（7日間）
-                options += '<optgroup label="短期詳細（1時間刻み、0-48時間）">';
+                options += '<optgroup label="短期詳細（1時間刻み）">';
                 options += '<option value="0">現在</option>';
                 for (let h = 1; h <= 48; h++) {
                     options += `<option value="${h}">${h}時間後</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="週間予報（1時間刻み、49-168時間）">';
-                for (let h = 49; h <= 168; h++) {
+                options += '<optgroup label="週間予報（3時間刻み）">';
+                for (let h = 51; h <= 168; h += 3) {
                     const days = Math.floor(h / 24);
                     const hours = h % 24;
                     options += `<option value="${h}">${h}時間後 (${days}日${hours}時間後)</option>`;
@@ -3922,22 +3591,22 @@
                 options += '</optgroup>';
             } else if (isUpperAir) {
                 // 高層レベル（専門家向け）：3時間刻み、0-384時間（16日間）
-                options += '<optgroup label="短期予報（3時間刻み、0-72時間）">';
+                options += '<optgroup label="短期予報（3時間刻み）">';
                 options += '<option value="0">現在</option>';
                 for (let h = 3; h <= 72; h += 3) {
                     options += `<option value="${h}">${h}時間後</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="週間予報（3時間刻み、75-168時間）">';
-                for (let h = 75; h <= 168; h += 3) {
+                options += '<optgroup label="週間予報（6時間刻み）">';
+                for (let h = 78; h <= 168; h += 6) {
                     const days = Math.floor(h / 24);
                     options += `<option value="${h}">${h}時間後 (${days}日目)</option>`;
                 }
                 options += '</optgroup>';
 
-                options += '<optgroup label="長期傾向（3時間刻み、171-384時間・参考）">';
-                for (let h = 171; h <= 384; h += 3) {
+                options += '<optgroup label="長期傾向（12時間刻み・参考）">';
+                for (let h = 180; h <= 384; h += 12) {
                     const days = Math.floor(h / 24);
                     options += `<option value="${h}">${h}時間後 (${days}日目・参考)</option>`;
                 }
@@ -4110,56 +3779,10 @@
         window.showRecordForm = showRecordForm;
         window.submitRecord = submitRecord;
         window.closeRecordForm = closeRecordForm;
+        window.showContourMap = showContourMap;
         window.switchSidebarTab = switchSidebarTab;
         window.loadContourAnalysis = loadContourAnalysis;
         window.updateContourDisplay = updateContourDisplay;
-    </script>
-
-    <!-- PWA Service Worker Registration -->
-    <script>
-        // Service Worker registration for PWA functionality
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('✅ Service Worker registered successfully:', registration.scope);
-
-                        // Check for updates periodically
-                        setInterval(() => {
-                            registration.update();
-                        }, 60 * 60 * 1000); // Check every hour
-                    })
-                    .catch(error => {
-                        console.error('❌ Service Worker registration failed:', error);
-                    });
-            });
-
-            // Handle Service Worker updates
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                console.log('🔄 Service Worker updated, reloading page...');
-                window.location.reload();
-            });
-        } else {
-            console.warn('⚠️ Service Worker not supported in this browser');
-        }
-
-        // PWA install prompt handling
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing on mobile
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            console.log('💾 PWA install prompt available');
-
-            // Optionally show install button
-            // You can add UI to trigger deferredPrompt.prompt()
-        });
-
-        window.addEventListener('appinstalled', () => {
-            console.log('✅ PWA installed successfully');
-            deferredPrompt = null;
-        });
     </script>
 
 </body>

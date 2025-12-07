@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 利尻島昆布予報アイコン -->
+  <defs>
+    <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#skyGradient)" rx="80"/>
+
+  <!-- 利尻山（山のシルエット） -->
+  <path d="M 100 380 L 256 120 L 412 380 Z" fill="#4a5568" opacity="0.8"/>
+
+  <!-- 昆布（波のライン） -->
+  <path d="M 80 420 Q 130 400 180 420 T 280 420 T 380 420 T 480 420"
+        stroke="#48bb78" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <path d="M 80 450 Q 130 430 180 450 T 280 450 T 380 450 T 480 450"
+        stroke="#48bb78" stroke-width="12" fill="none" stroke-linecap="round"/>
+
+  <!-- 太陽（天気のシンボル） -->
+  <circle cx="400" cy="150" r="35" fill="#fbbf24"/>
+
+  <!-- 雲 -->
+  <ellipse cx="140" cy="200" rx="45" ry="30" fill="#e2e8f0" opacity="0.9"/>
+  <ellipse cx="170" cy="190" rx="40" ry="28" fill="#e2e8f0" opacity="0.9"/>
+  <ellipse cx="190" cy="200" rx="35" ry="25" fill="#e2e8f0" opacity="0.9"/>
+</svg>

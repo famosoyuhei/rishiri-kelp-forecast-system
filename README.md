@@ -1,7 +1,7 @@
 # 🌊 利尻島昆布干場予報システム (Rishiri Island Kelp Drying Forecast System)
 
 ![System Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.1.0-blue)
+![Version](https://img.shields.io/badge/Version-2.4.1-blue)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Flask](https://img.shields.io/badge/Flask-2.3+-red)
 ![Implementation](https://img.shields.io/badge/Implementation-100%25-success)
@@ -31,6 +31,7 @@
 - 🗺️ **331干場データベース**: 全干場の位置・地形・標高データ統合
 - 🌬️ **利尻島伝統風名**: 16方位の地域固有風名（コタン風、ナイホ風等）
 - 🔒 **削除制限機能**: 記録・お気に入り・通知設定・編集ロックの4条件制限
+- 🔄 **4ファイル自動同期**: CSV/KML/JS/Records の完全自動同期（2025年11月実装）
 - 📱 **PWAオフライン対応**: Service Worker による完全オフライン動作
 
 ## 🚀 クイックスタート
@@ -99,17 +100,16 @@ python start.py
 
 ```
 rishiri_konbu_weather_tool/
-├── start.py                       ⭐ メインアプリケーション（v2.1.0, 1034行）
+├── start.py                       ⭐ メインアプリケーション（v2.4.1, 2100+行）
 ├── wsgi.py                        🚀 本番デプロイ用WSGIエントリーポイント
 ├── config.py                      ⚙️ システム設定
 ├── security.py                    🔒 セキュリティ設定
 │
 ├── /ui/                           # Webインターフェース
-│   ├── hoshiba_map_complete.html  # 干場マップ（完成版）
-│   ├── kelp_drying_map.html       # 乾燥予報マップ
-│   ├── dashboard.html             # ダッシュボード
-│   ├── mobile_forecast_interface.html  # モバイル版
-│   ├── offline.html               # オフラインページ
+│   ├── kelp_drying_map.html       # 🌟 統合版メインUI（エマグラム+等値線+全機能、4111行）
+│   ├── dashboard.html             # 📊 ダッシュボード
+│   ├── mobile_forecast_interface.html  # 📱 モバイル版
+│   ├── offline.html               # 📴 オフラインページ
 │   ├── all_spots_array.js         # 干場データ（331地点）
 │   ├── rishiri_wind_names.js      # 伝統風名ライブラリ（16方位）
 │   ├── kelp_forecast_api.js       # API連携ライブラリ
