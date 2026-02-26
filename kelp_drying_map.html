@@ -781,6 +781,60 @@
         </div>
     </header>
 
+    <!-- 初回免責ダイアログ -->
+    <div id="disclaimerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content: center; align-items: center;">
+        <div style="background: white; max-width: 600px; margin: 20px; padding: 30px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
+            <h2 style="color: #d32f2f; margin-top: 0; border-bottom: 3px solid #d32f2f; padding-bottom: 10px;">
+                ⚠️ 重要な免責事項
+            </h2>
+
+            <div style="margin: 20px 0; line-height: 1.8; color: #333;">
+                <h3 style="color: #1976d2; font-size: 1.1rem; margin-top: 20px;">本システムの予報範囲</h3>
+                <p style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #1976d2;">
+                    本システムは<strong>干場における昆布の乾燥条件のみ</strong>を科学的に予測します。<br>
+                    降水量・湿度・風速・気温などの気象条件から、天日干しの適性を判定します。
+                </p>
+
+                <h3 style="color: #d32f2f; font-size: 1.1rem; margin-top: 25px;">予報に含まれないもの</h3>
+                <div style="background: #ffebee; padding: 15px; border-radius: 8px; border-left: 4px solid #d32f2f;">
+                    <p style="margin: 5px 0;"><strong>❌ 波浪・うねり（海の荒れ具合）</strong></p>
+                    <p style="margin: 5px 0;"><strong>❌ 視界・霧（航行安全性）</strong></p>
+                    <p style="margin: 5px 0;"><strong>❌ 潮流・海流（漁場条件）</strong></p>
+                    <p style="margin: 5px 0;"><strong>❌ その他の海況情報</strong></p>
+                </div>
+
+                <h3 style="color: #f57c00; font-size: 1.1rem; margin-top: 25px;">出漁判断について</h3>
+                <p style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #f57c00;">
+                    <strong>出漁の可否判断は、必ず以下の情報を総合的に確認してください：</strong><br><br>
+                    🌊 <a href="https://www.jma.go.jp/bosai/map.html#5/41.5/141.5/&elem=wave&contents=wave" target="_blank" style="color: #1976d2;">気象庁 波浪予想</a><br>
+                    🚢 <a href="https://www1.kaiho.mlit.go.jp/" target="_blank" style="color: #1976d2;">海上保安庁 海の安全情報</a><br>
+                    📡 地元漁協・ラジオ・テレビの海況情報
+                </p>
+
+                <h3 style="color: #388e3c; font-size: 1.1rem; margin-top: 25px;">安全な利用のために</h3>
+                <ul style="padding-left: 20px; color: #555;">
+                    <li>本予報は「乾燥適性」の参考情報です</li>
+                    <li>最終的な判断は、ご自身の経験と現場確認で行ってください</li>
+                    <li>天候急変時は無理な作業を避けてください</li>
+                    <li>予報は参考値であり、保証するものではありません</li>
+                </ul>
+            </div>
+
+            <div style="margin-top: 25px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                <label style="display: flex; align-items: start; cursor: pointer;">
+                    <input type="checkbox" id="disclaimerAgree" style="margin-right: 12px; margin-top: 4px; width: 20px; height: 20px; cursor: pointer;">
+                    <span style="font-size: 0.95rem; line-height: 1.6;">
+                        上記の内容を理解し、<strong>本システムは乾燥条件のみを予測するものであり、出漁判断には別途海況情報の確認が必要</strong>であることに同意します。
+                    </span>
+                </label>
+            </div>
+
+            <button id="disclaimerAcceptBtn" disabled style="width: 100%; margin-top: 20px; padding: 15px; background: #ccc; color: #666; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: 600; cursor: not-allowed; transition: all 0.3s;">
+                同意して続ける
+            </button>
+        </div>
+    </div>
+
     <div class="header">
         <p>干場を選択して7日間の乾燥適性予報を確認できます</p>
         <div id="connectionStatus" style="margin-top: 10px; padding: 8px 15px; border-radius: 20px; display: inline-block; font-size: 0.9rem; font-weight: 500;">
@@ -804,17 +858,48 @@
 
     <div class="notification-controls" style="background: white; padding: 20px; margin: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
         <h4>🔔 通知設定</h4>
+
+        <!-- メイン通知トグル -->
         <div style="margin: 15px 0;">
             <label style="display: flex; align-items: center; cursor: pointer;">
                 <input type="checkbox" id="notificationEnabled" onchange="toggleNotifications()" style="margin-right: 10px; width: 20px; height: 20px;">
-                <span>午後4時に予報通知を受け取る</span>
+                <span style="font-weight: 600;">通知を受け取る</span>
             </label>
         </div>
 
         <div id="notificationSettings" style="display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-            <p style="font-size: 0.9rem; color: #666; margin-bottom: 10px;">
-                お気に入り干場の明日の予報を毎日午後4時に通知します
-            </p>
+            <!-- 通知種別トグル -->
+            <div style="margin-bottom: 15px; padding: 12px; background: white; border-radius: 6px; border: 1px solid #e0e0e0;">
+                <h5 style="font-size: 0.95rem; margin-bottom: 12px; color: #333;">⏰ 通知タイミング</h5>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="eveningNotificationEnabled" onchange="toggleEveningNotification()" style="margin-right: 10px; width: 18px; height: 18px;">
+                        <div>
+                            <div style="font-weight: 500;">16:00 夕方通知</div>
+                            <div style="font-size: 0.8rem; color: #666;">翌日の暫定予報を通知</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 0;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="earlyMorningNotificationEnabled" onchange="toggleEarlyMorningNotification()" style="margin-right: 10px; width: 18px; height: 18px;">
+                        <div>
+                            <div style="font-weight: 500;">01:30 早朝通知</div>
+                            <div style="font-size: 0.8rem; color: #666;">当日の最新予報を通知（出漁判断用）</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 免責事項 -->
+            <div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; border-left: 4px solid #ffc107;">
+                <p style="font-size: 0.8rem; color: #856404; margin: 0; line-height: 1.5;">
+                    ⚠️ <strong>重要</strong>: この予報は干場の乾燥条件のみを判定します。<br>
+                    出漁判断（波浪・視界・潮流等の海況）は含まれません。
+                </p>
+            </div>
 
             <div style="margin: 15px 0;">
                 <h5 style="font-size: 0.95rem; margin-bottom: 10px;">通知対象干場</h5>
@@ -2615,24 +2700,90 @@
         window.filterByBuraku = filterByBuraku;
 
         // ========================================
+        // 初回免責ダイアログ
+        // ========================================
+
+        function initializeDisclaimerDialog() {
+            const modal = document.getElementById('disclaimerModal');
+            const agreeCheckbox = document.getElementById('disclaimerAgree');
+            const acceptBtn = document.getElementById('disclaimerAcceptBtn');
+
+            // localStorageから同意状態を確認
+            const disclaimerAccepted = localStorage.getItem('hoshibaDisclaimerAccepted') === 'true';
+
+            if (!disclaimerAccepted) {
+                // 初回訪問：ダイアログ表示
+                modal.style.display = 'flex';
+                console.log('初回訪問: 免責ダイアログを表示');
+            } else {
+                console.log('免責事項: すでに同意済み');
+            }
+
+            // チェックボックスで同意ボタンを有効化
+            agreeCheckbox.addEventListener('change', () => {
+                if (agreeCheckbox.checked) {
+                    acceptBtn.disabled = false;
+                    acceptBtn.style.background = '#1976d2';
+                    acceptBtn.style.color = 'white';
+                    acceptBtn.style.cursor = 'pointer';
+                } else {
+                    acceptBtn.disabled = true;
+                    acceptBtn.style.background = '#ccc';
+                    acceptBtn.style.color = '#666';
+                    acceptBtn.style.cursor = 'not-allowed';
+                }
+            });
+
+            // 同意ボタンクリック
+            acceptBtn.addEventListener('click', () => {
+                if (agreeCheckbox.checked) {
+                    localStorage.setItem('hoshibaDisclaimerAccepted', 'true');
+                    modal.style.display = 'none';
+                    console.log('免責事項: ユーザーが同意しました');
+
+                    // notificationDataにも反映（既存データと統合）
+                    if (typeof notificationData !== 'undefined') {
+                        notificationData.disclaimerAccepted = true;
+                        saveNotificationData();
+                    }
+                }
+            });
+        }
+
+        // ========================================
         // 通知システム (仕様書 lines 335-341)
         // ========================================
 
         let notificationData = JSON.parse(localStorage.getItem('hoshibaNotificationData')) || {
             enabled: false,
+            eveningEnabled: true,        // 16:00通知（デフォルト有効）
+            earlyMorningEnabled: true,   // 01:30通知（デフォルト有効）
+            emergencyAlertEnabled: true, // 緊急アラート（スコア30pt変化時）
             offDays: [],
-            seasonStart: null,
-            seasonEnd: null
+            seasonStart: null,            // 任意の漁期開始日
+            seasonEnd: null,              // 任意の漁期終了日
+            lastForecastScores: {},       // 前回予報スコア（緊急通知用）
+            disclaimerAccepted: false     // 免責事項同意フラグ
         };
 
         // 通知設定の初期化
         function initializeNotifications() {
             const checkbox = document.getElementById('notificationEnabled');
             const settingsDiv = document.getElementById('notificationSettings');
+            const eveningCheckbox = document.getElementById('eveningNotificationEnabled');
+            const earlyMorningCheckbox = document.getElementById('earlyMorningNotificationEnabled');
 
             // 保存済み設定を復元
             checkbox.checked = notificationData.enabled;
             settingsDiv.style.display = notificationData.enabled ? 'block' : 'none';
+
+            // 個別通知トグルの復元
+            if (eveningCheckbox) {
+                eveningCheckbox.checked = notificationData.eveningEnabled !== false; // デフォルトtrue
+            }
+            if (earlyMorningCheckbox) {
+                earlyMorningCheckbox.checked = notificationData.earlyMorningEnabled !== false; // デフォルトtrue
+            }
 
             if (notificationData.seasonStart) {
                 document.getElementById('seasonStartDate').value = notificationData.seasonStart;
@@ -2654,6 +2805,22 @@
             }
         }
 
+        // 16:00通知トグル
+        function toggleEveningNotification() {
+            const checkbox = document.getElementById('eveningNotificationEnabled');
+            notificationData.eveningEnabled = checkbox.checked;
+            saveNotificationData();
+            console.log(`16:00通知: ${checkbox.checked ? '有効' : '無効'}`);
+        }
+
+        // 01:30通知トグル
+        function toggleEarlyMorningNotification() {
+            const checkbox = document.getElementById('earlyMorningNotificationEnabled');
+            notificationData.earlyMorningEnabled = checkbox.checked;
+            saveNotificationData();
+            console.log(`01:30通知: ${checkbox.checked ? '有効' : '無効'}`);
+        }
+
         function toggleNotifications() {
             const checkbox = document.getElementById('notificationEnabled');
             const settingsDiv = document.getElementById('notificationSettings');
@@ -2666,8 +2833,9 @@
                 if (Notification.permission === 'default') {
                     Notification.requestPermission().then(permission => {
                         if (permission === 'granted') {
-                            alert('通知が有効になりました。毎日午後4時にお気に入り干場の予報をお知らせします。');
-                            scheduleNextNotification();
+                            alert('通知が有効になりました。\n・毎日16:00：翌日の暫定予報\n・毎日01:30：当日の最新予報\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。');
+                            scheduleNextNotification();        // 16:00通知
+                            scheduleEarlyMorningNotification(); // 01:30通知
                         } else {
                             alert('通知を有効にするには、ブラウザの通知許可が必要です。');
                             checkbox.checked = false;
@@ -2676,7 +2844,8 @@
                         }
                     });
                 } else if (Notification.permission === 'granted') {
-                    scheduleNextNotification();
+                    scheduleNextNotification();        // 16:00通知
+                    scheduleEarlyMorningNotification(); // 01:30通知
                 }
             }
 
@@ -2805,40 +2974,183 @@
             console.log(`（あと${Math.floor(timeUntilNotification/1000/60/60)}時間${Math.floor((timeUntilNotification/1000/60)%60)}分）`);
         }
 
-        function checkAndSendNotification() {
-            // 現在のJST日付を取得（UTC+9）
+        /**
+         * 通知送信可否を判定する統一関数（単一の真理）
+         * @param {Date} targetDate - 判定対象日（JST基準のDateオブジェクト）
+         * @returns {boolean} - 送信可能ならtrue
+         */
+        function shouldSendNotification(targetDate) {
+            // 基本チェック：通知が有効か
+            if (!notificationData.enabled) {
+                console.log('通知が無効のためスキップ');
+                return false;
+            }
+
+            // JST日付文字列に変換（YYYY-MM-DD形式）
             const offsetJST = 9 * 60 * 60 * 1000;
+            const targetJST = new Date(targetDate.getTime() + offsetJST);
+            const targetDateStr = targetJST.toISOString().split('T')[0];
+            const targetMonth = targetJST.getUTCMonth() + 1; // 1-12
+
+            // 6-9月チェック（JST基準）
+            if (targetMonth < 6 || targetMonth > 9) {
+                console.log(`漁期外（${targetMonth}月）のため通知をスキップ`);
+                return false;
+            }
+
+            // 任意の漁期開始/終了日チェック
+            if (notificationData.seasonStart && targetDateStr < notificationData.seasonStart) {
+                console.log(`漁期開始日(${notificationData.seasonStart})前のため通知をスキップ`);
+                return false;
+            }
+
+            if (notificationData.seasonEnd && targetDateStr > notificationData.seasonEnd) {
+                console.log(`漁期終了日(${notificationData.seasonEnd})後のため通知をスキップ`);
+                return false;
+            }
+
+            // 沖止め日チェック
+            if (notificationData.offDays.includes(targetDateStr)) {
+                console.log(`沖止め日(${targetDateStr})のため通知をスキップ`);
+                return false;
+            }
+
+            return true;
+        }
+
+        /**
+         * JST日付文字列を取得（YYYY-MM-DD形式）
+         * @param {Date} date - Dateオブジェクト
+         * @returns {string} - YYYY-MM-DD形式の日付文字列
+         */
+        function getJSTDateString(date) {
+            const offsetJST = 9 * 60 * 60 * 1000;
+            const jstDate = new Date(date.getTime() + offsetJST);
+            return jstDate.toISOString().split('T')[0];
+        }
+
+        /**
+         * 01:30通知のスケジュール
+         * 毎日01:30 JSTに当日の最新予報を送信
+         */
+        function scheduleEarlyMorningNotification() {
+            if (!notificationData.enabled) return;
+
+            // 現在のUTC時刻を取得
             const nowUTC = new Date();
-            const nowJST = new Date(nowUTC.getTime() + offsetJST);
-            const todayJST = nowJST.toISOString().split('T')[0];
 
-            // 漁期チェック（JST基準）
-            if (notificationData.seasonStart && todayJST < notificationData.seasonStart) {
-                console.log('漁期前のため通知をスキップ (JST)');
+            // 現在のJST時刻を計算（UTC+9）
+            const offsetJST = 9 * 60 * 60 * 1000;
+            const nowJST_ms = nowUTC.getTime() + offsetJST;
+            const nowJST = new Date(nowJST_ms);
+
+            // 今日の01:30 JSTをUTCミリ秒で計算
+            const year = nowJST.getUTCFullYear();
+            const month = nowJST.getUTCMonth();
+            const date = nowJST.getUTCDate();
+
+            // 01:30 JST = 16:30 UTC（前日）
+            // 1時間30分 = 1*60 + 30 = 90分
+            // 01:30 JST - 9時間 = 16:30 UTC（前日）
+            const today130AM_JST_ms = Date.UTC(year, month, date, 1, 30, 0) - offsetJST;
+
+            // 今日の01:30 JSTが既に過ぎていれば、明日の01:30 JSTに設定
+            let target130AM_ms = today130AM_JST_ms;
+            if (nowUTC.getTime() > today130AM_JST_ms) {
+                target130AM_ms = today130AM_JST_ms + (24 * 60 * 60 * 1000);  // +24時間
+            }
+
+            const timeUntilNotification = target130AM_ms - nowUTC.getTime();
+
+            setTimeout(() => {
+                checkAndSendEarlyMorningNotification();
+                // 次回の通知をスケジュール（24時間後）
+                scheduleEarlyMorningNotification();
+            }, timeUntilNotification);
+
+            // デバッグ用：次回通知予定時刻をJSTで表示
+            const targetDate = new Date(target130AM_ms);
+            const targetJST = new Date(target130AM_ms + offsetJST);
+            console.log(`次回早朝通知予定 (JST): ${targetJST.getUTCFullYear()}/${String(targetJST.getUTCMonth()+1).padStart(2,'0')}/${String(targetJST.getUTCDate()).padStart(2,'0')} ${String(targetJST.getUTCHours()).padStart(2,'0')}:${String(targetJST.getUTCMinutes()).padStart(2,'0')} JST`);
+            console.log(`（あと${Math.floor(timeUntilNotification/1000/60/60)}時間${Math.floor((timeUntilNotification/1000/60)%60)}分）`);
+        }
+
+        /**
+         * 01:30通知：当日の最新予報を通知
+         * shouldSendNotification(今日)でチェック
+         */
+        function checkAndSendEarlyMorningNotification() {
+            console.log('=== 01:30通知チェック開始 ===');
+
+            // 今日の日付（UTC基準）
+            const nowUTC = new Date();
+
+            // shouldSendNotificationで統一判定（今日が対象）
+            if (!shouldSendNotification(nowUTC)) {
+                console.log('01:30通知: 送信条件を満たしていません');
                 return;
             }
 
-            if (notificationData.seasonEnd && todayJST > notificationData.seasonEnd) {
-                console.log('漁期後のため通知をスキップ (JST)');
-                return;
-            }
-
-            // 沖止め日チェック（明日JSTが沖止めなら今日JSTは通知しない）
-            const tomorrowJST = new Date(nowJST.getTime() + (24 * 60 * 60 * 1000));
-            const tomorrowJSTStr = tomorrowJST.toISOString().split('T')[0];
-
-            if (notificationData.offDays.includes(tomorrowJSTStr)) {
-                console.log('明日は沖止めのため通知をスキップ (JST)');
+            // 早朝通知が無効ならスキップ
+            if (!notificationData.earlyMorningEnabled) {
+                console.log('01:30通知: 早朝通知が無効のためスキップ');
                 return;
             }
 
             // お気に入り干場の予報を取得して通知
             if (favorites.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
-                sendForecastNotifications();
+                console.log('01:30通知: 送信実行');
+                sendForecastNotifications('earlyMorning');
+            } else {
+                console.log('01:30通知: お気に入りなしまたは通知権限なし');
             }
         }
 
-        async function sendForecastNotifications() {
+        /**
+         * 16:00通知：翌日の予報を通知
+         * shouldSendNotification(明日)でチェック
+         */
+        function checkAndSendNotification() {
+            console.log('=== 16:00通知チェック開始 ===');
+
+            // 明日の日付を計算（UTC基準で取得してから+1日）
+            const nowUTC = new Date();
+            const tomorrowUTC = new Date(nowUTC.getTime() + (24 * 60 * 60 * 1000));
+
+            // shouldSendNotificationで統一判定（明日が対象）
+            if (!shouldSendNotification(tomorrowUTC)) {
+                console.log('16:00通知: 送信条件を満たしていません');
+                return;
+            }
+
+            // 夕方通知が無効ならスキップ
+            if (!notificationData.eveningEnabled) {
+                console.log('16:00通知: 夕方通知が無効のためスキップ');
+                return;
+            }
+
+            // お気に入り干場の予報を取得して通知
+            if (favorites.length > 0 && 'Notification' in window && Notification.permission === 'granted') {
+                console.log('16:00通知: 送信実行');
+                sendForecastNotifications('evening');
+            } else {
+                console.log('16:00通知: お気に入りなしまたは通知権限なし');
+            }
+        }
+
+        /**
+         * 予報通知を送信
+         * @param {string} type - 'evening'（16:00）or 'earlyMorning'（01:30）
+         */
+        async function sendForecastNotifications(type = 'evening') {
+            const now = new Date();
+            const offsetJST = 9 * 60 * 60 * 1000;
+            const nowJST = new Date(now.getTime() + offsetJST);
+            const updateTime = `${String(nowJST.getUTCHours()).padStart(2,'0')}:${String(nowJST.getUTCMinutes()).padStart(2,'0')}`;
+
+            // 免責テキスト
+            const disclaimer = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+
             for (const favoriteIndex of favorites) {
                 const spot = hoshibaSpots[favoriteIndex];
 
@@ -2847,16 +3159,25 @@
                     const data = await response.json();
 
                     if (data.forecast && data.forecast.length > 0) {
-                        const tomorrow = data.forecast[0]; // 1日後の予報
+                        let title, body, targetForecast;
 
-                        const title = `🌊 ${spot.name} 明日の予報`;
-                        const body = `降水: ${tomorrow.precipitation}mm, 湿度: ${tomorrow.min_humidity}%, 風速: ${tomorrow.avg_wind}m/s\n判定: ${tomorrow.recommendation}`;
+                        if (type === 'evening') {
+                            // 16:00通知：明日の予報
+                            targetForecast = data.forecast[0]; // 1日後
+                            title = `🌊 ${spot.name} 明日の予報（暫定）`;
+                            body = `降水: ${targetForecast.precipitation}mm, 湿度: ${targetForecast.min_humidity}%, 風速: ${targetForecast.avg_wind}m/s\n判定: ${targetForecast.recommendation}`;
+                        } else if (type === 'earlyMorning') {
+                            // 01:30通知：今日の最新予報
+                            targetForecast = data.forecast[0]; // 当日
+                            title = `🌊 ${spot.name} 本日の最新予報`;
+                            body = `【${updateTime} JST更新】\n降水: ${targetForecast.precipitation}mm, 湿度: ${targetForecast.min_humidity}%, 風速: ${targetForecast.avg_wind}m/s\n判定: ${targetForecast.recommendation}`;
+                        }
 
                         new Notification(title, {
-                            body: body,
+                            body: body + disclaimer,
                             icon: '/static/icon-192x192.png',
                             badge: '/static/badge-72x72.png',
-                            tag: `forecast-${spot.name}`,
+                            tag: `forecast-${type}-${spot.name}`,
                             requireInteraction: false
                         });
                     }
@@ -2870,6 +3191,8 @@
         }
 
         window.toggleNotifications = toggleNotifications;
+        window.toggleEveningNotification = toggleEveningNotification;
+        window.toggleEarlyMorningNotification = toggleEarlyMorningNotification;
         window.addOffDay = addOffDay;
         window.removeOffDay = removeOffDay;
         window.saveSeasonDates = saveSeasonDates;
@@ -2973,6 +3296,9 @@
 
         // イベントリスナー
         document.addEventListener('DOMContentLoaded', () => {
+            // 初回免責ダイアログの処理
+            initializeDisclaimerDialog();
+
             // all_spots_array.jsからのデータ読み込み確認
             if (typeof hoshibaSpots !== 'undefined') {
                 console.log(`Loaded ${hoshibaSpots.length} hoshiba spots from all_spots_array.js`);
@@ -2993,7 +3319,8 @@
             // 通知システム初期化
             initializeNotifications();
             if (notificationData.enabled) {
-                scheduleNextNotification();
+                scheduleNextNotification();        // 16:00通知
+                scheduleEarlyMorningNotification(); // 01:30通知
             }
 
             // オフライン状態初期化
