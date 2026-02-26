@@ -16,6 +16,53 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: #333;
             line-height: 1.6;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* App Header with Logo */
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 2000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .app-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 20px;
+            gap: 16px;
+        }
+
+        .app-logo {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+        }
+
+        .app-title-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .app-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            line-height: 1.2;
+        }
+
+        .app-subtitle {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            font-weight: 400;
+            letter-spacing: 0.5px;
         }
 
         .dashboard-container {
@@ -244,6 +291,17 @@
     </style>
 </head>
 <body>
+    <!-- App Header with Logo -->
+    <header class="app-header">
+        <div class="app-brand">
+            <img src="/static/img/logo.png" class="app-logo" alt="利尻干場予報">
+            <div class="app-title-wrap">
+                <div class="app-title">利尻干場予報</div>
+                <div class="app-subtitle">Hoshiba Forecast · Rishiri</div>
+            </div>
+        </div>
+    </header>
+
     <div class="dashboard-container">
         <div class="header">
             <h1>🌊 利尻島昆布干場予報システム</h1>
