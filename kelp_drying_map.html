@@ -950,6 +950,16 @@
                     ⚠️ ブラウザの通知許可が必要です。初回は許可ダイアログが表示されます。
                 </p>
             </div>
+
+            <!-- 通知履歴 -->
+            <div style="margin-top: 15px;">
+                <button type="button" onclick="showNotificationHistory()" style="width:100%; padding:8px; background:#f0f4ff; color:#1976d2; border:1px solid #bbdefb; border-radius:5px; cursor:pointer; font-size:0.9rem;">
+                    🕐 通知履歴を見る
+                </button>
+                <div id="notificationHistoryPanel" style="display:none; margin-top:8px; border:1px solid #e0e0e0; border-radius:5px; max-height:300px; overflow-y:auto; background:white;">
+                    <div id="notificationHistoryList"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -3219,6 +3229,17 @@
                             tag: `forecast-${type}-${spot.name}`,
                             requireInteraction: false
                         });
+
+                        // 通知履歴に記録
+                        saveNotificationHistory({
+                            type,
+                            spotName: spot.name,
+                            title,
+                            body,
+                            score,
+                            suitabilityJA,
+                            sentAt: nowJST.toISOString().replace('T', ' ').slice(0, 16) + ' JST'
+                        });
                     }
                 } catch (error) {
                     console.error(`通知送信エラー (${spot.name}):`, error);
@@ -3227,6 +3248,45 @@
                 // 通知間隔を空ける（連続送信を避ける）
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
+        }
+
+        /**
+         * 通知履歴を localStorage に保存（最新50件）
+         */
+        function saveNotificationHistory(entry) {
+            const history = JSON.parse(localStorage.getItem('hoshibaNotificationHistory') || '[]');
+            history.unshift(entry); // 先頭に追加
+            if (history.length > 50) history.splice(50); // 50件超えたら古いものを削除
+            localStorage.setItem('hoshibaNotificationHistory', JSON.stringify(history));
+        }
+
+        /**
+         * 通知履歴パネルを表示
+         */
+        function showNotificationHistory() {
+            const history = JSON.parse(localStorage.getItem('hoshibaNotificationHistory') || '[]');
+            const panel = document.getElementById('notificationHistoryPanel');
+            const list = document.getElementById('notificationHistoryList');
+
+            if (history.length === 0) {
+                list.innerHTML = '<p style="color:#999; text-align:center; padding:20px;">通知履歴はまだありません</p>';
+            } else {
+                const typeLabel = { evening: '16:00 夕方', earlyMorning: '01:30 早朝', emergency: '緊急アラート' };
+                list.innerHTML = history.map(h => `
+                    <div style="padding:10px; border-bottom:1px solid #eee; font-size:0.85rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <span style="font-weight:600;">${h.spotName}</span>
+                            <span style="color:#999; font-size:0.75rem;">${h.sentAt}</span>
+                        </div>
+                        <div>
+                            <span style="background:#e3f2fd; color:#1976d2; padding:2px 6px; border-radius:3px; font-size:0.75rem;">${typeLabel[h.type] || h.type}</span>
+                            <span style="margin-left:8px;">${h.suitabilityJA || ''} ${h.score != null ? h.score+'点' : ''}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
         }
 
         /**
@@ -3280,6 +3340,16 @@
                                 requireInteraction: true  // 緊急通知は消えるまで維持
                             });
                             console.log(`緊急アラート送信: ${spot.name} ${prevScore}→${currentScore}点（${diff > 0 ? '+' : ''}${diff}）`);
+                            const nowJSTStr = new Date(nowUTC.getTime() + offsetJST).toISOString().replace('T',' ').slice(0,16) + ' JST';
+                            saveNotificationHistory({
+                                type: 'emergency',
+                                spotName: spot.name,
+                                title: `${emoji} 緊急: ${spot.name}`,
+                                body: `${prevScore}→${currentScore}点（${diff > 0 ? '+' : ''}${diff}）`,
+                                score: currentScore,
+                                suitabilityJA,
+                                sentAt: nowJSTStr
+                            });
                         }
                     }
 
@@ -3315,7 +3385,8 @@
         window.addOffDay = addOffDay;
         window.removeOffDay = removeOffDay;
         window.saveSeasonDates = saveSeasonDates;
-        window.checkEmergencyAlerts = checkEmergencyAlerts; // テスト用に公開
+        window.checkEmergencyAlerts = checkEmergencyAlerts;   // テスト用に公開
+        window.showNotificationHistory = showNotificationHistory;
 
         // ========================================
         // オフライン同期機能 (仕様書 lines 41-44)
