@@ -951,6 +951,23 @@
                 </p>
             </div>
 
+            <!-- テスト通知 -->
+            <div style="margin-top: 15px; padding: 12px; background: #f3f4f6; border-radius: 6px;">
+                <h5 style="font-size: 0.9rem; margin-bottom: 10px; color: #555;">🔔 通知テスト（音量・表示の確認）</h5>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" onclick="sendTestNotification('evening')" style="flex:1; min-width:100px; padding:8px 6px; background:#667eea; color:white; border:none; border-radius:5px; cursor:pointer; font-size:0.8rem;">
+                        16:00<br>夕方テスト
+                    </button>
+                    <button type="button" onclick="sendTestNotification('earlyMorning')" style="flex:1; min-width:100px; padding:8px 6px; background:#764ba2; color:white; border:none; border-radius:5px; cursor:pointer; font-size:0.8rem;">
+                        01:30<br>早朝テスト
+                    </button>
+                    <button type="button" onclick="sendTestNotification('emergency')" style="flex:1; min-width:100px; padding:8px 6px; background:#d32f2f; color:white; border:none; border-radius:5px; cursor:pointer; font-size:0.8rem;">
+                        緊急<br>アラートテスト
+                    </button>
+                </div>
+                <p style="font-size:0.75rem; color:#999; margin-top:8px; margin-bottom:0;">通知許可が必要です。お気に入り干場がなくてもテスト送信します。</p>
+            </div>
+
             <!-- 通知履歴 -->
             <div style="margin-top: 15px;">
                 <button type="button" onclick="showNotificationHistory()" style="width:100%; padding:8px; background:#f0f4ff; color:#1976d2; border:1px solid #bbdefb; border-radius:5px; cursor:pointer; font-size:0.9rem;">
@@ -3387,6 +3404,53 @@
         window.saveSeasonDates = saveSeasonDates;
         window.checkEmergencyAlerts = checkEmergencyAlerts;   // テスト用に公開
         window.showNotificationHistory = showNotificationHistory;
+        window.sendTestNotification = sendTestNotification;
+
+        /**
+         * テスト通知送信（音量・表示確認用）
+         * お気に入りがなくても、ダミーデータで即時送信
+         */
+        async function sendTestNotification(type) {
+            if (!('Notification' in window)) {
+                alert('このブラウザは通知をサポートしていません');
+                return;
+            }
+            if (Notification.permission !== 'granted') {
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') {
+                    alert('通知を許可してください');
+                    return;
+                }
+            }
+
+            const disclaimer = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+            const now = new Date();
+            const offsetJST = 9 * 60 * 60 * 1000;
+            const nowJST = new Date(now.getTime() + offsetJST);
+            const timeStr = `${String(nowJST.getUTCHours()).padStart(2,'0')}:${String(nowJST.getUTCMinutes()).padStart(2,'0')}`;
+
+            let title, body, requireInteraction = false;
+            if (type === 'evening') {
+                title = '🌊 テスト: H_XXXX 明日の予報（暫定）';
+                body = '判定: 良好（75点）\n降水: 0.0mm  湿度: 72%  風速: 3.2m/s';
+            } else if (type === 'earlyMorning') {
+                title = '🌊 テスト: H_XXXX 本日の最新予報';
+                body = `【${timeStr} JST更新】\n判定: 最適（88点）\n降水: 0.0mm  湿度: 65%  風速: 4.1m/s`;
+            } else {
+                title = '📉 テスト緊急: H_XXXX 予報変化';
+                body = '乾燥スコアが35点急低下（80→45点）\n現在の判定: 可';
+                requireInteraction = true;
+            }
+
+            new Notification(title, {
+                body: body + disclaimer,
+                icon: '/static/icon-192x192.png',
+                badge: '/static/badge-72x72.png',
+                tag: `test-${type}`,
+                requireInteraction
+            });
+            console.log(`テスト通知送信: ${type}`);
+        }
 
         // ========================================
         // オフライン同期機能 (仕様書 lines 41-44)
