@@ -3158,19 +3158,30 @@
                     const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}&name=${encodeURIComponent(spot.name)}`);
                     const data = await response.json();
 
-                    if (data.forecast && data.forecast.length > 0) {
-                        let title, body, targetForecast;
+                    if (data.forecasts && data.forecasts.length > 0) {
+                        // 16:00は forecasts[1]（明日）、01:30は forecasts[0]（当日）
+                        const targetEntry = (type === 'evening')
+                            ? data.forecasts[1] || data.forecasts[0]
+                            : data.forecasts[0];
+                        const ds = targetEntry.daily_summary;
 
+                        const precipitation = ds.precipitation ?? '--';
+                        const humidity      = ds.humidity ?? '--';
+                        const windSpeed     = ds.wind_speed != null ? ds.wind_speed.toFixed(1) : '--';
+                        const suitability   = ds.suitability ?? '--';
+                        const score         = ds.drying_score ?? '--';
+
+                        const suitabilityJA = {
+                            excellent: '最適', good: '良好', fair: '可', poor: '不良', very_poor: '不可'
+                        }[suitability] || suitability;
+
+                        let title, body;
                         if (type === 'evening') {
-                            // 16:00通知：明日の予報
-                            targetForecast = data.forecast[0]; // 1日後
                             title = `🌊 ${spot.name} 明日の予報（暫定）`;
-                            body = `降水: ${targetForecast.precipitation}mm, 湿度: ${targetForecast.min_humidity}%, 風速: ${targetForecast.avg_wind}m/s\n判定: ${targetForecast.recommendation}`;
-                        } else if (type === 'earlyMorning') {
-                            // 01:30通知：今日の最新予報
-                            targetForecast = data.forecast[0]; // 当日
+                            body = `判定: ${suitabilityJA}（${score}点）\n降水: ${precipitation}mm  湿度: ${humidity}%  風速: ${windSpeed}m/s`;
+                        } else {
                             title = `🌊 ${spot.name} 本日の最新予報`;
-                            body = `【${updateTime} JST更新】\n降水: ${targetForecast.precipitation}mm, 湿度: ${targetForecast.min_humidity}%, 風速: ${targetForecast.avg_wind}m/s\n判定: ${targetForecast.recommendation}`;
+                            body = `【${updateTime} JST更新】\n判定: ${suitabilityJA}（${score}点）\n降水: ${precipitation}mm  湿度: ${humidity}%  風速: ${windSpeed}m/s`;
                         }
 
                         new Notification(title, {
