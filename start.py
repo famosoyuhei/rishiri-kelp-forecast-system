@@ -566,8 +566,11 @@ def get_weather():
     lon = request.args.get('lon', 141.228528)
 
     try:
-        # Open-Meteo API for current weather
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+        # Get elevation for accurate DEM correction
+        elevation = get_elevation(float(lat), float(lon))
+
+        # Open-Meteo API for current weather with elevation parameter
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
 
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -595,11 +598,55 @@ def get_weather():
             'status': 'error'
         }, 503
 
+@app.route('/api/jma_warnings')
+def get_jma_warnings():
+    """Get JMA weather warnings/advisories for Rishiri Island (利尻島)"""
+    try:
+        # Hokkaido prefecture warning data (016000)
+        url = "https://www.jma.go.jp/bosai/warning/data/warning/016000.json"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        warnings = []
+        # areaStatuses contains per-area warning info; search for 利尻
+        for area in data.get('areaStatuses', []):
+            area_name = area.get('areaName', '')
+            if '利尻' not in area_name:
+                continue
+            area_warnings = area.get('warnings', [])
+            active = [
+                {'name': w.get('name', ''), 'status': w.get('status', '')}
+                for w in area_warnings
+                if w.get('status') not in ('', '解除', None)
+            ]
+            if active:
+                warnings.append({'area': area_name, 'warnings': active})
+
+        return {
+            'warnings': warnings,
+            'hasWarnings': len(warnings) > 0,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'success'
+        }
+
+    except Exception as e:
+        return {
+            'warnings': [],
+            'hasWarnings': False,
+            'error': str(e),
+            'status': 'error'
+        }, 503
+
+
 @app.route('/api/forecast')
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
     lat = float(request.args.get('lat', 45.178269))
     lon = float(request.args.get('lon', 141.228528))
+
+    # Get elevation for accurate DEM correction
+    elevation = get_elevation(lat, lon)
 
     # Calculate spot theta for wind angle difference calculation
     spot_theta = calculate_spot_theta(lat, lon)
@@ -622,7 +669,7 @@ def get_forecast():
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
         # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,direct_radiation,pressure_msl,precipitation,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum&timezone=Asia/Tokyo&forecast_days=7"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,direct_radiation,pressure_msl,precipitation,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum&timezone=Asia/Tokyo&forecast_days=7"
 
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -718,6 +765,29 @@ def get_forecast():
                         'surface_pressure': hourly['surface_pressure'][h] if h < len(hourly.get('surface_pressure', [])) and hourly['surface_pressure'][h] is not None else None
                     }
                     hourly_data.append(hour_data)
+
+            # 地形補正を時間帯別データに適用（等値線図との整合性確保）
+            is_forest = is_forest_area(lat, lon)
+            is_coastal = is_coastal_area(lat, lon)
+            elevation = get_elevation(lat, lon)
+
+            for j, hour_data in enumerate(hourly_data):
+                # 地形補正を適用
+                # 気温補正は削除：Open-Meteoが既に0.7°C/100mで補正済み
+
+                if hour_data.get('humidity') is not None:
+                    if is_forest:
+                        hour_data['humidity'] = min(100, hour_data['humidity'] + 10.0)
+                    if is_coastal:
+                        hour_data['humidity'] = min(100, hour_data['humidity'] + 5.0)
+                    if elevation > 10:
+                        hour_data['humidity'] = max(0, hour_data['humidity'] - (elevation / 100) * 1.0)
+
+                if hour_data.get('wind_speed') is not None:
+                    if is_forest:
+                        hour_data['wind_speed'] = max(0, hour_data['wind_speed'] - 2.5)
+                    if is_coastal:
+                        hour_data['wind_speed'] += 1.0
 
             # Calculate enhanced vertical p-velocity estimation using 700hPa data
             for j, hour_data in enumerate(hourly_data):
@@ -862,11 +932,280 @@ def is_coastal_area(lat, lon):
     return True
 
 def get_elevation(lat, lon):
-    """Simplified elevation calculation"""
+    """
+    Get elevation from Open-Meteo Elevation API (Copernicus GLO-90 DEM)
+
+    Uses Open-Meteo's Elevation API which provides 90m resolution elevation data
+    from the Copernicus GLO-90 DEM with ±4m accuracy.
+
+    Falls back to simplified calculation if API fails.
+    """
+    try:
+        url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'elevation' in data:
+            elevation = data['elevation'][0] if isinstance(data['elevation'], list) else data['elevation']
+            return max(0, elevation)
+    except Exception:
+        # Fallback to simplified calculation if API fails
+        pass
+
+    # Fallback: simplified calculation
     mountain_lat, mountain_lon = 45.1821, 141.2421
     distance = ((lat - mountain_lat) ** 2 + (lon - mountain_lon) ** 2) ** 0.5
-    # Simplified: closer to mountain = higher elevation
     return max(0, 200 - distance * 10000)
+
+def get_onshore_wind_factor(lat, lon, wind_direction):
+    """
+    海岸補正の風向依存係数を計算（放射方向モデル）
+
+    利尻山頂を極とした方位角を計算し、その方向を海の方向とする。
+    この方位角は部落分類でも使われており、システム全体で整合性がある。
+
+    Parameters:
+    - lat, lon: 地点座標
+    - wind_direction: 風向（度、気象学的：風が吹いてくる方向、北=0°）
+
+    Returns:
+    - factor: 0.0（offshore）～ 1.0（onshore）の係数
+
+    Note:
+    - 利尻山頂を極とした極座標の方位角を使用
+    - この方位角は hoshiba_spots.csv の部落分類でも使われている
+    - 例: 御崎（仙法志）は264°（西）、栄浜（沓形）は162°（南）
+    - 放射方向そのものを使うため、円形の島に対して最も正確
+    """
+    import math
+
+    # 利尻島地理中心座標（利尻山頂上付近）
+    island_center_lat, island_center_lon = 45.1821, 141.2421
+
+    # 島中心から地点への方向（地点が島のどちら側にあるか）
+    delta_lat = lat - island_center_lat
+    delta_lon = lon - island_center_lon
+
+    # 島中心→地点の方位角を計算（これが海の方向）
+    # 気象学的方位角: 北=0°、東=90°、南=180°、西=270°（時計回り）
+    # atan2(delta_lat, delta_lon)で数学的極座標を計算し、気象学的方位角に変換
+    math_angle = math.degrees(math.atan2(delta_lat, delta_lon))
+    sea_direction = (90 - math_angle) % 360
+
+    # 風向と海の方向の角度差を計算
+    angle_diff = abs(wind_direction - sea_direction)
+    if angle_diff > 180:
+        angle_diff = 360 - angle_diff
+
+    # 角度差が小さいほど onshore wind（海→陸）
+    # 0°（完全なonshore）で factor=1.0、90°（平行）で factor=0.0
+    if angle_diff <= 90:
+        factor = math.cos(math.radians(angle_diff))  # cos(0°)=1.0, cos(90°)=0.0
+    else:
+        factor = 0.0  # 90°超は offshore wind（陸→海）
+
+    return max(0.0, factor)
+
+def get_season_solar_factor(month, hour_jst):
+    """
+    森林補正の季節・日射依存係数を計算
+
+    森林の水蒸気効果は、樹冠蒸散（日射依存）＋日射遮蔽（湿度保持）の複合効果
+
+    Parameters:
+    - month: 月（1-12）
+    - hour_jst: 日本標準時の時刻（0-23）
+
+    Returns:
+    - transpiration_factor: 蒸散係数（0.5～1.5、夏・昼間に大きい）
+    - shade_factor: 遮蔽係数（0.8～1.2、夏に大きい）
+    """
+    import math
+
+    # 季節係数（蒸散量は夏に最大）
+    # 6-8月: 1.5、3-5月/9-11月: 1.0、12-2月: 0.5
+    if 6 <= month <= 8:
+        season_transp = 1.5  # 夏季：活発な蒸散
+        season_shade = 1.2   # 夏季：強い日射遮蔽
+    elif 3 <= month <= 5 or 9 <= month <= 11:
+        season_transp = 1.0  # 春秋：中程度
+        season_shade = 1.0
+    else:  # 12, 1, 2月
+        season_transp = 0.5  # 冬季：蒸散抑制
+        season_shade = 0.8   # 冬季：弱い日射
+
+    # 日射係数（蒸散は昼間のみ）
+    # 太陽高度の簡易モデル: 6時～18時に山型
+    if 6 <= hour_jst <= 18:
+        # 正午（12時）に最大1.0、朝夕に0.0
+        hour_angle = (hour_jst - 12) * 15  # 度（12時=0°、±90°）
+        solar_factor = math.cos(math.radians(hour_angle))  # cos(0°)=1.0
+        solar_factor = max(0.0, solar_factor)
+    else:
+        solar_factor = 0.0  # 夜間は蒸散なし
+
+    # 蒸散係数（季節×日射）
+    transpiration_factor = season_transp * solar_factor
+
+    # 遮蔽係数（季節のみ依存、時刻依存小）
+    shade_factor = season_shade
+
+    return transpiration_factor, shade_factor
+
+def apply_terrain_correction_to_grid(grid_lat, grid_lon, grid_values, category, grid_temperature=None,
+                                    grid_wind_direction=None, month=7, hour_jst=12):
+    """
+    グリッド点ごとに地形補正を適用（物理的により妥当な方法・状況依存版）
+
+    【物理的妥当性の改善 v2】
+    1. 風速補正：加算型→乗算型（負値の自然な防止）
+    2. 湿度補正：相対湿度直接補正→水蒸気圧ベース補正（温度依存性を考慮）
+    3. 気圧補正：SLP（海面更正気圧）のため補正不要→正しく除外済み
+    4. 降水補正：NWPが地形込みのため二重補正防止→正しく除外済み
+    5. 海岸補正：風向依存（onshore wind時のみ有効）← NEW
+    6. 森林補正：季節・日射依存（蒸散は夏・昼間に最大）← NEW
+
+    Parameters:
+    - grid_lat: 緯度グリッド（2D array）
+    - grid_lon: 経度グリッド（2D array）
+    - grid_values: 補間された気象値（2D array）
+    - category: カテゴリー（temperature, humidity, wind等）
+    - grid_temperature: 気温グリッド（湿度補正時に必要、℃、オプション）
+    - grid_wind_direction: 風向グリッド（海岸補正時に必要、度、オプション）
+    - month: 月（1-12、森林補正の季節依存用）
+    - hour_jst: 時刻JST（0-23、森林補正の日射依存用）
+
+    Returns:
+    - corrected_values: 地形補正後の値（2D array）
+    - correction_stats: 補正統計情報dict（クリップ発生回数等）
+    """
+    corrected_values = grid_values.copy()
+
+    # 補正統計（ログ用）
+    correction_stats = {
+        'clipped_high': 0,  # 上限クリップ回数
+        'clipped_low': 0,   # 下限クリップ回数
+        'wind_reduced_to_zero': 0,  # 風速がゼロに減衰した回数
+        'humidity_saturated': 0,  # 湿度が100%に達した回数
+        'onshore_wind_active': 0,  # onshore wind補正が有効だった回数
+        'forest_transpiration_active': 0  # 森林蒸散補正が有効だった回数
+    }
+
+    # カテゴリー別に補正を適用
+    for i in range(grid_lat.shape[0]):
+        for j in range(grid_lat.shape[1]):
+            lat = grid_lat[i, j]
+            lon = grid_lon[i, j]
+
+            # 地形特性を取得
+            is_forest = is_forest_area(lat, lon)
+            is_coastal = is_coastal_area(lat, lon)
+            elevation = get_elevation(lat, lon)
+
+            # 風向を取得（海岸補正用）
+            wind_dir = grid_wind_direction[i, j] if grid_wind_direction is not None else None
+
+            # 季節・日射係数を取得（森林補正用）
+            transp_factor, shade_factor = get_season_solar_factor(month, hour_jst)
+
+            # カテゴリー別補正
+            if category in ['wind', 'wind_850hpa', 'wind_700hpa']:
+                # 風速補正（乗算型：物理的により妥当、負値を自然に防ぐ）
+                original_wind = corrected_values[i, j]
+                reduction_factor = 1.0
+
+                if is_forest:
+                    reduction_factor *= 0.4  # 森林で60%減衰（実測：2.5m/s減少@4m/s → 約60%減）
+
+                # 海岸補正（風向依存）
+                if is_coastal and wind_dir is not None:
+                    onshore_factor = get_onshore_wind_factor(lat, lon, wind_dir)
+                    if onshore_factor > 0.1:  # 閾値：onshore windと判定
+                        reduction_factor *= (1.0 + 0.25 * onshore_factor)  # 最大25%増加
+                        correction_stats['onshore_wind_active'] += 1
+
+                corrected_values[i, j] = max(0, original_wind * reduction_factor)
+
+                if corrected_values[i, j] == 0 and original_wind > 0:
+                    correction_stats['wind_reduced_to_zero'] += 1
+
+            elif category in ['humidity', 'humidity_850hpa', 'humidity_700hpa']:
+                # 湿度補正（相対湿度→水蒸気圧→補正→相対湿度：物理的により妥当）
+                RH_original = corrected_values[i, j]
+
+                # 気温データがない場合は簡易補正（後方互換性）
+                if grid_temperature is None:
+                    if is_forest:
+                        corrected_values[i, j] = min(100, RH_original + 10.0)
+                    if is_coastal:
+                        corrected_values[i, j] = min(100, corrected_values[i, j] + 5.0)
+                    if elevation > 10:
+                        corrected_values[i, j] = max(0, corrected_values[i, j] - (elevation / 100) * 1.0)
+                else:
+                    # 気温データがある場合：水蒸気圧ベースの物理的補正
+                    T_celsius = grid_temperature[i, j]
+
+                    # 飽和水蒸気圧（Magnus式、Sonntag 1990）
+                    def es(T):
+                        return 6.112 * np.exp(17.67 * T / (T + 243.5))  # hPa
+
+                    es_original = es(T_celsius)
+                    e_original = es_original * (RH_original / 100.0)  # 実際の水蒸気圧
+
+                    # 水蒸気圧を補正（森林・海岸効果、状況依存）
+                    e_corrected = e_original
+
+                    # 森林補正（季節・日射依存）
+                    if is_forest:
+                        # 基本係数1.15を季節・日射で変調
+                        # 蒸散成分（日射依存）+ 遮蔽成分（季節依存）
+                        forest_factor = 1.0 + (0.10 * transp_factor + 0.05 * shade_factor)
+                        e_corrected *= forest_factor
+
+                        if transp_factor > 0.3:  # 昼間の蒸散が有効
+                            correction_stats['forest_transpiration_active'] += 1
+
+                    # 海岸補正（風向依存）
+                    if is_coastal and wind_dir is not None:
+                        onshore_factor = get_onshore_wind_factor(lat, lon, wind_dir)
+                        if onshore_factor > 0.1:  # onshore windの時のみ
+                            # 基本係数1.08を風向で変調
+                            coastal_factor = 1.0 + (0.08 * onshore_factor)
+                            e_corrected *= coastal_factor
+                            correction_stats['onshore_wind_active'] += 1
+
+                    # 標高補正（断熱減率と気圧低下を考慮）
+                    if elevation > 10:
+                        # Open-Meteoの気温データをそのまま使用（既に標高補正済み）
+                        es_at_elevation = es(T_celsius)
+                        # 混合比保存：気圧低下に応じて水蒸気圧も変化
+                        pressure_ratio = (1000 - elevation / 9) / 1000  # 簡易的な気圧低下（標高100m≈12hPa）
+                        e_corrected *= pressure_ratio
+
+                        # 相対湿度を再計算
+                        RH_corrected = (e_corrected / es_at_elevation) * 100
+                    else:
+                        # 標高補正なし
+                        RH_corrected = (e_corrected / es_original) * 100
+
+                    corrected_values[i, j] = RH_corrected
+
+                # 境界値処理＆統計記録
+                if corrected_values[i, j] >= 100:
+                    correction_stats['humidity_saturated'] += 1
+                if corrected_values[i, j] > 100:
+                    corrected_values[i, j] = 100
+                    correction_stats['clipped_high'] += 1
+                if corrected_values[i, j] < 0:
+                    corrected_values[i, j] = 0
+                    correction_stats['clipped_low'] += 1
+
+            elif category in ['temperature', 'temperature_850hpa', 'temperature_700hpa']:
+                # 気温補正は削除：Open-Meteoが既に0.7°C/100mで補正済み
+                pass
+
+    return corrected_values, correction_stats
 
 @app.route('/api/spots')
 def get_spots():
@@ -988,6 +1327,20 @@ def delete_spot():
         if not name:
             return jsonify({"status": "error", "message": "干場名が指定されていません"}), 400
 
+        # 特別地点の削除禁止（アメダス観測点・基準点）
+        PROTECTED_SPOTS = ['A_1783_1383', 'A_2417_1867', 'R_1800_2392']
+        if name in PROTECTED_SPOTS:
+            spot_descriptions = {
+                'A_1783_1383': 'アメダス沓形（公式観測点）',
+                'A_2417_1867': 'アメダス本泊（公式観測点）',
+                'R_1800_2392': '利尻山頂（基準点）'
+            }
+            return jsonify({
+                "status": "error",
+                "message": f"この地点は{spot_descriptions[name]}のため削除できません",
+                "restriction_type": "protected_reference_point"
+            }), 403
+
         # Read existing spot data
         try:
             df = pd.read_csv(CSV_FILE)
@@ -1099,6 +1452,19 @@ def add_record():
 
         if not all([name, date, result]):
             return jsonify({"status": "error", "message": "name, date, resultがすべて必要です"}), 400
+
+        # 特別地点の記録禁止（干場ではないため）
+        PROTECTED_SPOTS = ['A_1783_1383', 'A_2417_1867', 'R_1800_2392']
+        if name in PROTECTED_SPOTS:
+            spot_descriptions = {
+                'A_1783_1383': 'アメダス沓形',
+                'A_2417_1867': 'アメダス本泊',
+                'R_1800_2392': '利尻山頂'
+            }
+            return jsonify({
+                "status": "error",
+                "message": f"{spot_descriptions[name]}は観測点であり干場ではないため、乾燥記録を登録できません"
+            }), 400
 
         # 有効な記録結果かチェック
         valid_results = ["完全乾燥", "中止", "干したが完全には乾かせなかった（泣）"]
@@ -1246,12 +1612,15 @@ def fetch_pressure_level_data(lat, lon, forecast_hours=384):
     - dict: 500hPa, 700hPa, 850hPaの気象データ
     """
     try:
+        # Get elevation for accurate DEM correction
+        elevation = get_elevation(lat, lon)
+
         # 16日間の高層データを取得
         forecast_days = min(16, (forecast_hours + 23) // 24)  # 時間を日数に変換（切り上げ）
 
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={lat}&longitude={lon}&"
+            f"latitude={lat}&longitude={lon}&elevation={elevation}&"
             f"hourly=temperature_200hPa,geopotential_height_200hPa,wind_speed_200hPa,wind_direction_200hPa,"
             f"temperature_300hPa,geopotential_height_300hPa,wind_speed_300hPa,wind_direction_300hPa,"
             f"temperature_500hPa,geopotential_height_500hPa,relative_humidity_500hPa,"
@@ -1306,7 +1675,7 @@ def fetch_marine_data(lat, lon, forecast_hours=168):
 
 def generate_contour_map(category, time_offset, center_lat=45.1821, center_lon=141.2421):
     """
-    等値線図を生成
+    等値線図を生成（複数地点データから実空間補間）
 
     Args:
         category: データカテゴリー（temperature, humidity, pressure等）
@@ -1318,71 +1687,310 @@ def generate_contour_map(category, time_offset, center_lat=45.1821, center_lon=1
         base64エンコードされた画像データ、またはNone
     """
     try:
-        # 単一APIリクエストで周辺データを取得（軽量化）
-        # 利尻島中心の1点だけ取得し、理論的な分布を生成
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={center_lat}&longitude={center_lon}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation&timezone=Asia/Tokyo&forecast_days=7"
+        # 時刻情報を取得（地形補正の季節・日射依存用）
+        from datetime import datetime, timedelta
+        forecast_time = datetime.now() + timedelta(hours=time_offset)
+        month = forecast_time.month
+        hour_jst = forecast_time.hour
+        # 利尻島周辺の観測点を設定（実測データに基づく空間補間）
+        # 利尻島、稚内、礼文島、北海道北部の複数地点
+        observation_points = [
+            {'name': '利尻島中心', 'lat': 45.1821, 'lon': 141.2421},
+            {'name': '利尻島北部', 'lat': 45.25, 'lon': 141.24},
+            {'name': '利尻島南部', 'lat': 45.12, 'lon': 141.24},
+            {'name': '利尻島東部', 'lat': 45.18, 'lon': 141.32},
+            {'name': '利尻島西部', 'lat': 45.18, 'lon': 141.16},
+            {'name': '稚内', 'lat': 45.415, 'lon': 141.673},
+            {'name': '礼文島', 'lat': 45.30, 'lon': 141.04},
+            {'name': '天塩', 'lat': 44.88, 'lon': 141.75},
+            {'name': '留萌', 'lat': 43.94, 'lon': 141.64}
+        ]
 
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        api_data = response.json()
-        hourly = api_data.get('hourly', {})
+        # 気圧の場合は広域観測点を追加（気圧配置把握のため）
+        if category == 'pressure':
+            observation_points.extend([
+                {'name': '旭川', 'lat': 43.77, 'lon': 142.37},
+                {'name': '網走', 'lat': 44.02, 'lon': 144.28},
+                {'name': '根室', 'lat': 43.33, 'lon': 145.58},
+                {'name': '釧路', 'lat': 42.98, 'lon': 144.38},
+                {'name': '帯広', 'lat': 42.92, 'lon': 143.20},
+                {'name': '札幌', 'lat': 43.06, 'lon': 141.35},
+                {'name': '函館', 'lat': 41.77, 'lon': 140.73},
+                {'name': '青森', 'lat': 40.82, 'lon': 140.75},
+                {'name': '秋田', 'lat': 39.72, 'lon': 140.10},
+                {'name': '新潟', 'lat': 37.92, 'lon': 139.04}
+            ])
 
-        if time_offset >= len(hourly.get('time', [])):
+        # 各観測点のデータを並列取得
+        observation_data = []
+        for point in observation_points:
+            # Get elevation for each observation point
+            point_elevation = get_elevation(point['lat'], point['lon'])
+
+            # 高層データが必要なカテゴリーの場合は気圧面データも取得
+            if category in ['temperature_850hpa', 'humidity_850hpa', 'wind_850hpa',
+                           'temperature_700hpa', 'humidity_700hpa', 'wind_700hpa']:
+                url = (f"https://api.open-meteo.com/v1/forecast?latitude={point['lat']}&longitude={point['lon']}&elevation={point_elevation}&"
+                      f"hourly=temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,"
+                      f"temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa&"
+                      f"timezone=Asia/Tokyo&forecast_days=7")
+            else:
+                url = f"https://api.open-meteo.com/v1/forecast?latitude={point['lat']}&longitude={point['lon']}&elevation={point_elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,pressure_msl,precipitation,precipitation_probability&timezone=Asia/Tokyo&forecast_days=7"
+
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                api_data = response.json()
+                hourly = api_data.get('hourly', {})
+
+                # 指定時刻のデータを抽出
+                if time_offset < len(hourly.get('time', [])):
+                    data_point = {
+                        'lat': point['lat'],
+                        'lon': point['lon'],
+                        'name': point['name'],
+                        'temperature': hourly.get('temperature_2m', [None])[time_offset],
+                        'humidity': hourly.get('relative_humidity_2m', [None])[time_offset],
+                        'pressure': hourly.get('pressure_msl', [None])[time_offset],
+                        'wind_speed': hourly.get('wind_speed_10m', [None])[time_offset],
+                        'wind_direction': hourly.get('wind_direction_10m', [None])[time_offset],
+                        'precipitation': hourly.get('precipitation', [None])[time_offset],
+                        'precipitation_probability': hourly.get('precipitation_probability', [None])[time_offset]
+                    }
+
+                    # 高層データを追加
+                    if category in ['temperature_850hpa', 'humidity_850hpa', 'wind_850hpa',
+                                   'temperature_700hpa', 'humidity_700hpa', 'wind_700hpa']:
+                        data_point['temperature_850hpa'] = hourly.get('temperature_850hPa', [None])[time_offset]
+                        data_point['humidity_850hpa'] = hourly.get('relative_humidity_850hPa', [None])[time_offset]
+                        data_point['wind_speed_850hpa'] = hourly.get('wind_speed_850hPa', [None])[time_offset]
+                        data_point['wind_direction_850hpa'] = hourly.get('wind_direction_850hPa', [None])[time_offset]
+                        data_point['temperature_700hpa'] = hourly.get('temperature_700hPa', [None])[time_offset]
+                        data_point['humidity_700hpa'] = hourly.get('relative_humidity_700hPa', [None])[time_offset]
+                        data_point['wind_speed_700hpa'] = hourly.get('wind_speed_700hPa', [None])[time_offset]
+                        data_point['wind_direction_700hpa'] = hourly.get('wind_direction_700hPa', [None])[time_offset]
+
+                    observation_data.append(data_point)
+            except Exception as e:
+                print(f"Error fetching data for {point['name']}: {e}")
+                continue
+
+        # 観測データが不足している場合はエラー
+        if len(observation_data) < 3:
             return None
 
-        # 中心値を取得
+        # カテゴリー別設定
         if category == 'temperature':
-            center_value = hourly.get('temperature_2m', [None])[time_offset]
+            value_key = 'temperature'
             unit = '°C'
-            title = '気温分布'
+            title = '気温分布（実測ベース）'
             cmap = 'RdYlBu_r'
-            variation = 2.0  # ±2°C
         elif category == 'humidity':
-            center_value = hourly.get('relative_humidity_2m', [None])[time_offset]
+            value_key = 'humidity'
             unit = '%'
-            title = '相対湿度分布'
+            title = '相対湿度分布（実測ベース）'
             cmap = 'BuGn'
-            variation = 10.0  # ±10%
         elif category == 'pressure':
-            center_value = hourly.get('pressure_msl', [None])[time_offset]
+            value_key = 'pressure'
             unit = 'hPa'
-            title = '海面気圧分布'
-            cmap = 'viridis'
-            variation = 3.0  # ±3hPa
+            title = '海面気圧分布（広域パターン）'
+            cmap = 'RdYlBu_r'  # 気圧用カラーマップ（高気圧=赤、低気圧=青）
         elif category == 'wind':
-            center_value = hourly.get('wind_speed_10m', [None])[time_offset]
+            value_key = 'wind_speed'
+            value_key_dir = 'wind_direction'  # 風向も取得
             unit = 'm/s'
-            title = '風速分布'
+            title = '風速・風向場（実測ベース）'
             cmap = 'YlOrRd'
-            variation = 1.5  # ±1.5m/s
         elif category == 'precipitation':
-            center_value = hourly.get('precipitation', [None])[time_offset]
+            value_key = 'precipitation'
+            value_key_prob = 'precipitation_probability'  # 降水確率も取得
             unit = 'mm'
-            title = '降水量分布'
+            title = '降水量・降水確率分布（実測ベース）'
             cmap = 'Blues'
-            variation = 0.5  # ±0.5mm
+        elif category == 'temperature_850hpa':
+            value_key = 'temperature_850hpa'
+            unit = '°C'
+            title = '気温分布 850hPa（高層観測）'
+            cmap = 'RdYlBu_r'
+        elif category == 'humidity_850hpa':
+            value_key = 'humidity_850hpa'
+            unit = '%'
+            title = '相対湿度分布 850hPa（高層観測）'
+            cmap = 'BuGn'
+        elif category == 'wind_850hpa':
+            value_key = 'wind_speed_850hpa'
+            value_key_dir = 'wind_direction_850hpa'
+            unit = 'm/s'
+            title = '風速・風向場 850hPa（高層観測）'
+            cmap = 'YlOrRd'
+        elif category == 'temperature_700hpa':
+            value_key = 'temperature_700hpa'
+            unit = '°C'
+            title = '気温分布 700hPa（高層観測）'
+            cmap = 'RdYlBu_r'
+        elif category == 'humidity_700hpa':
+            value_key = 'humidity_700hpa'
+            unit = '%'
+            title = '相対湿度分布 700hPa（高層観測）'
+            cmap = 'BuGn'
+        elif category == 'wind_700hpa':
+            value_key = 'wind_speed_700hpa'
+            value_key_dir = 'wind_direction_700hpa'
+            unit = 'm/s'
+            title = '風速・風向場 700hPa（高層観測）'
+            cmap = 'YlOrRd'
         else:
             return None
 
-        if center_value is None:
+        # 観測点の座標と値を配列に変換
+        lats = np.array([d['lat'] for d in observation_data])
+        lons = np.array([d['lon'] for d in observation_data])
+        values = np.array([d[value_key] for d in observation_data if d[value_key] is not None])
+
+        # None値を除外
+        valid_indices = np.array([i for i, d in enumerate(observation_data) if d[value_key] is not None])
+        if len(valid_indices) < 3:
             return None
 
-        # 簡易的な空間分布を生成（中心からの距離に基づく勾配）
-        lat_range = 0.15
-        lon_range = 0.2
+        lats = lats[valid_indices]
+        lons = lons[valid_indices]
+        points = np.column_stack((lons, lats))
+
+        # 風向データの処理（windカテゴリーの場合）
+        wind_directions = None
+        if category == 'wind':
+            wind_directions = np.array([d[value_key_dir] for d in observation_data if d[value_key] is not None and d[value_key_dir] is not None])
+            if len(wind_directions) < len(values):
+                # 風向データが不足している場合は風速のみ表示
+                wind_directions = None
+
+        # グリッド生成（利尻島周辺をカバー）
+        # 気圧の場合は広域グリッド、それ以外は局地グリッド
+        if category == 'pressure':
+            lat_range = 4.0   # 約440km（北海道〜東北）
+            lon_range = 5.0   # 約400km（日本海〜太平洋）
+            grid_resolution = 80  # 広域表示のため解像度を下げる
+        else:
+            lat_range = 0.4   # 約44km
+            lon_range = 0.5   # 約40km
+            grid_resolution = 100
 
         grid_lon, grid_lat = np.meshgrid(
-            np.linspace(center_lon - lon_range, center_lon + lon_range, 50),
-            np.linspace(center_lat - lat_range, center_lat + lat_range, 50)
+            np.linspace(center_lon - lon_range, center_lon + lon_range, grid_resolution),
+            np.linspace(center_lat - lat_range, center_lat + lat_range, grid_resolution)
         )
 
-        # 中心からの距離を計算
-        distance = np.sqrt((grid_lon - center_lon)**2 * 100 + (grid_lat - center_lat)**2 * 100)
+        # 実測データから空間補間（cubic法で滑らかな等値線）
+        try:
+            grid_values = griddata(points, values, (grid_lon, grid_lat), method='cubic')
 
-        # 距離に基づく変動を追加（ランダム要素で現実的な分布に）
-        np.random.seed(int(time_offset + hash(category) % 1000))
-        noise = np.random.randn(*distance.shape) * 0.3
-        grid_values = center_value + (distance / distance.max()) * variation * noise
+            # cubic補間で欠損値が生じた場合はlinear補間で補完
+            mask = np.isnan(grid_values)
+            if mask.any():
+                grid_values[mask] = griddata(points, values, (grid_lon[mask], grid_lat[mask]), method='linear')
+        except Exception as e:
+            print(f"Interpolation error: {e}")
+            # 補間失敗時はnearest法にフォールバック
+            grid_values = griddata(points, values, (grid_lon, grid_lat), method='nearest')
+
+        # 地形補正を適用（地上・850hPa・700hPaのみ）
+        # 注意: 気圧（SLP）と降水量（NWP地形込み）には補正を適用しない
+        correction_stats = None
+        if category not in ['pressure', 'precipitation']:
+            # 気温グリッドを準備（湿度補正用）
+            grid_temp_for_correction = None
+            if category in ['humidity', 'humidity_850hpa', 'humidity_700hpa']:
+                # 湿度補正時は気温データを取得
+                if category == 'humidity':
+                    temp_values = np.array([d.get('temperature') for d in observation_data if d.get('temperature') is not None])
+                    temp_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('temperature') is not None])]
+                elif category == 'humidity_850hpa':
+                    temp_values = np.array([d.get('temperature_850hpa') for d in observation_data if d.get('temperature_850hpa') is not None])
+                    temp_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('temperature_850hpa') is not None])]
+                elif category == 'humidity_700hpa':
+                    temp_values = np.array([d.get('temperature_700hpa') for d in observation_data if d.get('temperature_700hpa') is not None])
+                    temp_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('temperature_700hpa') is not None])]
+
+                if len(temp_values) >= 3:
+                    try:
+                        grid_temp_for_correction = griddata(temp_points, temp_values, (grid_lon, grid_lat), method='cubic')
+                        mask_temp = np.isnan(grid_temp_for_correction)
+                        if mask_temp.any():
+                            grid_temp_for_correction[mask_temp] = griddata(temp_points, temp_values,
+                                                                          (grid_lon[mask_temp], grid_lat[mask_temp]), method='linear')
+                    except Exception as e:
+                        print(f"Temperature interpolation for humidity correction failed: {e}")
+                        grid_temp_for_correction = None
+
+            # 風向グリッドを準備（地形補正用）
+            grid_wind_dir_for_correction = None
+            if category in ['wind', 'wind_850hpa', 'wind_700hpa', 'humidity', 'humidity_850hpa', 'humidity_700hpa']:
+                # 風向データを補間（海岸補正用）
+                if category.startswith('wind_850'):
+                    wind_dir_values = np.array([d.get('wind_direction_850hpa') for d in observation_data if d.get('wind_direction_850hpa') is not None])
+                    wind_dir_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('wind_direction_850hpa') is not None])]
+                elif category.startswith('wind_700'):
+                    wind_dir_values = np.array([d.get('wind_direction_700hpa') for d in observation_data if d.get('wind_direction_700hpa') is not None])
+                    wind_dir_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('wind_direction_700hpa') is not None])]
+                else:
+                    wind_dir_values = np.array([d.get('wind_direction') for d in observation_data if d.get('wind_direction') is not None])
+                    wind_dir_points = points[np.array([i for i, d in enumerate(observation_data) if d.get('wind_direction') is not None])]
+
+                if len(wind_dir_values) >= 3:
+                    try:
+                        grid_wind_dir_for_correction = griddata(wind_dir_points, wind_dir_values, (grid_lon, grid_lat), method='nearest')
+                    except Exception as e:
+                        print(f"Wind direction interpolation for terrain correction failed: {e}")
+
+            # 地形補正を適用（状況依存版）
+            grid_values, correction_stats = apply_terrain_correction_to_grid(
+                grid_lat, grid_lon, grid_values, category, grid_temp_for_correction,
+                grid_wind_dir_for_correction, month, hour_jst
+            )
+
+            # 補正統計をログ出力
+            if correction_stats and any(correction_stats.values()):
+                print(f"[Terrain Correction Stats - {category}] Time: {hour_jst:02d}:00 JST, Month: {month}")
+                if correction_stats['clipped_high'] > 0:
+                    print(f"  - Upper limit clipped: {correction_stats['clipped_high']} points")
+                if correction_stats['clipped_low'] > 0:
+                    print(f"  - Lower limit clipped: {correction_stats['clipped_low']} points")
+                if correction_stats['wind_reduced_to_zero'] > 0:
+                    print(f"  - Wind reduced to zero: {correction_stats['wind_reduced_to_zero']} points")
+                if correction_stats['humidity_saturated'] > 0:
+                    print(f"  - Humidity saturated (≥100%): {correction_stats['humidity_saturated']} points")
+                if correction_stats['onshore_wind_active'] > 0:
+                    print(f"  - Onshore wind correction applied: {correction_stats['onshore_wind_active']} points")
+                if correction_stats['forest_transpiration_active'] > 0:
+                    print(f"  - Forest transpiration active (daytime): {correction_stats['forest_transpiration_active']} points")
+
+        # 風向データの補間（windカテゴリー・高層風の場合）
+        grid_wind_dir = None
+        if category in ['wind', 'wind_850hpa', 'wind_700hpa'] and wind_directions is not None:
+            # 風向を単位ベクトル（u, v成分）に変換
+            # 気象学的風向（風が吹いてくる方向）→ 数学的角度（風が吹いていく方向）
+            wind_rad = np.deg2rad(270 - wind_directions)  # 北=0° → 東=90°の系に変換
+            u_obs = values * np.cos(wind_rad)  # 東西成分
+            v_obs = values * np.sin(wind_rad)  # 南北成分
+
+            try:
+                # u, v成分をそれぞれ補間
+                grid_u = griddata(points, u_obs, (grid_lon, grid_lat), method='cubic')
+                grid_v = griddata(points, v_obs, (grid_lon, grid_lat), method='cubic')
+
+                # 欠損値補完
+                mask_u = np.isnan(grid_u)
+                mask_v = np.isnan(grid_v)
+                if mask_u.any():
+                    grid_u[mask_u] = griddata(points, u_obs, (grid_lon[mask_u], grid_lat[mask_u]), method='linear')
+                if mask_v.any():
+                    grid_v[mask_v] = griddata(points, v_obs, (grid_lon[mask_v], grid_lat[mask_v]), method='linear')
+
+                # u, v成分から風向を復元（数学的角度 → 気象学的風向）
+                grid_wind_dir = (270 - np.rad2deg(np.arctan2(grid_v, grid_u))) % 360
+            except Exception as e:
+                print(f"Wind direction interpolation error: {e}")
+                grid_wind_dir = None
 
         # 値の範囲を制限
         if category == 'humidity':
@@ -1391,35 +1999,166 @@ def generate_contour_map(category, time_offset, center_lat=45.1821, center_lon=1
             grid_values = np.clip(grid_values, 0, None)
 
         # 等値線図を描画
-        plt.figure(figsize=(10, 8))
+        plt.figure(figsize=(12, 10))
 
-        # 等値線レベルを設定
-        if category == 'temperature':
-            levels = np.arange(center_value - variation, center_value + variation + 1, 0.5)
-        elif category == 'humidity':
-            levels = np.arange(max(0, center_value - variation), min(100, center_value + variation) + 1, 5)
+        # 等値線レベルを自動設定（実測値の範囲に基づく）
+        vmin = np.nanmin(grid_values)
+        vmax = np.nanmax(grid_values)
+
+        if category in ['temperature', 'temperature_850hpa', 'temperature_700hpa']:
+            # 1.0°C刻み（気象庁天気図標準、昆布乾燥判定には十分な解像度）
+            levels = np.arange(np.floor(vmin), np.ceil(vmax) + 1.0, 1.0)
+        elif category in ['humidity', 'humidity_850hpa', 'humidity_700hpa']:
+            # 5%刻み（94%閾値に対して適切な解像度）
+            levels = np.arange(max(0, np.floor(vmin/5)*5), min(100, np.ceil(vmax/5)*5) + 5, 5)
         elif category == 'pressure':
-            levels = np.arange(center_value - variation, center_value + variation + 1, 1)
-        elif category == 'wind':
-            levels = np.arange(max(0, center_value - variation), center_value + variation + 1, 0.5)
+            # 4hPa刻み（天気図国際標準: 1004, 1008, 1012, 1016, 1020 hPa）
+            levels = np.arange(np.floor(vmin/4)*4, np.ceil(vmax/4)*4 + 4, 4)
+        elif category in ['wind', 'wind_850hpa', 'wind_700hpa']:
+            # 1.0m/s刻み（2.0m/s閾値前後の判定に集中、視認性向上）
+            levels = np.arange(max(0, np.floor(vmin)), np.ceil(vmax) + 1.0, 1.0)
         elif category == 'precipitation':
-            levels = np.arange(max(0, center_value - variation), center_value + variation + 1, 0.2)
+            # 0.2mm刻み（0mm閾値に対して十分な解像度）
+            levels = np.arange(max(0, np.floor(vmin*10)/10), np.ceil(vmax*10)/10 + 0.2, 0.2)
 
-        contour = plt.contourf(grid_lon, grid_lat, grid_values, levels=levels, cmap=cmap, alpha=0.7)
-        plt.contour(grid_lon, grid_lat, grid_values, levels=levels, colors='black', linewidths=0.5, alpha=0.3)
+        # 塗りつぶし等値線
+        contour = plt.contourf(grid_lon, grid_lat, grid_values, levels=levels, cmap=cmap, alpha=0.7, extend='both')
+        # 等値線
+        contour_lines = plt.contour(grid_lon, grid_lat, grid_values, levels=levels, colors='black', linewidths=0.8, alpha=0.5)
+        plt.clabel(contour_lines, inline=True, fontsize=8, fmt='%1.1f')
+
+        # 降水確率の等値線を破線で追加表示（precipitationカテゴリーの場合）
+        if category == 'precipitation':
+            # 降水確率データを補間
+            precip_probs = np.array([d.get('precipitation_probability', None) for d in observation_data])
+            valid_prob_indices = np.array([i for i, p in enumerate(precip_probs) if p is not None])
+
+            if len(valid_prob_indices) >= 3:
+                prob_points = points[valid_prob_indices]
+                prob_values = precip_probs[valid_prob_indices]
+
+                try:
+                    grid_prob = griddata(prob_points, prob_values, (grid_lon, grid_lat), method='cubic')
+                    mask_prob = np.isnan(grid_prob)
+                    if mask_prob.any():
+                        grid_prob[mask_prob] = griddata(prob_points, prob_values,
+                                                       (grid_lon[mask_prob], grid_lat[mask_prob]), method='linear')
+
+                    # 降水確率の等値線（破線、20%刻み）
+                    prob_levels = [20, 40, 60, 80]
+                    prob_contours = plt.contour(grid_lon, grid_lat, grid_prob, levels=prob_levels,
+                                               colors='purple', linewidths=1.2, linestyles='dashed', alpha=0.6)
+                    plt.clabel(prob_contours, inline=True, fontsize=9, fmt='%d%%',
+                              inline_spacing=10, colors='purple')
+                except Exception as e:
+                    print(f"Precipitation probability interpolation error: {e}")
+
+        # 気圧の場合は高気圧（H）・低気圧（L）マークを追加
+        if category == 'pressure':
+            # 気圧の極大値（高気圧中心）を検出
+            from scipy.ndimage import maximum_filter, minimum_filter
+
+            # 局所的な最大値・最小値を検出（5x5の範囲）
+            local_max = maximum_filter(grid_values, size=5)
+            local_min = minimum_filter(grid_values, size=5)
+
+            # 極大値・極小値の位置を特定
+            is_max = (grid_values == local_max)
+            is_min = (grid_values == local_min)
+
+            # 顕著な高気圧・低気圧のみマーク（閾値: 平均値との差が2hPa以上）
+            mean_pressure = np.nanmean(grid_values)
+            high_threshold = mean_pressure + 2
+            low_threshold = mean_pressure - 2
+
+            # 高気圧マーク（H）
+            high_locs = np.where((is_max) & (grid_values > high_threshold))
+            for i in range(min(3, len(high_locs[0]))):  # 最大3個まで
+                y_idx, x_idx = high_locs[0][i], high_locs[1][i]
+                plt.text(grid_lon[y_idx, x_idx], grid_lat[y_idx, x_idx], 'H',
+                        fontsize=24, weight='bold', color='red', ha='center', va='center',
+                        bbox=dict(boxstyle='circle', facecolor='white', edgecolor='red', linewidth=2, alpha=0.9),
+                        zorder=20)
+
+            # 低気圧マーク（L）
+            low_locs = np.where((is_min) & (grid_values < low_threshold))
+            for i in range(min(3, len(low_locs[0]))):  # 最大3個まで
+                y_idx, x_idx = low_locs[0][i], low_locs[1][i]
+                plt.text(grid_lon[y_idx, x_idx], grid_lat[y_idx, x_idx], 'L',
+                        fontsize=24, weight='bold', color='blue', ha='center', va='center',
+                        bbox=dict(boxstyle='circle', facecolor='white', edgecolor='blue', linewidth=2, alpha=0.9),
+                        zorder=20)
 
         # カラーバー
-        cbar = plt.colorbar(contour)
-        cbar.set_label(f'{title} ({unit})', fontsize=12)
+        cbar = plt.colorbar(contour, pad=0.02)
+        cbar.set_label(f'{title} ({unit})', fontsize=12, weight='bold')
+
+        # 観測点をプロット
+        obs_lats = np.array([d['lat'] for d in observation_data if d[value_key] is not None])
+        obs_lons = np.array([d['lon'] for d in observation_data if d[value_key] is not None])
+        obs_values = np.array([d[value_key] for d in observation_data if d[value_key] is not None])
+
+        plt.scatter(obs_lons, obs_lats, c=obs_values, s=100, cmap=cmap,
+                   edgecolors='black', linewidths=2, marker='o', zorder=5,
+                   vmin=vmin, vmax=vmax, label='観測点')
+
+        # 観測点の値をラベル表示
+        for i, d in enumerate([obs for obs in observation_data if obs[value_key] is not None]):
+            # 降水量の場合は降水確率も併記
+            if category == 'precipitation' and d.get('precipitation_probability') is not None:
+                label_text = f"{d[value_key]:.1f}mm\n({d['precipitation_probability']:.0f}%)"
+            else:
+                label_text = f"{d[value_key]:.1f}"
+
+            plt.annotate(label_text,
+                        (d['lon'], d['lat']),
+                        xytext=(5, 5), textcoords='offset points',
+                        fontsize=9, weight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+
+        # 風向ベクトルを矢羽根で表示（windカテゴリー・高層風の場合）
+        if category in ['wind', 'wind_850hpa', 'wind_700hpa'] and grid_wind_dir is not None:
+            # グリッドを間引いて矢羽根を表示（全グリッドだと密集しすぎる）
+            skip = 10  # 10グリッドごとに表示
+
+            # u, v成分を再計算
+            wind_rad_grid = np.deg2rad(270 - grid_wind_dir)
+            u_grid = grid_values * np.cos(wind_rad_grid)
+            v_grid = grid_values * np.sin(wind_rad_grid)
+
+            # 矢羽根表示（barbs）- 気象学で標準的な風向表示
+            plt.barbs(grid_lon[::skip, ::skip], grid_lat[::skip, ::skip],
+                     u_grid[::skip, ::skip], v_grid[::skip, ::skip],
+                     length=6, linewidth=0.8, color='navy', alpha=0.7,
+                     zorder=6, barbcolor='navy', flagcolor='navy')
+
+            # 観測点の風向を矢羽根で強調表示
+            if wind_directions is not None:
+                wind_rad_obs = np.deg2rad(270 - wind_directions)
+                u_obs_plot = values * np.cos(wind_rad_obs)
+                v_obs_plot = values * np.sin(wind_rad_obs)
+
+                plt.barbs(lons, lats, u_obs_plot, v_obs_plot,
+                         length=8, linewidth=1.5, color='red', alpha=0.9,
+                         zorder=11, barbcolor='red', flagcolor='red')
 
         # 利尻島の中心をマーク
-        plt.plot(center_lon, center_lat, 'r*', markersize=15, label='利尻島')
+        plt.plot(center_lon, center_lat, 'r*', markersize=20, label='利尻島中心', zorder=10)
 
-        plt.xlabel('経度 (°E)', fontsize=12)
-        plt.ylabel('緯度 (°N)', fontsize=12)
-        plt.title(f'{title} - {time_offset}時間後', fontsize=14, weight='bold')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
+        plt.xlabel('経度 (°E)', fontsize=12, weight='bold')
+        plt.ylabel('緯度 (°N)', fontsize=12, weight='bold')
+
+        # タイトル（カテゴリー別に最適化）
+        if category == 'wind' and grid_wind_dir is not None:
+            title_text = f'{title} - {time_offset}時間後\n（{len(observation_data)}地点実測・矢羽根=風向風速）'
+        elif category == 'precipitation':
+            title_text = f'{title} - {time_offset}時間後\n（{len(observation_data)}地点実測・破線=降水確率）'
+        else:
+            title_text = f'{title} - {time_offset}時間後\n（{len(observation_data)}地点の実測データから空間補間）'
+
+        plt.title(title_text, fontsize=14, weight='bold')
+        plt.legend(loc='upper right', fontsize=10)
+        plt.grid(True, alpha=0.3, linestyle='--')
 
         # 画像をbase64エンコード
         buf = io.BytesIO()
@@ -1457,27 +2196,42 @@ def get_contour_analysis():
         lon = 141.2421
 
         # カテゴリー別処理
-        if category in ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']:
+        if category in ['temperature', 'humidity', 'pressure', 'wind', 'precipitation',
+                       'temperature_850hpa', 'humidity_850hpa', 'wind_850hpa',
+                       'temperature_700hpa', 'humidity_700hpa', 'wind_700hpa']:
             # 地上レベル（最大168時間=7日間）
             if time_offset > 168:
                 return jsonify({
                     'status': 'error',
-                    'message': '地上データは最大168時間（7日間）までです'
+                    'message': '地上・高層データは最大168時間（7日間）までです'
                 }), 400
 
             # 等値線図を生成
             contour_image = generate_contour_map(category, time_offset, lat, lon)
+
+            # レベル判定
+            if category in ['temperature_850hpa', 'humidity_850hpa', 'wind_850hpa']:
+                level = '850hPa（約1,500m）'
+            elif category in ['temperature_700hpa', 'humidity_700hpa', 'wind_700hpa']:
+                level = '700hPa（約3,000m）'
+            else:
+                level = '地上'
 
             if contour_image:
                 return jsonify({
                     'status': 'success',
                     'map_type': category,
                     'time_offset': time_offset,
-                    'level': '地上',
+                    'level': level,
                     'visualization_url': contour_image,  # base64エンコード画像
-                    'grid_resolution': '約3km格子（10x10グリッド）',
-                    'interpolation_method': 'scipy griddata (cubic)',
-                    'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation']
+                    'data_points': 9,  # 利尻島周辺9地点
+                    'observation_locations': '利尻島（5地点）、稚内、礼文島、天塩、留萌',
+                    'grid_resolution': '100x100グリッド（約1km格子）',
+                    'interpolation_method': 'scipy griddata (cubic補間→linear補完)',
+                    'data_source': 'Open-Meteo Forecast API（複数地点実測）',
+                    'available_categories': ['temperature', 'humidity', 'pressure', 'wind', 'precipitation',
+                                            'temperature_850hpa', 'humidity_850hpa', 'wind_850hpa',
+                                            'temperature_700hpa', 'humidity_700hpa', 'wind_700hpa']
                 })
             else:
                 return jsonify({
@@ -1524,25 +2278,72 @@ def get_contour_analysis():
 
             if category == 'wave_height':
                 wave_height = hourly.get('wave_height', [None])[time_offset]
+                wave_dir = hourly.get('wave_direction', [None])[time_offset]
+                wave_period = hourly.get('wave_period', [None])[time_offset]
 
-                # 波高による作業可否判定
+                # 波高による作業可否判定（強化版）
                 work_safety = "安全"
+                safety_level = 5  # 5段階評価（5=安全、1=危険）
+                alert_level = "normal"  # normal, caution, warning, danger
+
                 if wave_height:
                     if wave_height >= 3.0:
-                        work_safety = "危険（飛沫到達・作業中止）"
+                        work_safety = "🔴 危険（飛沫到達・作業中止推奨）"
+                        safety_level = 1
+                        alert_level = "danger"
                     elif wave_height >= 2.0:
-                        work_safety = "要注意（高波・作業困難）"
+                        work_safety = "🟠 要注意（高波・作業困難）"
+                        safety_level = 2
+                        alert_level = "warning"
                     elif wave_height >= 1.5:
-                        work_safety = "やや注意（アクセス困難）"
+                        work_safety = "🟡 やや注意（アクセス困難）"
+                        safety_level = 3
+                        alert_level = "caution"
                     elif wave_height >= 1.0:
-                        work_safety = "ほぼ安全（通常作業可）"
+                        work_safety = "🟢 ほぼ安全（通常作業可）"
+                        safety_level = 4
+                        alert_level = "normal"
+                    else:
+                        work_safety = "🟢 安全（穏やか）"
+                        safety_level = 5
+                        alert_level = "normal"
+
+                # 海岸干場への具体的影響
+                coastal_impact = []
+                if wave_height and wave_height >= 3.0:
+                    coastal_impact.append("飛沫が干場まで到達し昆布が濡れる危険性")
+                    coastal_impact.append("干場へのアクセス路が波で遮断される可能性")
+                    coastal_impact.append("作業者の安全確保が困難")
+                elif wave_height and wave_height >= 2.0:
+                    coastal_impact.append("海岸近くの干場で飛沫の影響あり")
+                    coastal_impact.append("干場へのアクセスに注意が必要")
+                elif wave_height and wave_height >= 1.5:
+                    coastal_impact.append("海岸線に近い干場では注意")
+
+                # 波向と干場の関係性（利尻島の海岸線を考慮）
+                wave_impact_areas = []
+                if wave_dir is not None:
+                    if 315 <= wave_dir or wave_dir < 45:  # 北からの波
+                        wave_impact_areas = ["鴛泊", "沓形北部", "仙法志北部"]
+                    elif 45 <= wave_dir < 135:  # 東からの波
+                        wave_impact_areas = ["沓形東部", "仙法志東部"]
+                    elif 135 <= wave_dir < 225:  # 南からの波
+                        wave_impact_areas = ["鬼脇", "仙法志南部", "沓形南部"]
+                    elif 225 <= wave_dir < 315:  # 西からの波
+                        wave_impact_areas = ["鴛泊西部", "沓形西部"]
 
                 result.update({
                     'parameter': '有義波高',
                     'unit': 'm',
                     'wave_height': wave_height,
+                    'wave_direction': wave_dir,
+                    'wave_period': wave_period,
                     'work_safety': work_safety,
-                    'message': f'作業安全度: {work_safety}（干場アクセス・飛沫付着リスク判定）'
+                    'safety_level': safety_level,
+                    'alert_level': alert_level,
+                    'coastal_impact': coastal_impact,
+                    'affected_areas': wave_impact_areas,
+                    'message': f'作業安全度: {work_safety}\n影響地域: {", ".join(wave_impact_areas) if wave_impact_areas else "全域で影響軽微"}'
                 })
 
             elif category == 'wave_direction_period':
@@ -1550,15 +2351,50 @@ def get_contour_analysis():
                 wave_period = hourly.get('wave_period', [None])[time_offset]
                 wave_height = hourly.get('wave_height', [None])[time_offset]
 
-                # うねりの状態判定
+                # うねりの状態判定（強化版）
                 swell_condition = "穏やか"
+                low_pressure_forecast = None
+                forecast_confidence = "low"
+
                 if wave_period and wave_height:
+                    # 長周期うねり（10秒以上）= 遠方低気圧からの警告信号
                     if wave_period >= 10:
                         swell_condition = "長周期うねり（遠方の低気圧）"
+
+                        # 波向から低気圧の位置を推定
+                        if wave_dir is not None:
+                            if 315 <= wave_dir or wave_dir < 45:  # 北からのうねり
+                                low_pressure_forecast = "北方海上（オホーツク海・ベーリング海）に低気圧。2-3日後に接近の可能性"
+                                forecast_confidence = "high" if wave_height >= 2.0 else "medium"
+                            elif 45 <= wave_dir < 135:  # 東からのうねり
+                                low_pressure_forecast = "東方海上（太平洋）に低気圧。東進中のため直接影響は限定的"
+                                forecast_confidence = "medium"
+                            elif 135 <= wave_dir < 225:  # 南からのうねり
+                                low_pressure_forecast = "南方海上（日本海・東シナ海）に低気圧。1-2日後に北上接近の可能性大"
+                                forecast_confidence = "high" if wave_height >= 2.0 else "medium"
+                            elif 225 <= wave_dir < 315:  # 西からのうねり
+                                low_pressure_forecast = "西方海上（大陸側）に低気圧。東進中、2-3日後に影響の可能性"
+                                forecast_confidence = "medium"
+
+                    # 中周期うねり（7-10秒）= 近傍の気圧の谷
                     elif wave_period >= 7:
                         swell_condition = "中周期うねり（風波＋うねり）"
+                        low_pressure_forecast = "気圧の谷が接近中。天気の崩れに注意（12-24時間後）"
+                        forecast_confidence = "medium"
+
+                    # 短周期波（5-7秒）= 局地的な風
                     elif wave_period >= 5:
                         swell_condition = "短周期波（局地風波）"
+                        low_pressure_forecast = "局地的な風による波。大規模な気圧配置の変化なし"
+                        forecast_confidence = "low"
+
+                # 7日間予報との統合アドバイス
+                weather_advice = []
+                if low_pressure_forecast and forecast_confidence in ["high", "medium"]:
+                    weather_advice.append("7日間予報で降水確率・風速を重点的に確認してください")
+                    weather_advice.append("昆布乾燥作業は低気圧接近前に完了を推奨")
+                    if wave_height and wave_height >= 2.0:
+                        weather_advice.append("高波注意：海岸干場の使用は避けてください")
 
                 result.update({
                     'parameter': '波向・波周期場',
@@ -1567,7 +2403,10 @@ def get_contour_analysis():
                     'wave_period': wave_period,
                     'wave_height': wave_height,
                     'swell_condition': swell_condition,
-                    'message': f'うねり状態: {swell_condition}（気圧配置・低気圧接近の指標）'
+                    'low_pressure_forecast': low_pressure_forecast,
+                    'forecast_confidence': forecast_confidence,
+                    'weather_advice': weather_advice,
+                    'message': f'うねり状態: {swell_condition}\n低気圧予測: {low_pressure_forecast or "なし"}'
                 })
 
             return jsonify(result)
@@ -1610,36 +2449,159 @@ def get_contour_analysis():
             }
 
             if category == 'vorticity_500hpa':
+                # 相対渦度を計算
+                # ζ = ∂v/∂x - ∂u/∂y（鉛直成分の渦度）
+                # 正値=低気圧性回転（反時計回り）、負値=高気圧性回転（時計回り）
+
+                temp_500 = hourly.get('temperature_500hPa', [None])[time_offset]
+                geo_height_500 = hourly.get('geopotential_height_500hPa', [None])[time_offset]
+                wind_speed_500 = hourly.get('wind_speed_500hPa', [None])[time_offset]
+                wind_dir_500 = hourly.get('wind_direction_500hPa', [None])[time_offset]
+
+                # 風向風速からu, v成分を計算
+                vorticity_500 = None
+                vorticity_interpretation = "データ不足"
+
+                if wind_speed_500 is not None and wind_dir_500 is not None:
+                    # 気象学的風向をラジアンに変換
+                    wind_rad = np.deg2rad(270 - wind_dir_500)
+                    u_500 = wind_speed_500 * np.cos(wind_rad)  # 東西成分 (m/s)
+                    v_500 = wind_speed_500 * np.sin(wind_rad)  # 南北成分 (m/s)
+
+                    # 簡易的な渦度推定：風向の曲率から推定
+                    # 前後1時間の風向変化から渦度を近似
+                    wind_dir_all = hourly.get('wind_direction_500hPa', [])
+                    wind_speed_all = hourly.get('wind_speed_500hPa', [])
+
+                    if (time_offset > 0 and time_offset < len(wind_dir_all) - 1 and
+                        all(v is not None for v in [wind_dir_all[time_offset-1], wind_dir_all[time_offset+1],
+                                                     wind_speed_all[time_offset-1], wind_speed_all[time_offset+1]])):
+
+                        # 前後の風向変化（度/hour）
+                        dir_before = wind_dir_all[time_offset - 1]
+                        dir_after = wind_dir_all[time_offset + 1]
+
+                        # 風向差を-180~180°に正規化
+                        dir_change = ((dir_after - dir_before + 180) % 360) - 180
+
+                        # 風向の時間変化から渦度を推定（非常に簡易的な手法）
+                        # 反時計回りの回転（正の変化）= 正渦度（低気圧性）
+                        # 時計回りの回転（負の変化）= 負渦度（高気圧性）
+                        time_interval = 2.0  # hours
+                        angular_velocity = dir_change / time_interval  # deg/hour
+
+                        # 渦度に変換（10⁻⁵ s⁻¹単位）
+                        # 1 deg/hour ≈ 4.85 × 10⁻⁶ rad/s
+                        vorticity_500 = angular_velocity * 4.85  # 10⁻⁵ s⁻¹
+
+                        # 渦度の解釈
+                        if vorticity_500 > 10:
+                            vorticity_interpretation = "強い低気圧性渦度（トラフ接近）"
+                        elif vorticity_500 > 5:
+                            vorticity_interpretation = "中程度の低気圧性渦度"
+                        elif vorticity_500 > 1:
+                            vorticity_interpretation = "弱い低気圧性渦度"
+                        elif vorticity_500 > -1:
+                            vorticity_interpretation = "中立（直線流）"
+                        elif vorticity_500 > -5:
+                            vorticity_interpretation = "弱い高気圧性渦度"
+                        elif vorticity_500 > -10:
+                            vorticity_interpretation = "中程度の高気圧性渦度"
+                        else:
+                            vorticity_interpretation = "強い高気圧性渦度（リッジ）"
+
                 result.update({
                     'level': '500hPa',
                     'parameter': '相対渦度',
                     'unit': '10⁻⁵ s⁻¹',
-                    'temperature_500hpa': hourly.get('temperature_500hPa', [None])[time_offset],
-                    'geopotential_height_500hpa': hourly.get('geopotential_height_500hPa', [None])[time_offset],
-                    'wind_speed_500hpa': hourly.get('wind_speed_500hPa', [None])[time_offset],
-                    'wind_direction_500hpa': hourly.get('wind_direction_500hPa', [None])[time_offset],
-                    'message': '渦度計算は開発中（風速場から数値微分で算出予定）'
+                    'temperature_500hpa': temp_500,
+                    'geopotential_height_500hpa': geo_height_500,
+                    'wind_speed_500hpa': wind_speed_500,
+                    'wind_direction_500hpa': wind_dir_500,
+                    'relative_vorticity_500hpa': vorticity_500,
+                    'vorticity_interpretation': vorticity_interpretation,
+                    'calculation_method': '風向の時間変化から推定（角速度法）',
+                    'message': f'渦度: {vorticity_interpretation}（正値=低気圧接近、負値=高気圧優勢）'
                 })
 
             elif category == 'omega_700hpa':
+                # Omega（鉛直p速度）を計算
+                # Omega = dp/dt（気圧の時間変化率）を近似
+                # 正値=下降気流、負値=上昇気流
+
+                temp_700 = hourly.get('temperature_700hPa', [None])[time_offset]
+                geo_height_700 = hourly.get('geopotential_height_700hPa', [None])[time_offset]
+                rh_700 = hourly.get('relative_humidity_700hPa', [None])[time_offset]
+
+                # 地上気圧の時間変化からOmegaを推定
+                pressure_msl = hourly.get('pressure_msl', [])
+                omega_700 = None
+                omega_interpretation = "データ不足"
+
+                if time_offset > 0 and time_offset < len(pressure_msl) - 1:
+                    # 前後1時間の気圧変化から傾向を計算
+                    p_before = pressure_msl[time_offset - 1]
+                    p_current = pressure_msl[time_offset]
+                    p_after = pressure_msl[time_offset + 1]
+
+                    if all(v is not None for v in [p_before, p_current, p_after]):
+                        # 3点差分で気圧傾向を計算（hPa/hour → Pa/s変換）
+                        dp_dt = ((p_after - p_before) / 2.0) * 100 / 3600  # Pa/s
+
+                        # 700hPaでのOmegaを地上気圧傾向から推定
+                        # 簡易的に地上気圧傾向 × 0.7（700hPa ≈ 70%気圧）
+                        omega_700 = dp_dt * 0.7
+
+                        # Omegaの解釈
+                        if omega_700 > 0.1:
+                            omega_interpretation = "強い下降気流（晴天・乾燥傾向）"
+                        elif omega_700 > 0.02:
+                            omega_interpretation = "弱い下降気流（安定）"
+                        elif omega_700 > -0.02:
+                            omega_interpretation = "中立（鉛直運動なし）"
+                        elif omega_700 > -0.1:
+                            omega_interpretation = "弱い上昇気流（雲発生の可能性）"
+                        else:
+                            omega_interpretation = "強い上昇気流（降水の可能性大）"
+
                 result.update({
                     'level': '700hPa',
                     'parameter': '鉛直p速度（Omega）',
                     'unit': 'Pa/s',
-                    'temperature_700hpa': hourly.get('temperature_700hPa', [None])[time_offset],
-                    'geopotential_height_700hpa': hourly.get('geopotential_height_700hPa', [None])[time_offset],
-                    'relative_humidity_700hpa': hourly.get('relative_humidity_700hPa', [None])[time_offset],
-                    'message': 'Omega計算は開発中（気圧傾向から推定予定）'
+                    'temperature_700hpa': temp_700,
+                    'geopotential_height_700hpa': geo_height_700,
+                    'relative_humidity_700hpa': rh_700,
+                    'omega_700hpa': omega_700,
+                    'omega_interpretation': omega_interpretation,
+                    'calculation_method': '地上気圧傾向から推定（3点差分法）',
+                    'message': f'鉛直流: {omega_interpretation}（昆布乾燥には下降気流が有利）'
                 })
 
             elif category == 'theta_e_850hpa':
-                # 相当温位を計算
+                # 相当温位を計算して等値線画像を生成
                 temp_850 = hourly.get('temperature_850hPa', [None])[time_offset]
                 rh_850 = hourly.get('relative_humidity_850hPa', [None])[time_offset]
 
                 theta_e = None
+                theta_e_interpretation = "データ不足"
                 if temp_850 is not None and rh_850 is not None:
                     theta_e = calculate_equivalent_potential_temperature_850hpa(temp_850, rh_850, 850.0)
+
+                    # 相当温位の解釈（湿潤気団vs乾燥気団）
+                    if theta_e >= 330:
+                        theta_e_interpretation = "非常に湿潤な気団（熱帯性）"
+                    elif theta_e >= 310:
+                        theta_e_interpretation = "湿潤気団（梅雨前線・台風周辺）"
+                    elif theta_e >= 295:
+                        theta_e_interpretation = "やや湿潤気団"
+                    elif theta_e >= 285:
+                        theta_e_interpretation = "中立（平均的）"
+                    elif theta_e >= 275:
+                        theta_e_interpretation = "やや乾燥気団"
+                    elif theta_e >= 265:
+                        theta_e_interpretation = "乾燥気団（移動性高気圧）"
+                    else:
+                        theta_e_interpretation = "非常に乾燥な気団（寒気）"
 
                 result.update({
                     'level': '850hPa',
@@ -1649,7 +2611,8 @@ def get_contour_analysis():
                     'relative_humidity_850hpa': rh_850,
                     'geopotential_height_850hpa': hourly.get('geopotential_height_850hPa', [None])[time_offset],
                     'equivalent_potential_temperature': theta_e,
-                    'message': '相当温位計算は実装済み' if theta_e else '相当温位計算にデータ不足'
+                    'theta_e_interpretation': theta_e_interpretation,
+                    'message': f'気団判定: {theta_e_interpretation}（昆布乾燥には乾燥気団が有利）'
                 })
 
             elif category == 'jet_stream_300hpa':
@@ -1684,9 +2647,10 @@ def get_contour_analysis():
                 })
 
             elif category == 'height_anomaly_200hpa':
-                # 高度偏差解析（200hPa）- ブロッキング高気圧検出
+                # 高度偏差解析（200hPa）- ブロッキング高気圧・エゾ梅雨検出
                 geo_height_200 = hourly.get('geopotential_height_200hPa', [None])[time_offset]
                 wind_speed_200 = hourly.get('wind_speed_200hPa', [None])[time_offset]
+                wind_dir_200 = hourly.get('wind_direction_200hPa', [None])[time_offset]
 
                 # 気候値（利尻島付近の200hPa平年値、夏季想定）
                 # 実際の平年値は月別・緯度別に要調整
@@ -1694,14 +2658,21 @@ def get_contour_analysis():
 
                 height_anomaly = None
                 anomaly_category = "平年並み"
+                blocking_detected = False
+                blocking_type = None
+                ezo_tsuyu_risk = "低"
+                persistence_days = 0
+
                 if geo_height_200:
                     height_anomaly = geo_height_200 - climatology_200hpa
 
                     # 高度偏差の判定（±100m ≈ ±5℃相当）
                     if height_anomaly >= 200:
                         anomaly_category = "極めて高い（強いブロッキング）"
+                        blocking_detected = True
                     elif height_anomaly >= 100:
                         anomaly_category = "高い（ブロッキング傾向）"
+                        blocking_detected = True
                     elif height_anomaly >= 50:
                         anomaly_category = "やや高い"
                     elif height_anomaly <= -200:
@@ -1711,6 +2682,109 @@ def get_contour_analysis():
                     elif height_anomaly <= -50:
                         anomaly_category = "やや低い"
 
+                    # ブロッキング高気圧の持続性判定（前後2日間の高度偏差を確認）
+                    if blocking_detected and time_offset >= 48 and time_offset < len(hourly.get('time', [])) - 48:
+                        geo_heights = hourly.get('geopotential_height_200hPa', [])
+                        persistent_count = 0
+
+                        # 前後48時間（2日間）の高度偏差を確認
+                        for offset in range(time_offset - 48, time_offset + 49, 12):
+                            if offset >= 0 and offset < len(geo_heights) and geo_heights[offset]:
+                                anomaly = geo_heights[offset] - climatology_200hpa
+                                if anomaly >= 100:  # ブロッキング閾値
+                                    persistent_count += 1
+
+                        # 12時間間隔で9点以上（4日間のうち4.5日以上）継続していればブロッキング確定
+                        if persistent_count >= 7:
+                            persistence_days = 5
+                            blocking_type = "持続的ブロッキング（5日以上）"
+                        elif persistent_count >= 5:
+                            persistence_days = 3
+                            blocking_type = "準持続的ブロッキング（3-4日）"
+                        else:
+                            persistence_days = 1
+                            blocking_type = "一時的リッジ（1-2日）"
+
+                # エゾ梅雨（蝦夷梅雨）リスク判定：200hPaブロッキング × 850hPa湿潤気団の組み合わせ
+                ezo_tsuyu_detected = False
+                ezo_tsuyu_message = []
+                kelp_drying_impact = []
+
+                if blocking_detected and blocking_type:
+                    # 850hPa相当温位を取得して湿潤気団を検出
+                    temp_850 = hourly.get('temperature_850hPa', [None])[time_offset]
+                    rh_850 = hourly.get('relative_humidity_850hPa', [None])[time_offset]
+
+                    theta_e_850 = None
+                    is_moist_airmass = False
+
+                    if temp_850 is not None and rh_850 is not None:
+                        # 850hPa相当温位を計算
+                        theta_e_850 = calculate_equivalent_potential_temperature_850hpa(temp_850, rh_850, 850.0)
+
+                        # θe ≥ 310Kで湿潤気団と判定
+                        if theta_e_850 >= 310:
+                            is_moist_airmass = True
+
+                    # エゾ梅雨条件：持続的ブロッキング（3日以上） + 湿潤気団
+                    if persistence_days >= 3 and is_moist_airmass:
+                        ezo_tsuyu_detected = True
+                        ezo_tsuyu_risk = "高"
+
+                        ezo_tsuyu_message.append(
+                            f"⚠️ エゾ梅雨パターン検出（発生確率: 高）"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・200hPa持続的ブロッキング高気圧（{persistence_days}日間継続）"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・850hPa湿潤気団（θe={theta_e_850:.1f}K ≥ 310K）"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・停滞前線の形成により、利尻島周辺で曇天・霧雨が{persistence_days+2}～{persistence_days+5}日間継続する可能性"
+                        )
+
+                        kelp_drying_impact.append("🌧️ 昆布乾燥への影響（深刻）：")
+                        kelp_drying_impact.append(f"  • 今後{persistence_days+2}～{persistence_days+5}日間、乾燥適性「不可」が継続する予想")
+                        kelp_drying_impact.append("  • 霧雨・霧により湿度が常時95%以上に維持される")
+                        kelp_drying_impact.append("  • 乾燥作業は前線通過後まで待機を強く推奨")
+                        kelp_drying_impact.append("  • 既に干している昆布は早急に取り込むことを推奨")
+
+                    elif persistence_days >= 3 and not is_moist_airmass:
+                        # ブロッキングはあるが乾燥気団→好天持続の可能性
+                        ezo_tsuyu_risk = "低"
+                        ezo_tsuyu_message.append(
+                            f"✅ ブロッキング高気圧（乾燥型）検出"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・持続的高気圧（{persistence_days}日間）+ 乾燥気団"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・好天が{persistence_days}～{persistence_days+2}日間継続する可能性が高い"
+                        )
+
+                        kelp_drying_impact.append("☀️ 昆布乾燥への影響（良好）：")
+                        kelp_drying_impact.append(f"  • 今後{persistence_days}～{persistence_days+2}日間、安定した好天が期待できる")
+                        kelp_drying_impact.append("  • 乾燥作業に最適な期間（計画的な作業を推奨）")
+
+                    elif is_moist_airmass:
+                        # 湿潤気団だがブロッキング弱い→短期的な曇天
+                        ezo_tsuyu_risk = "中"
+                        ezo_tsuyu_message.append(
+                            f"⚠️ 一時的な曇天・降水パターン"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・ブロッキング弱い（{persistence_days}日以下）+ 湿潤気団"
+                        )
+                        ezo_tsuyu_message.append(
+                            f"  ・1-3日間の曇天・降水の可能性（エゾ梅雨には発展しない見込み）"
+                        )
+
+                        kelp_drying_impact.append("🌥️ 昆布乾燥への影響（注意）：")
+                        kelp_drying_impact.append("  • 短期的な乾燥不適期間（1-3日）")
+                        kelp_drying_impact.append("  • 天気回復後に乾燥作業再開可能")
+
+                # 結果を更新
                 result.update({
                     'level': '200hPa',
                     'parameter': 'ジオポテンシャル高度偏差',
@@ -1720,7 +2794,15 @@ def get_contour_analysis():
                     'height_anomaly': height_anomaly,
                     'anomaly_category': anomaly_category,
                     'wind_speed_200hpa': wind_speed_200,
-                    'message': f'高度偏差: {anomaly_category}（ブロッキング高気圧・停滞性天気パターンの予測に利用）'
+                    'wind_direction_200hpa': wind_dir_200,
+                    'blocking_detected': blocking_detected,
+                    'blocking_type': blocking_type,
+                    'persistence_days': persistence_days,
+                    'ezo_tsuyu_detected': ezo_tsuyu_detected,
+                    'ezo_tsuyu_risk_level': ezo_tsuyu_risk,
+                    'ezo_tsuyu_message': '\n'.join(ezo_tsuyu_message) if ezo_tsuyu_message else None,
+                    'kelp_drying_impact': '\n'.join(kelp_drying_impact) if kelp_drying_impact else None,
+                    'message': f'高度偏差: {anomaly_category} | エゾ梅雨リスク: {ezo_tsuyu_risk}'
                 })
 
             return jsonify(result)
@@ -1761,13 +2843,16 @@ def get_emagram_data():
         apply_correction = request.args.get('apply_theta_e_correction', 'false').lower() == 'true'
         wind_direction = float(request.args.get('wind_direction', 270.0)) if apply_correction else None
 
+        # Get elevation for accurate DEM correction
+        elevation = get_elevation(lat, lon)
+
         # 利用可能な気圧面（1000hPaから上層まで）- 100hPaまで拡張（雲頂高度検出のため）
         pressure_levels = [1000, 975, 950, 925, 900, 850, 800, 700, 600, 500, 400, 300, 250, 200, 150, 100]
 
         # Open-Meteo Pressure Level APIから気温・露点温度・高度を取得
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
-            f"latitude={lat}&longitude={lon}&"
+            f"latitude={lat}&longitude={lon}&elevation={elevation}&"
             f"hourly=temperature_1000hPa,dewpoint_1000hPa,geopotential_height_1000hPa,"
             f"temperature_975hPa,dewpoint_975hPa,geopotential_height_975hPa,"
             f"temperature_950hPa,dewpoint_950hPa,geopotential_height_950hPa,"

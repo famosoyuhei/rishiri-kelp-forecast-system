@@ -781,6 +781,20 @@
         </div>
     </header>
 
+    <!-- JMA気象警報バナー（警報発表時のみ表示） -->
+    <div id="jmaWarningBanner" style="display:none; position:sticky; top:66px; z-index:1999; background:#b71c1c; color:white; padding:10px 16px; font-size:0.9rem; font-weight:500; text-align:center; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.3);" onclick="showJMAWarningDetails()">
+        ⚠️ <span id="jmaWarningText">気象警報発表中</span>　<span style="font-size:0.8rem; opacity:0.85;">（タップで詳細）</span>
+    </div>
+    <!-- JMA警報詳細ダイアログ -->
+    <div id="jmaWarningModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10001; justify-content:center; align-items:center;">
+        <div style="background:white; max-width:480px; width:90%; margin:20px; padding:24px; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+            <h3 style="margin:0 0 12px; color:#b71c1c; border-bottom:2px solid #b71c1c; padding-bottom:8px;">⚠️ 気象庁 警報・注意報</h3>
+            <div id="jmaWarningDetails" style="font-size:0.9rem; line-height:1.7; color:#333;"></div>
+            <p style="font-size:0.75rem; color:#999; margin:12px 0 4px;">※ 気象庁公式APIより取得</p>
+            <button type="button" onclick="document.getElementById('jmaWarningModal').style.display='none'" style="margin-top:8px; width:100%; padding:10px; background:#667eea; color:white; border:none; border-radius:6px; cursor:pointer; font-size:0.95rem;">閉じる</button>
+        </div>
+    </div>
+
     <!-- 初回免責ダイアログ -->
     <div id="disclaimerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; justify-content: center; align-items: center;">
         <div style="background: white; max-width: 600px; margin: 20px; padding: 30px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto;">
@@ -902,6 +916,16 @@
                         <div>
                             <div style="font-weight: 500;">📈 緊急アラート</div>
                             <div style="font-size: 0.8rem; color: #666;">乾燥スコアが30点以上急変した場合に即時通知</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e0e0e0; margin-bottom: 0;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="jmaWarningEnabled" onchange="toggleJMAWarning()" style="margin-right: 10px; width: 18px; height: 18px;">
+                        <div>
+                            <div style="font-weight: 500;">🚨 気象庁警報・注意報</div>
+                            <div style="font-size: 0.8rem; color: #666;">利尻島への警報・注意報発表時に即時通知（30分ポーリング）</div>
                         </div>
                     </label>
                 </div>
@@ -2878,7 +2902,8 @@
             disclaimerAccepted: false,    // 免責事項同意フラグ
             disabledSpots: [],            // 個別に通知OFFにした干場名のリスト
             soundEnabled: true,           // 通知音（Web Audio API）
-            vibrationEnabled: true        // バイブレーション（スマートフォン）
+            vibrationEnabled: true,       // バイブレーション（スマートフォン）
+            jmaWarningEnabled: true       // 気象庁警報・注意報通知
         };
 
         // 通知設定の初期化
@@ -2921,6 +2946,10 @@
             if (soundCheckbox) soundCheckbox.checked = notificationData.soundEnabled !== false;
             if (vibrationCheckbox) vibrationCheckbox.checked = notificationData.vibrationEnabled !== false;
 
+            // JMA警報通知の復元
+            const jmaCheckbox = document.getElementById('jmaWarningEnabled');
+            if (jmaCheckbox) jmaCheckbox.checked = notificationData.jmaWarningEnabled !== false;
+
             // アプリ起動時にPWAバッジをクリア（ユーザーが確認済み）
             clearAppBadge();
 
@@ -2943,6 +2972,119 @@
                 scheduleEmergencyAlertPolling();
             }
             console.log(`緊急アラート: ${checkbox.checked ? '有効' : '無効'}`);
+        }
+
+        // ========================================
+        // JMA警報・注意報システム
+        // ========================================
+
+        // 最後に取得した警報データ（重複通知防止用）
+        let lastJMAWarningKey = localStorage.getItem('hoshibaLastJMAWarning') || '';
+
+        /**
+         * JMA気象庁警報・注意報を取得してバナー表示と通知送信
+         * - 30分ごとにポーリング
+         * - 警報内容が変化した場合のみ通知
+         */
+        async function checkJMAWarnings() {
+            try {
+                const resp = await fetch('/api/jma_warnings');
+                const data = await resp.json();
+
+                const banner = document.getElementById('jmaWarningBanner');
+                const warningText = document.getElementById('jmaWarningText');
+
+                if (data.hasWarnings && data.warnings.length > 0) {
+                    // すべての警報名を収集（重複除去）
+                    const nameSet = new Set();
+                    data.warnings.forEach(area => {
+                        area.warnings.forEach(w => nameSet.add(w.name));
+                    });
+                    const allNames = [...nameSet].join('・');
+
+                    // バナー表示
+                    warningText.textContent = allNames + '（利尻島）';
+                    banner.style.display = 'block';
+
+                    // 警報内容の変化を検出して通知
+                    const warningKey = JSON.stringify(data.warnings);
+                    if (warningKey !== lastJMAWarningKey) {
+                        lastJMAWarningKey = warningKey;
+                        localStorage.setItem('hoshibaLastJMAWarning', warningKey);
+
+                        if (notificationData.enabled &&
+                            notificationData.jmaWarningEnabled !== false &&
+                            'Notification' in window &&
+                            Notification.permission === 'granted') {
+
+                            const n = new Notification('⚠️ 気象庁警報発表', {
+                                body: allNames + '\n利尻島に警報・注意報が発表されました',
+                                icon: '/static/img/logo.png',
+                                tag: 'jma-warning',
+                                requireInteraction: true
+                            });
+                            playNotificationSound('emergency');
+                            vibrateNotification('emergency');
+                            saveNotificationHistory({
+                                type: 'jma_warning',
+                                title: '⚠️ 気象庁警報',
+                                body: allNames,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    }
+                } else {
+                    // 警報解除 → バナー非表示、キャッシュクリア
+                    banner.style.display = 'none';
+                    lastJMAWarningKey = '';
+                    localStorage.removeItem('hoshibaLastJMAWarning');
+                }
+            } catch (e) {
+                console.warn('JMA警報取得失敗:', e);
+            }
+        }
+
+        /** バナークリックで詳細ダイアログを表示 */
+        function showJMAWarningDetails() {
+            fetch('/api/jma_warnings')
+                .then(r => r.json())
+                .then(data => {
+                    const detailDiv = document.getElementById('jmaWarningDetails');
+                    if (!data.hasWarnings || data.warnings.length === 0) {
+                        detailDiv.innerHTML = '<p style="color:#888;">現在、警報・注意報の発表はありません。</p>';
+                    } else {
+                        detailDiv.innerHTML = data.warnings.map(area =>
+                            `<div style="margin-bottom:10px;">
+                                <strong style="color:#b71c1c;">${area.area}</strong><br>
+                                ${area.warnings.map(w =>
+                                    `<span style="display:inline-block; background:#ffebee; color:#b71c1c; border-radius:4px; padding:2px 8px; margin:2px; font-size:0.85rem;">${w.name}（${w.status}）</span>`
+                                ).join('')}
+                            </div>`
+                        ).join('');
+                    }
+                    document.getElementById('jmaWarningModal').style.display = 'flex';
+                })
+                .catch(() => {
+                    document.getElementById('jmaWarningDetails').innerHTML = '<p style="color:#d32f2f;">警報データの取得に失敗しました。</p>';
+                    document.getElementById('jmaWarningModal').style.display = 'flex';
+                });
+        }
+
+        /** JMA警報通知トグル */
+        function toggleJMAWarning() {
+            const checkbox = document.getElementById('jmaWarningEnabled');
+            notificationData.jmaWarningEnabled = checkbox.checked;
+            saveNotificationData();
+            if (checkbox.checked) {
+                checkJMAWarnings(); // 即時チェック
+            }
+        }
+
+        /** JMA警報の30分ポーリングを開始 */
+        function scheduleJMAWarningPolling() {
+            const THIRTY_MIN = 30 * 60 * 1000;
+            checkJMAWarnings(); // 起動時即時チェック
+            setInterval(checkJMAWarnings, THIRTY_MIN);
         }
 
         // 16:00通知トグル
@@ -3569,6 +3711,8 @@
         window.sendTestNotification = sendTestNotification;
         window.toggleNotificationSound = toggleNotificationSound;
         window.toggleNotificationVibration = toggleNotificationVibration;
+        window.toggleJMAWarning = toggleJMAWarning;
+        window.showJMAWarningDetails = showJMAWarningDetails;
         window.toggleNicknameEdit = toggleNicknameEdit;
         window.cancelNicknameEdit = cancelNicknameEdit;
         window.saveSpotNicknameUI = saveSpotNicknameUI;
@@ -3815,6 +3959,7 @@
                 scheduleEarlyMorningNotification();  // 01:30通知
                 scheduleEmergencyAlertPolling();     // 緊急アラート
             }
+            scheduleJMAWarningPolling(); // JMA警報は通知ON/OFF関係なくバナー表示のため常時起動
 
             // オフライン状態初期化
             updateConnectionStatus();
