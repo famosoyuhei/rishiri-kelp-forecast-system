@@ -1242,6 +1242,25 @@
         // お気に入り管理
         let favorites = JSON.parse(localStorage.getItem('hoshibaFavorites')) || [];
 
+        // 干場の呼び名（ユーザー独自ニックネーム）
+        let spotNicknames = JSON.parse(localStorage.getItem('hoshibaSpotNicknames')) || {};
+
+        function getSpotDisplayName(spotName) {
+            return spotNicknames[spotName] || spotName;
+        }
+        function saveSpotNicknames() {
+            localStorage.setItem('hoshibaSpotNicknames', JSON.stringify(spotNicknames));
+        }
+        function setSpotNickname(spotName, nickname) {
+            const trimmed = nickname ? nickname.trim() : '';
+            if (trimmed) {
+                spotNicknames[spotName] = trimmed;
+            } else {
+                delete spotNicknames[spotName];
+            }
+            saveSpotNicknames();
+        }
+
         // フィードバック管理
         let feedbackData = JSON.parse(localStorage.getItem('forecastFeedback')) || {};
 
@@ -1623,7 +1642,8 @@
 
                 marker.bindPopup(`
                     <div style="text-align: center; padding: 10px;">
-                        <strong>${spot.name}</strong><br>
+                        <strong>${getSpotDisplayName(spot.name)}</strong><br>
+                        ${spotNicknames[spot.name] ? `<small style="color:#999">${spot.name}</small><br>` : ''}
                         <span style="color: #666;">${spot.town} ${spot.district}</span><br>
                         <button onclick="selectSpot(${index})" style="
                             background: #667eea;
@@ -1943,7 +1963,7 @@
             panel.classList.add('active');
 
             // ヘッダー更新
-            document.getElementById('selectedSpotName').textContent = spot.name;
+            document.getElementById('selectedSpotName').textContent = getSpotDisplayName(spot.name);
             document.getElementById('selectedSpotLocation').textContent = `${spot.town} ${spot.district} ${spot.buraku}`;
 
             // 予報データ取得
@@ -2626,21 +2646,60 @@
             let html = '';
             favorites.forEach(index => {
                 const spot = hoshibaSpots[index];
+                const nickname = spotNicknames[spot.name] || '';
+                const displayName = nickname || spot.name;
                 html += `
-                    <div class="favorite-item" onclick="selectSpot(${index})">
-                        <div>
-                            <strong>${spot.name}</strong><br>
+                    <div class="favorite-item" onclick="selectSpot(${index})" id="fav-item-${index}">
+                        <div style="flex:1; min-width:0;">
+                            <strong>${displayName}</strong>
+                            ${nickname ? `<span style="font-size:0.75rem; color:#999; margin-left:4px;">(${spot.name})</span>` : ''}
+                            <br>
                             <small style="color: #666;">${spot.town} ${spot.district}</small>
+                            <div id="fav-edit-${index}" style="display:none; margin-top:6px;" onclick="event.stopPropagation()">
+                                <input type="text" id="fav-nick-${index}" value="${nickname}"
+                                    placeholder="呼び名を入力（空白で削除）"
+                                    style="width:100%; padding:4px 6px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem; box-sizing:border-box;">
+                                <div style="margin-top:4px; display:flex; gap:6px;">
+                                    <button type="button" onclick="saveSpotNicknameUI(${index}, '${spot.name}')"
+                                        style="flex:1; padding:4px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem;">保存</button>
+                                    <button type="button" onclick="cancelNicknameEdit(${index})"
+                                        style="flex:1; padding:4px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem;">取消</button>
+                                </div>
+                            </div>
                         </div>
-                        <button onclick="event.stopPropagation(); toggleFavorite(${index})"
-                                style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
-                            削除
-                        </button>
+                        <div style="display:flex; flex-direction:column; gap:4px; margin-left:8px;" onclick="event.stopPropagation()">
+                            <button type="button" onclick="toggleNicknameEdit(${index})"
+                                    title="呼び名を編集"
+                                    style="background:#667eea; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:0.8rem;">✏️</button>
+                            <button type="button" onclick="toggleFavorite(${index})"
+                                    style="background:#dc3545; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer; font-size:0.8rem;">削除</button>
+                        </div>
                     </div>
                 `;
             });
 
             content.innerHTML = html;
+        }
+
+        function toggleNicknameEdit(index) {
+            const editDiv = document.getElementById(`fav-edit-${index}`);
+            if (!editDiv) return;
+            const isVisible = editDiv.style.display !== 'none';
+            editDiv.style.display = isVisible ? 'none' : 'block';
+            if (!isVisible) {
+                document.getElementById(`fav-nick-${index}`).focus();
+            }
+        }
+        function cancelNicknameEdit(index) {
+            const editDiv = document.getElementById(`fav-edit-${index}`);
+            if (editDiv) editDiv.style.display = 'none';
+        }
+        function saveSpotNicknameUI(index, spotName) {
+            const input = document.getElementById(`fav-nick-${index}`);
+            if (!input) return;
+            setSpotNickname(spotName, input.value);
+            refreshMarkers();
+            updateFavoritesList();
         }
 
         function clearAllFavorites() {
@@ -2857,6 +2916,9 @@
             const vibrationCheckbox = document.getElementById('vibrationEnabled');
             if (soundCheckbox) soundCheckbox.checked = notificationData.soundEnabled !== false;
             if (vibrationCheckbox) vibrationCheckbox.checked = notificationData.vibrationEnabled !== false;
+
+            // アプリ起動時にPWAバッジをクリア（ユーザーが確認済み）
+            clearAppBadge();
 
             // PWA通知権限リクエスト
             if (notificationData.enabled && 'Notification' in window && Notification.permission === 'default') {
@@ -3299,12 +3361,13 @@
                             excellent: '最適', good: '良好', fair: '可', poor: '不良', very_poor: '不可'
                         }[suitability] || suitability;
 
+                        const displayName = getSpotDisplayName(spot.name);
                         let title, body;
                         if (type === 'evening') {
-                            title = `🌊 ${spot.name} 明日の予報（暫定）`;
+                            title = `🌊 ${displayName} 明日の予報（暫定）`;
                             body = `判定: ${suitabilityJA}（${score}点）\n降水: ${precipitation}mm  湿度: ${humidity}%  風速: ${windSpeed}m/s`;
                         } else {
-                            title = `🌊 ${spot.name} 本日の最新予報`;
+                            title = `🌊 ${displayName} 本日の最新予報`;
                             body = `【${updateTime} JST更新】\n判定: ${suitabilityJA}（${score}点）\n降水: ${precipitation}mm  湿度: ${humidity}%  風速: ${windSpeed}m/s`;
                         }
 
@@ -3346,6 +3409,23 @@
             history.unshift(entry); // 先頭に追加
             if (history.length > 50) history.splice(50); // 50件超えたら古いものを削除
             localStorage.setItem('hoshibaNotificationHistory', JSON.stringify(history));
+
+            // PWAバッジ更新（未読通知数をアイコンに表示）
+            const badgeCount = (parseInt(localStorage.getItem('hoshibaBadgeCount')) || 0) + 1;
+            localStorage.setItem('hoshibaBadgeCount', String(badgeCount));
+            updateAppBadge(badgeCount);
+        }
+
+        function updateAppBadge(count) {
+            if ('setAppBadge' in navigator) {
+                navigator.setAppBadge(count).catch(() => {});
+            }
+        }
+        function clearAppBadge() {
+            if ('clearAppBadge' in navigator) {
+                navigator.clearAppBadge().catch(() => {});
+            }
+            localStorage.setItem('hoshibaBadgeCount', '0');
         }
 
         /**
@@ -3424,7 +3504,7 @@
                                 excellent: '最適', good: '良好', fair: '可', poor: '不良', very_poor: '不可'
                             }[ds.suitability] || ds.suitability;
 
-                            new Notification(`${emoji} 緊急: ${spot.name} 予報変化`, {
+                            new Notification(`${emoji} 緊急: ${getSpotDisplayName(spot.name)} 予報変化`, {
                                 body: `乾燥スコアが${Math.abs(diff)}点${direction}（${prevScore}→${currentScore}点）\n現在の判定: ${suitabilityJA}\n\n※この予報は干場の乾燥条件のみを判定します。`,
                                 icon: '/static/icon-192x192.png',
                                 badge: '/static/badge-72x72.png',
@@ -3485,6 +3565,14 @@
         window.sendTestNotification = sendTestNotification;
         window.toggleNotificationSound = toggleNotificationSound;
         window.toggleNotificationVibration = toggleNotificationVibration;
+        window.toggleNicknameEdit = toggleNicknameEdit;
+        window.cancelNicknameEdit = cancelNicknameEdit;
+        window.saveSpotNicknameUI = saveSpotNicknameUI;
+
+        // ページが前面に戻ったときにPWAバッジをクリア
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) clearAppBadge();
+        });
 
         // ========================================
         // 通知音・バイブレーション
