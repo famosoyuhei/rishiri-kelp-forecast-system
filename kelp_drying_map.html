@@ -2800,7 +2800,8 @@
             seasonStart: null,            // 任意の漁期開始日
             seasonEnd: null,              // 任意の漁期終了日
             lastForecastScores: {},       // 前回予報スコア（緊急通知用）
-            disclaimerAccepted: false     // 免責事項同意フラグ
+            disclaimerAccepted: false,    // 免責事項同意フラグ
+            disabledSpots: []             // 個別に通知OFFにした干場名のリスト
         };
 
         // 通知設定の初期化
@@ -2910,13 +2911,54 @@
 
         function updateNotificationSpotsList() {
             const listDiv = document.getElementById('notificationSpotsList');
+            if (!notificationData.disabledSpots) notificationData.disabledSpots = [];
 
             if (favorites.length === 0) {
                 listDiv.innerHTML = '<p style="color: #999;">お気に入りに干場を追加してください</p>';
-            } else {
-                const spotNames = favorites.map(index => hoshibaSpots[index].name).join(', ');
-                listDiv.innerHTML = `<p>通知対象: ${favorites.length}箇所</p><p style="color: #666; font-size: 0.8rem;">${spotNames}</p>`;
+                return;
             }
+
+            const enabledCount = favorites.filter(i =>
+                !notificationData.disabledSpots.includes(hoshibaSpots[i].name)
+            ).length;
+
+            const rows = favorites.map(index => {
+                const spot = hoshibaSpots[index];
+                const isEnabled = !notificationData.disabledSpots.includes(spot.name);
+                return `
+                    <div style="display:flex; align-items:center; justify-content:space-between;
+                                padding:6px 8px; border-bottom:1px solid #f0f0f0; font-size:0.85rem;">
+                        <span style="color:${isEnabled ? '#333' : '#aaa'}; text-decoration:${isEnabled ? 'none' : 'line-through'};">
+                            ${spot.name}
+                        </span>
+                        <label style="display:flex; align-items:center; cursor:pointer; gap:5px; flex-shrink:0;">
+                            <input type="checkbox" ${isEnabled ? 'checked' : ''}
+                                onchange="toggleSpotNotification('${spot.name}', this.checked)"
+                                style="width:15px; height:15px; cursor:pointer;">
+                            <span style="font-size:0.75rem; color:#666;">${isEnabled ? 'ON' : 'OFF'}</span>
+                        </label>
+                    </div>`;
+            }).join('');
+
+            listDiv.innerHTML = `
+                <div style="padding:6px 8px; background:#f8f9fa; font-size:0.8rem; color:#555; border-bottom:1px solid #e0e0e0;">
+                    通知対象: <strong>${enabledCount}</strong> / ${favorites.length} 箇所
+                </div>
+                ${rows}`;
+        }
+
+        function toggleSpotNotification(spotName, enabled) {
+            if (!notificationData.disabledSpots) notificationData.disabledSpots = [];
+            if (enabled) {
+                notificationData.disabledSpots = notificationData.disabledSpots.filter(n => n !== spotName);
+            } else {
+                if (!notificationData.disabledSpots.includes(spotName)) {
+                    notificationData.disabledSpots.push(spotName);
+                }
+            }
+            saveNotificationData();
+            updateNotificationSpotsList();
+            console.log(`スポット通知切替: ${spotName} → ${enabled ? 'ON' : 'OFF'}`);
         }
 
         function addOffDay() {
@@ -3205,9 +3247,16 @@
 
             // 免責テキスト
             const disclaimer = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+            const disabledSpots = notificationData.disabledSpots || [];
 
             for (const favoriteIndex of favorites) {
                 const spot = hoshibaSpots[favoriteIndex];
+
+                // 個別にOFFにされた干場はスキップ
+                if (disabledSpots.includes(spot.name)) {
+                    console.log(`スポット通知スキップ（個別OFF）: ${spot.name}`);
+                    continue;
+                }
 
                 try {
                     const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}&name=${encodeURIComponent(spot.name)}`);
@@ -3326,8 +3375,12 @@
             const nowJST = new Date(nowUTC.getTime() + offsetJST);
             const todayStr = nowJST.toISOString().split('T')[0];
 
+            const disabledSpotsEM = notificationData.disabledSpots || [];
+
             for (const favoriteIndex of favorites) {
                 const spot = hoshibaSpots[favoriteIndex];
+                // 個別にOFFにされた干場はスキップ
+                if (disabledSpotsEM.includes(spot.name)) continue;
                 try {
                     const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}&name=${encodeURIComponent(spot.name)}`);
                     const data = await response.json();
@@ -3404,6 +3457,7 @@
         window.saveSeasonDates = saveSeasonDates;
         window.checkEmergencyAlerts = checkEmergencyAlerts;   // テスト用に公開
         window.showNotificationHistory = showNotificationHistory;
+        window.toggleSpotNotification = toggleSpotNotification;
         window.sendTestNotification = sendTestNotification;
 
         /**
