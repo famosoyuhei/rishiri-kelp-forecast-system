@@ -882,12 +882,22 @@
                     </label>
                 </div>
 
-                <div style="margin-bottom: 0;">
+                <div style="margin-bottom: 10px;">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="earlyMorningNotificationEnabled" onchange="toggleEarlyMorningNotification()" style="margin-right: 10px; width: 18px; height: 18px;">
                         <div>
                             <div style="font-weight: 500;">01:30 早朝通知</div>
                             <div style="font-size: 0.8rem; color: #666;">当日の最新予報を通知（出漁判断用）</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 0;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="emergencyAlertEnabled" onchange="toggleEmergencyAlert()" style="margin-right: 10px; width: 18px; height: 18px;">
+                        <div>
+                            <div style="font-weight: 500;">📈 緊急アラート</div>
+                            <div style="font-size: 0.8rem; color: #666;">乾燥スコアが30点以上急変した場合に即時通知</div>
                         </div>
                     </label>
                 </div>
@@ -2777,12 +2787,17 @@
             checkbox.checked = notificationData.enabled;
             settingsDiv.style.display = notificationData.enabled ? 'block' : 'none';
 
+            const emergencyCheckbox = document.getElementById('emergencyAlertEnabled');
+
             // 個別通知トグルの復元
             if (eveningCheckbox) {
-                eveningCheckbox.checked = notificationData.eveningEnabled !== false; // デフォルトtrue
+                eveningCheckbox.checked = notificationData.eveningEnabled !== false;
             }
             if (earlyMorningCheckbox) {
-                earlyMorningCheckbox.checked = notificationData.earlyMorningEnabled !== false; // デフォルトtrue
+                earlyMorningCheckbox.checked = notificationData.earlyMorningEnabled !== false;
+            }
+            if (emergencyCheckbox) {
+                emergencyCheckbox.checked = notificationData.emergencyAlertEnabled !== false;
             }
 
             if (notificationData.seasonStart) {
@@ -2803,6 +2818,17 @@
                     }
                 });
             }
+        }
+
+        // 緊急アラートトグル
+        function toggleEmergencyAlert() {
+            const checkbox = document.getElementById('emergencyAlertEnabled');
+            notificationData.emergencyAlertEnabled = checkbox.checked;
+            saveNotificationData();
+            if (checkbox.checked) {
+                scheduleEmergencyAlertPolling();
+            }
+            console.log(`緊急アラート: ${checkbox.checked ? '有効' : '無効'}`);
         }
 
         // 16:00通知トグル
@@ -2833,9 +2859,10 @@
                 if (Notification.permission === 'default') {
                     Notification.requestPermission().then(permission => {
                         if (permission === 'granted') {
-                            alert('通知が有効になりました。\n・毎日16:00：翌日の暫定予報\n・毎日01:30：当日の最新予報\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。');
-                            scheduleNextNotification();        // 16:00通知
-                            scheduleEarlyMorningNotification(); // 01:30通知
+                            alert('通知が有効になりました。\n・毎日16:00：翌日の暫定予報\n・毎日01:30：当日の最新予報\n・緊急アラート：予報が急変した場合\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。');
+                            scheduleNextNotification();          // 16:00通知
+                            scheduleEarlyMorningNotification();  // 01:30通知
+                            scheduleEmergencyAlertPolling();     // 緊急アラート
                         } else {
                             alert('通知を有効にするには、ブラウザの通知許可が必要です。');
                             checkbox.checked = false;
@@ -2844,8 +2871,9 @@
                         }
                     });
                 } else if (Notification.permission === 'granted') {
-                    scheduleNextNotification();        // 16:00通知
-                    scheduleEarlyMorningNotification(); // 01:30通知
+                    scheduleNextNotification();          // 16:00通知
+                    scheduleEarlyMorningNotification();  // 01:30通知
+                    scheduleEmergencyAlertPolling();     // 緊急アラート
                 }
             }
 
@@ -3201,12 +3229,93 @@
             }
         }
 
+        /**
+         * 緊急アラート：スコアが30pt以上変化した場合に即時通知
+         * - 定期的に最新スコアを取得し、前回との差分を確認
+         * - 30pt↓（急悪化）と30pt↑（急好転）の両方を検知
+         * - 1時間ごとにポーリング
+         */
+        async function checkEmergencyAlerts() {
+            if (!notificationData.enabled || !notificationData.emergencyAlertEnabled) return;
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            if (favorites.length === 0) return;
+
+            // 6-9月チェック
+            const nowUTC = new Date();
+            if (!shouldSendNotification(nowUTC)) return;
+
+            const ALERT_THRESHOLD = 30;
+            const offsetJST = 9 * 60 * 60 * 1000;
+            const nowJST = new Date(nowUTC.getTime() + offsetJST);
+            const todayStr = nowJST.toISOString().split('T')[0];
+
+            for (const favoriteIndex of favorites) {
+                const spot = hoshibaSpots[favoriteIndex];
+                try {
+                    const response = await fetch(`/api/forecast?lat=${spot.lat}&lon=${spot.lon}&name=${encodeURIComponent(spot.name)}`);
+                    const data = await response.json();
+                    if (!data.forecasts || data.forecasts.length === 0) continue;
+
+                    const ds = data.forecasts[0].daily_summary;
+                    const currentScore = ds.drying_score;
+                    if (currentScore == null) continue;
+
+                    const prevKey = `${spot.name}:${todayStr}`;
+                    const prevScore = notificationData.lastForecastScores[prevKey];
+
+                    if (prevScore != null) {
+                        const diff = currentScore - prevScore;
+                        if (Math.abs(diff) >= ALERT_THRESHOLD) {
+                            const direction = diff > 0 ? '急上昇' : '急低下';
+                            const emoji = diff > 0 ? '📈' : '📉';
+                            const suitabilityJA = {
+                                excellent: '最適', good: '良好', fair: '可', poor: '不良', very_poor: '不可'
+                            }[ds.suitability] || ds.suitability;
+
+                            new Notification(`${emoji} 緊急: ${spot.name} 予報変化`, {
+                                body: `乾燥スコアが${Math.abs(diff)}点${direction}（${prevScore}→${currentScore}点）\n現在の判定: ${suitabilityJA}\n\n※この予報は干場の乾燥条件のみを判定します。`,
+                                icon: '/static/icon-192x192.png',
+                                badge: '/static/badge-72x72.png',
+                                tag: `emergency-${spot.name}-${todayStr}`,
+                                requireInteraction: true  // 緊急通知は消えるまで維持
+                            });
+                            console.log(`緊急アラート送信: ${spot.name} ${prevScore}→${currentScore}点（${diff > 0 ? '+' : ''}${diff}）`);
+                        }
+                    }
+
+                    // 現在のスコアを記録（次回比較用）
+                    notificationData.lastForecastScores[prevKey] = currentScore;
+                    saveNotificationData();
+
+                } catch (error) {
+                    console.error(`緊急アラートチェックエラー (${spot.name}):`, error);
+                }
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+
+        /**
+         * 緊急アラートを1時間ごとにポーリング
+         */
+        function scheduleEmergencyAlertPolling() {
+            if (!notificationData.enabled || !notificationData.emergencyAlertEnabled) return;
+            const ONE_HOUR = 60 * 60 * 1000;
+            // 初回は5分後（起動直後の重複防止）
+            setTimeout(async () => {
+                await checkEmergencyAlerts();
+                setInterval(checkEmergencyAlerts, ONE_HOUR);
+            }, 5 * 60 * 1000);
+            console.log('緊急アラートポーリング: 5分後に初回チェック、以降1時間ごと');
+        }
+
         window.toggleNotifications = toggleNotifications;
         window.toggleEveningNotification = toggleEveningNotification;
         window.toggleEarlyMorningNotification = toggleEarlyMorningNotification;
+        window.toggleEmergencyAlert = toggleEmergencyAlert;
         window.addOffDay = addOffDay;
         window.removeOffDay = removeOffDay;
         window.saveSeasonDates = saveSeasonDates;
+        window.checkEmergencyAlerts = checkEmergencyAlerts; // テスト用に公開
 
         // ========================================
         // オフライン同期機能 (仕様書 lines 41-44)
@@ -3330,8 +3439,9 @@
             // 通知システム初期化
             initializeNotifications();
             if (notificationData.enabled) {
-                scheduleNextNotification();        // 16:00通知
-                scheduleEarlyMorningNotification(); // 01:30通知
+                scheduleNextNotification();          // 16:00通知
+                scheduleEarlyMorningNotification();  // 01:30通知
+                scheduleEmergencyAlertPolling();     // 緊急アラート
             }
 
             // オフライン状態初期化
