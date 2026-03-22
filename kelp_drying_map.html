@@ -966,6 +966,18 @@
                     </button>
                 </div>
                 <p style="font-size:0.75rem; color:#999; margin-top:8px; margin-bottom:0;">通知許可が必要です。お気に入り干場がなくてもテスト送信します。</p>
+
+                <!-- 通知音・バイブ設定 -->
+                <div style="margin-top:12px; padding-top:10px; border-top:1px solid #e0e0e0; display:flex; gap:16px; flex-wrap:wrap;">
+                    <label style="display:flex; align-items:center; cursor:pointer; gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="soundEnabled" onchange="toggleNotificationSound()" style="width:16px; height:16px; cursor:pointer;">
+                        🔊 通知音
+                    </label>
+                    <label style="display:flex; align-items:center; cursor:pointer; gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="vibrationEnabled" onchange="toggleNotificationVibration()" style="width:16px; height:16px; cursor:pointer;">
+                        📳 バイブ
+                    </label>
+                </div>
             </div>
 
             <!-- 通知履歴 -->
@@ -2801,7 +2813,9 @@
             seasonEnd: null,              // 任意の漁期終了日
             lastForecastScores: {},       // 前回予報スコア（緊急通知用）
             disclaimerAccepted: false,    // 免責事項同意フラグ
-            disabledSpots: []             // 個別に通知OFFにした干場名のリスト
+            disabledSpots: [],            // 個別に通知OFFにした干場名のリスト
+            soundEnabled: true,           // 通知音（Web Audio API）
+            vibrationEnabled: true        // バイブレーション（スマートフォン）
         };
 
         // 通知設定の初期化
@@ -2837,6 +2851,12 @@
 
             updateNotificationSpotsList();
             updateOffDaysList();
+
+            // 音・バイブ設定の復元
+            const soundCheckbox = document.getElementById('soundEnabled');
+            const vibrationCheckbox = document.getElementById('vibrationEnabled');
+            if (soundCheckbox) soundCheckbox.checked = notificationData.soundEnabled !== false;
+            if (vibrationCheckbox) vibrationCheckbox.checked = notificationData.vibrationEnabled !== false;
 
             // PWA通知権限リクエスト
             if (notificationData.enabled && 'Notification' in window && Notification.permission === 'default') {
@@ -3295,6 +3315,8 @@
                             tag: `forecast-${type}-${spot.name}`,
                             requireInteraction: false
                         });
+                        playNotificationSound(type);
+                        vibrateNotification(type);
 
                         // 通知履歴に記録
                         saveNotificationHistory({
@@ -3409,6 +3431,8 @@
                                 tag: `emergency-${spot.name}-${todayStr}`,
                                 requireInteraction: true  // 緊急通知は消えるまで維持
                             });
+                            playNotificationSound('emergency');
+                            vibrateNotification('emergency');
                             console.log(`緊急アラート送信: ${spot.name} ${prevScore}→${currentScore}点（${diff > 0 ? '+' : ''}${diff}）`);
                             const nowJSTStr = new Date(nowUTC.getTime() + offsetJST).toISOString().replace('T',' ').slice(0,16) + ' JST';
                             saveNotificationHistory({
@@ -3459,6 +3483,73 @@
         window.showNotificationHistory = showNotificationHistory;
         window.toggleSpotNotification = toggleSpotNotification;
         window.sendTestNotification = sendTestNotification;
+        window.toggleNotificationSound = toggleNotificationSound;
+        window.toggleNotificationVibration = toggleNotificationVibration;
+
+        // ========================================
+        // 通知音・バイブレーション
+        // ========================================
+
+        /**
+         * Web Audio APIで通知音を生成（外部ファイル不要）
+         * type: 'evening' → 穏やかな2音、'earlyMorning' → 短い3音、'emergency' → 警告音
+         */
+        function playNotificationSound(type) {
+            if (!notificationData.soundEnabled) return;
+            if (!window.AudioContext && !window.webkitAudioContext) return;
+
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const gain = ctx.createGain();
+            gain.connect(ctx.destination);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+
+            const patterns = {
+                evening:      [{ f: 523, d: 0.15, t: 0.0 }, { f: 659, d: 0.2, t: 0.2 }],
+                earlyMorning: [{ f: 440, d: 0.1,  t: 0.0 }, { f: 523, d: 0.1, t: 0.15 }, { f: 659, d: 0.15, t: 0.3 }],
+                emergency:    [{ f: 880, d: 0.1,  t: 0.0 }, { f: 660, d: 0.1, t: 0.15 }, { f: 880, d: 0.1, t: 0.3 }, { f: 660, d: 0.2, t: 0.45 }]
+            };
+
+            (patterns[type] || patterns.evening).forEach(({ f, d, t }) => {
+                const osc = ctx.createOscillator();
+                osc.type = type === 'emergency' ? 'square' : 'sine';
+                osc.frequency.setValueAtTime(f, ctx.currentTime + t);
+                osc.connect(gain);
+                osc.start(ctx.currentTime + t);
+                osc.stop(ctx.currentTime + t + d);
+            });
+
+            setTimeout(() => ctx.close(), 2000);
+        }
+
+        /**
+         * バイブレーション（スマートフォン対応）
+         */
+        function vibrateNotification(type) {
+            if (!notificationData.vibrationEnabled) return;
+            if (!navigator.vibrate) return;
+            const patterns = {
+                evening:      [200, 100, 200],
+                earlyMorning: [100, 80, 100, 80, 200],
+                emergency:    [300, 100, 300, 100, 300]
+            };
+            navigator.vibrate(patterns[type] || patterns.evening);
+        }
+
+        function toggleNotificationSound() {
+            const checkbox = document.getElementById('soundEnabled');
+            notificationData.soundEnabled = checkbox.checked;
+            saveNotificationData();
+            if (checkbox.checked) playNotificationSound('evening'); // 即時プレビュー
+            console.log('通知音:', checkbox.checked ? 'ON' : 'OFF');
+        }
+
+        function toggleNotificationVibration() {
+            const checkbox = document.getElementById('vibrationEnabled');
+            notificationData.vibrationEnabled = checkbox.checked;
+            saveNotificationData();
+            if (checkbox.checked) vibrateNotification('evening'); // 即時プレビュー
+            console.log('バイブ:', checkbox.checked ? 'ON' : 'OFF');
+        }
 
         /**
          * テスト通知送信（音量・表示確認用）
