@@ -1034,8 +1034,11 @@
             <button class="sidebar-tab-btn active" onclick="switchSidebarTab('filter')" data-tab="filter" style="flex: 1; padding: 15px; background: white; border: none; border-bottom: 3px solid #667eea; cursor: pointer; font-weight: 600; color: #667eea; transition: all 0.3s;">
                 📍 エリア絞込
             </button>
-            <button class="sidebar-tab-btn" onclick="switchSidebarTab('contour')" data-tab="contour" style="flex: 1; padding: 15px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s;">
+            <button class="sidebar-tab-btn" onclick="switchSidebarTab('contour')" data-tab="contour" style="flex: 1; padding: 12px 6px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s; font-size: 0.82rem;">
                 🌪️ 等値線解析
+            </button>
+            <button type="button" class="sidebar-tab-btn" onclick="switchSidebarTab('seasonal')" data-tab="seasonal" style="flex: 1; padding: 12px 6px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s; font-size: 0.82rem;">
+                📅 昆布季節予報
             </button>
         </div>
 
@@ -1122,6 +1125,74 @@
                     <p style="color: #999;">解析図を読み込み中...</p>
                 </div>
                 <div id="contourMetadata" style="margin-top: 15px; font-size: 0.8rem; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== 昆布シーズン長期予報タブ ========== -->
+        <div class="sidebar-tab-content" id="seasonalTabContent" style="padding: 20px; display: none;">
+            <h4 style="margin-bottom: 4px; color: #2c3e50;">📅 昆布シーズン長期予報</h4>
+            <p style="font-size: 0.8rem; color: #888; margin-bottom: 16px;">6〜9月の乾燥日数増減見通し（気象庁季節予報をもとに月1回更新）</p>
+
+            <!-- 月別カード表示エリア -->
+            <div id="seasonalMonthCards" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                <div style="text-align: center; color: #aaa; font-size: 0.9rem; padding: 20px;">読み込み中...</div>
+            </div>
+
+            <!-- エルニーニョ・専門家コメント -->
+            <div id="seasonalExpertPanel" style="display: none; margin-bottom: 14px;">
+                <div id="seasonalEnsoRow" style="display: none; margin-bottom: 8px; padding: 8px 12px; background: #e8f5e9; border-radius: 6px; font-size: 0.85rem;">
+                    <strong>🌊 ENSO状況：</strong><span id="seasonalEnsoText"></span>
+                </div>
+                <div id="seasonalCommentRow" style="display: none; padding: 10px 12px; background: #f3f4f6; border-radius: 6px; font-size: 0.85rem; line-height: 1.6; color: #444;">
+                    <strong>📝 専門家コメント：</strong><br><span id="seasonalCommentText"></span>
+                </div>
+            </div>
+
+            <!-- 更新日・出典 -->
+            <div id="seasonalMeta" style="font-size: 0.75rem; color: #999; margin-bottom: 14px; display: none;">
+                更新: <span id="seasonalUpdated"></span>　出典: <span id="seasonalSource"></span>
+            </div>
+
+            <!-- 未入力時のガイド -->
+            <div id="seasonalEmptyNote" style="display: none; padding: 14px; background: #fff8e1; border-radius: 8px; border-left: 4px solid #ffc107; font-size: 0.85rem; color: #7a6010; margin-bottom: 14px;">
+                ⚠️ 季節予報がまだ入力されていません。<br>
+                「予報を更新」ボタンから、気象庁の3ヶ月予報をもとに入力してください。
+            </div>
+
+            <!-- 編集ボタン -->
+            <button type="button" onclick="openSeasonalEditor()" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; margin-bottom: 6px;">
+                ✏️ 予報を更新（月1回）
+            </button>
+            <p style="font-size: 0.72rem; color: #aaa; text-align: center; margin: 0;">
+                気象庁「3ヶ月予報」「エルニーニョ監視速報」をもとに入力
+            </p>
+
+            <!-- ========== 編集フォーム（初期非表示） ========== -->
+            <div id="seasonalEditorForm" style="display: none; margin-top: 16px; border: 1px solid #dde; border-radius: 8px; padding: 14px; background: #fafbff;">
+                <h5 style="margin: 0 0 12px; color: #3949ab;">📝 季節予報を入力</h5>
+                <p style="font-size: 0.78rem; color: #888; margin-bottom: 12px;">
+                    気象庁 <a href="https://www.jma.go.jp/jp/longfcst/" target="_blank" rel="noopener noreferrer" style="color:#1976d2;">3ヶ月予報</a> ・
+                    <a href="https://www.jma.go.jp/bosai/elnino/" target="_blank" rel="noopener noreferrer" style="color:#1976d2;">エルニーニョ監視速報</a> を参照
+                </p>
+
+                <div id="seasonalMonthEditors" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;"></div>
+
+                <div style="margin-bottom: 10px;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: #444;">🌊 ENSO状況</label>
+                    <input type="text" id="editorEnso" placeholder="例: エルニーニョ現象は終息、中立状態" style="width: 100%; margin-top: 4px; padding: 7px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.85rem; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: #444;">📝 専門家コメント（オホーツク高・太平洋高・チベット高など）</label>
+                    <textarea id="editorComment" rows="4" placeholder="例: 太平洋高気圧は北偏傾向。オホーツク海高気圧の張り出しは平年並みと予想..." style="width: 100%; margin-top: 4px; padding: 7px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.85rem; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: #444;">📄 出典</label>
+                    <input type="text" id="editorSource" placeholder="例: 気象庁3ヶ月予報（2026年5月）" style="width: 100%; margin-top: 4px; padding: 7px 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.85rem; box-sizing: border-box;">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" onclick="saveSeasonalOutlook()" style="flex: 1; padding: 10px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">💾 保存</button>
+                    <button type="button" onclick="closeSeasonalEditor()" style="flex: 1; padding: 10px; background: #e9ecef; color: #333; border: none; border-radius: 6px; cursor: pointer;">キャンセル</button>
                 </div>
             </div>
         </div>
@@ -2709,6 +2780,184 @@
             content.innerHTML = html;
         }
 
+        // ========================================
+        // 昆布シーズン長期予報システム
+        // ========================================
+
+        const SEASONAL_OUTLOOK_MAP = {
+            '大幅に多い':   { label: '大幅に多い',   color: '#1b5e20', bg: '#e8f5e9', icon: '☀️☀️' },
+            '平年より多い': { label: '平年より多い', color: '#2e7d32', bg: '#f1f8e9', icon: '☀️' },
+            '平年並み':     { label: '平年並み',     color: '#e65100', bg: '#fff8e1', icon: '🌤️' },
+            '平年より少ない': { label: '平年より少ない', color: '#b71c1c', bg: '#fce4ec', icon: '🌧️' },
+            '大幅に少ない': { label: '大幅に少ない',   color: '#880e4f', bg: '#f8bbd0', icon: '🌧️🌧️' }
+        };
+
+        const MONTH_NAMES = { '6': '6月', '7': '7月', '8': '8月', '9': '9月' };
+
+        /** 現在月（JST）以降のシーズン月を返す。5月以前なら全4ヶ月。 */
+        function getTargetMonths() {
+            const jstNow = new Date(Date.now() + 9 * 3600 * 1000);
+            const m = jstNow.getUTCMonth() + 1; // 1-12
+            if (m <= 5)  return ['6','7','8','9'];
+            if (m === 6) return ['7','8','9'];
+            if (m === 7) return ['8','9'];
+            if (m === 8) return ['9'];
+            return ['6','7','8','9']; // 9月以降はシーズン全体を振り返り
+        }
+
+        /** 月別カードを描画 */
+        function renderSeasonalCards(data) {
+            const months = getTargetMonths();
+            const container = document.getElementById('seasonalMonthCards');
+            const expertPanel = document.getElementById('seasonalExpertPanel');
+            const emptyNote = document.getElementById('seasonalEmptyNote');
+            const metaDiv = document.getElementById('seasonalMeta');
+
+            const hasAnyOutlook = months.some(m => data.months && data.months[m] && data.months[m].outlook);
+
+            if (!hasAnyOutlook) {
+                container.innerHTML = '';
+                emptyNote.style.display = 'block';
+                expertPanel.style.display = 'none';
+                metaDiv.style.display = 'none';
+                return;
+            }
+
+            emptyNote.style.display = 'none';
+
+            container.innerHTML = months.map(m => {
+                const entry = (data.months && data.months[m]) || {};
+                const outlook = entry.outlook || '';
+                const style = SEASONAL_OUTLOOK_MAP[outlook] || { label: outlook || '未入力', color: '#888', bg: '#f5f5f5', icon: '—' };
+                const confidence = entry.confidence ? `（${entry.confidence}）` : '';
+                const detail = entry.detail ? `<div style="margin-top:6px; font-size:0.8rem; color:#555; line-height:1.5;">${entry.detail}</div>` : '';
+                return `<div style="display:flex; align-items:center; gap:12px; padding:10px 14px; background:${style.bg}; border-radius:8px; border-left:4px solid ${style.color};">
+                    <div style="font-size:1.8rem; line-height:1;">${style.icon}</div>
+                    <div style="flex:1;">
+                        <div style="font-weight:700; font-size:0.95rem; color:#333;">${MONTH_NAMES[m]}</div>
+                        <div style="font-size:0.9rem; color:${style.color}; font-weight:600;">${style.label}${confidence}</div>
+                        ${detail}
+                    </div>
+                </div>`;
+            }).join('');
+
+            // ENSO・専門家コメント
+            const ensoRow = document.getElementById('seasonalEnsoRow');
+            const commentRow = document.getElementById('seasonalCommentRow');
+            if (data.enso) {
+                document.getElementById('seasonalEnsoText').textContent = data.enso;
+                ensoRow.style.display = 'block';
+            } else {
+                ensoRow.style.display = 'none';
+            }
+            if (data.expertComment) {
+                document.getElementById('seasonalCommentText').textContent = data.expertComment;
+                commentRow.style.display = 'block';
+            } else {
+                commentRow.style.display = 'none';
+            }
+            expertPanel.style.display = (data.enso || data.expertComment) ? 'block' : 'none';
+
+            // 更新情報
+            if (data.updated) {
+                document.getElementById('seasonalUpdated').textContent = data.updated;
+                document.getElementById('seasonalSource').textContent = data.source || '—';
+                metaDiv.style.display = 'block';
+            } else {
+                metaDiv.style.display = 'none';
+            }
+        }
+
+        /** タブ切替時に呼び出す読み込み */
+        async function loadSeasonalOutlook() {
+            try {
+                const resp = await fetch('/api/seasonal_outlook');
+                const data = await resp.json();
+                renderSeasonalCards(data);
+                // エディタが開いていたらフィールドにも反映
+                if (document.getElementById('seasonalEditorForm').style.display !== 'none') {
+                    populateEditorFields(data);
+                }
+            } catch (e) {
+                document.getElementById('seasonalMonthCards').innerHTML =
+                    '<p style="color:#d32f2f; font-size:0.85rem;">データの取得に失敗しました。</p>';
+            }
+        }
+
+        /** 編集フォームを月数に応じて動的生成してデータを埋める */
+        function populateEditorFields(data) {
+            const months = ['6','7','8','9'];
+            const editorContainer = document.getElementById('seasonalMonthEditors');
+            editorContainer.innerHTML = months.map(m => {
+                const entry = (data.months && data.months[m]) || {};
+                const outlookOptions = ['', '大幅に多い', '平年より多い', '平年並み', '平年より少ない', '大幅に少ない']
+                    .map(v => `<option value="${v}" ${entry.outlook === v ? 'selected' : ''}>${v || '（未選択）'}</option>`)
+                    .join('');
+                const confOptions = ['', '高', '中', '低']
+                    .map(v => `<option value="${v}" ${entry.confidence === v ? 'selected' : ''}>${v || '—'}</option>`)
+                    .join('');
+                return `<div style="padding:10px; background:#fff; border:1px solid #dde; border-radius:6px;">
+                    <div style="font-weight:700; margin-bottom:6px; font-size:0.88rem; color:#3949ab;">${MONTH_NAMES[m]} の乾燥日数見通し</div>
+                    <div style="display:flex; gap:8px; margin-bottom:6px;">
+                        <select id="editorOutlook_${m}" style="flex:2; padding:6px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem;" title="${MONTH_NAMES[m]}見通し">${outlookOptions}</select>
+                        <select id="editorConf_${m}" style="flex:1; padding:6px; border:1px solid #ccc; border-radius:4px; font-size:0.85rem;" title="${MONTH_NAMES[m]}信頼度">${confOptions}</select>
+                    </div>
+                    <input type="text" id="editorDetail_${m}" value="${entry.detail || ''}" placeholder="補足（任意）" style="width:100%; padding:5px 8px; border:1px solid #ccc; border-radius:4px; font-size:0.82rem; box-sizing:border-box;">
+                </div>`;
+            }).join('');
+
+            document.getElementById('editorEnso').value = data.enso || '';
+            document.getElementById('editorComment').value = data.expertComment || '';
+            document.getElementById('editorSource').value = data.source || '';
+        }
+
+        function openSeasonalEditor() {
+            fetch('/api/seasonal_outlook')
+                .then(r => r.json())
+                .then(data => {
+                    populateEditorFields(data);
+                    document.getElementById('seasonalEditorForm').style.display = 'block';
+                    document.getElementById('seasonalEditorForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+        }
+
+        function closeSeasonalEditor() {
+            document.getElementById('seasonalEditorForm').style.display = 'none';
+        }
+
+        async function saveSeasonalOutlook() {
+            const months = {};
+            ['6','7','8','9'].forEach(m => {
+                months[m] = {
+                    outlook:    (document.getElementById(`editorOutlook_${m}`) || {}).value || '',
+                    confidence: (document.getElementById(`editorConf_${m}`) || {}).value || '',
+                    detail:     (document.getElementById(`editorDetail_${m}`) || {}).value || ''
+                };
+            });
+            const payload = {
+                months,
+                enso:          document.getElementById('editorEnso').value.trim(),
+                expertComment: document.getElementById('editorComment').value.trim(),
+                source:        document.getElementById('editorSource').value.trim()
+            };
+            try {
+                const resp = await fetch('/api/seasonal_outlook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await resp.json();
+                if (result.status === 'ok') {
+                    closeSeasonalEditor();
+                    loadSeasonalOutlook();
+                } else {
+                    alert('保存に失敗しました: ' + (result.error || ''));
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
+            }
+        }
+
         function toggleNicknameEdit(index) {
             const editDiv = document.getElementById(`fav-edit-${index}`);
             if (!editDiv) return;
@@ -3716,6 +3965,9 @@
         window.toggleNicknameEdit = toggleNicknameEdit;
         window.cancelNicknameEdit = cancelNicknameEdit;
         window.saveSpotNicknameUI = saveSpotNicknameUI;
+        window.openSeasonalEditor = openSeasonalEditor;
+        window.closeSeasonalEditor = closeSeasonalEditor;
+        window.saveSeasonalOutlook = saveSeasonalOutlook;
 
         // ページが前面に戻ったときにPWAバッジをクリア
         document.addEventListener('visibilitychange', () => {
@@ -4903,6 +5155,10 @@
             // 等値線タブに切り替えた時、時刻オプションを初期化
             if (tabName === 'contour') {
                 updateContourTimeOptions();
+            }
+            // 季節予報タブに切り替えた時、最新データを取得
+            if (tabName === 'seasonal') {
+                loadSeasonalOutlook();
             }
         }
 

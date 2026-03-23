@@ -1,0 +1,13 @@
+{
+  "season": "2026",
+  "updated": null,
+  "source": "",
+  "expertComment": "",
+  "enso": "",
+  "months": {
+    "6":  {"outlook": "", "confidence": "", "detail": ""},
+    "7":  {"outlook": "", "confidence": "", "detail": ""},
+    "8":  {"outlook": "", "confidence": "", "detail": ""},
+    "9":  {"outlook": "", "confidence": "", "detail": ""}
+  }
+}

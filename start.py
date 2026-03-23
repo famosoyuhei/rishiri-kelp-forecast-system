@@ -639,6 +639,49 @@ def get_jma_warnings():
         }, 503
 
 
+SEASONAL_OUTLOOK_FILE = os.path.join(os.path.dirname(__file__), 'seasonal_outlook.json')
+
+@app.route('/api/seasonal_outlook', methods=['GET'])
+def get_seasonal_outlook():
+    """Get kelp-season long-range outlook (monthly admin input)"""
+    try:
+        if os.path.exists(SEASONAL_OUTLOOK_FILE):
+            with open(SEASONAL_OUTLOOK_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        else:
+            data = {
+                'season': str(datetime.now().year),
+                'updated': None,
+                'source': '',
+                'expertComment': '',
+                'enso': '',
+                'months': {str(m): {'outlook': '', 'confidence': '', 'detail': ''} for m in range(6, 10)}
+            }
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e), 'status': 'error'}), 500
+
+
+@app.route('/api/seasonal_outlook', methods=['POST'])
+def update_seasonal_outlook():
+    """Update kelp-season long-range outlook"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data'}), 400
+        # Only allow known fields
+        allowed = {'season', 'updated', 'source', 'expertComment', 'enso', 'months'}
+        cleaned = {k: v for k, v in data.items() if k in allowed}
+        from datetime import timezone, timedelta
+        jst = timezone(timedelta(hours=9))
+        cleaned['updated'] = datetime.now(jst).strftime('%Y-%m-%d')
+        with open(SEASONAL_OUTLOOK_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cleaned, f, ensure_ascii=False, indent=2)
+        return jsonify({'status': 'ok', 'updated': cleaned['updated']})
+    except Exception as e:
+        return jsonify({'error': str(e), 'status': 'error'}), 500
+
+
 @app.route('/api/forecast')
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
