@@ -767,6 +767,76 @@
         .expert-only {
             display: none;
         }
+
+        /* ===== チャットボット ===== */
+        #chatBotBtn {
+            position: fixed; bottom: 20px; right: 20px; z-index: 3000;
+            width: 56px; height: 56px; border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; border: none; font-size: 1.5rem; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102,126,234,0.5); transition: transform 0.2s;
+        }
+        #chatBotBtn:hover { transform: scale(1.1); }
+        #chatBotPanel {
+            position: fixed; bottom: 84px; right: 20px; z-index: 3000;
+            width: 340px; max-width: calc(100vw - 32px);
+            height: 500px; max-height: calc(100vh - 120px);
+            background: white; border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        #chatHeader {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white; padding: 12px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-weight: 600; font-size: 0.95rem; flex-shrink: 0;
+        }
+        #chatMessages {
+            flex: 1; overflow-y: auto; padding: 12px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .chat-bubble {
+            max-width: 82%; padding: 8px 12px; border-radius: 12px;
+            font-size: 0.83rem; line-height: 1.55; word-break: break-word;
+        }
+        .chat-bubble.bot {
+            background: #f0f4ff; color: #333;
+            align-self: flex-start; border-bottom-left-radius: 4px;
+        }
+        .chat-bubble.user {
+            background: #667eea; color: white;
+            align-self: flex-end; border-bottom-right-radius: 4px;
+        }
+        .chat-typing {
+            align-self: flex-start; padding: 10px 16px;
+            background: #f0f4ff; border-radius: 12px; border-bottom-left-radius: 4px;
+            font-size: 1.3rem; letter-spacing: 3px;
+            animation: chatPulse 1s ease-in-out infinite;
+        }
+        @keyframes chatPulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+        #chatQuickReplies {
+            padding: 6px 8px 4px; display: flex; gap: 5px;
+            flex-wrap: wrap; border-top: 1px solid #f0f0f0; flex-shrink: 0;
+        }
+        .chat-qr-btn {
+            padding: 4px 10px; background: #f0f4ff; color: #667eea;
+            border: 1px solid #c5caf5; border-radius: 20px;
+            font-size: 0.76rem; cursor: pointer; white-space: nowrap;
+        }
+        .chat-qr-btn:hover { background: #e0e8ff; }
+        #chatInputRow {
+            display: flex; gap: 6px; padding: 8px;
+            border-top: 1px solid #eee; flex-shrink: 0;
+        }
+        #chatTextInput {
+            flex: 1; padding: 7px 12px; border: 1px solid #ddd;
+            border-radius: 20px; font-size: 0.85rem; outline: none;
+        }
+        #chatTextInput:focus { border-color: #667eea; }
+        #chatSendBtn {
+            padding: 7px 14px; background: #667eea; color: white;
+            border: none; border-radius: 20px; font-size: 0.85rem; cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -5437,6 +5507,486 @@
             deferredPrompt = null;
         });
     </script>
+
+    <!-- ===== チャットボット JS ===== -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ----------------------------------------
+        // パターン定義（キーワード配列 + 重み）
+        // ----------------------------------------
+        const PATTERNS = [
+            { id: 'greeting',     kw: ['こんにちは','こんにちわ','はじめまして','おはよう','こんばんは','やあ','よろしく','hello','hi','初めて'] },
+            { id: 'howto',        kw: ['使い方','操作','ヘルプ','教えて','説明','インストール','初心者','どうやって','何ができる','機能','できること','わからない'] },
+            { id: 'today',        kw: ['今日','本日','きょう','今から','今すぐ','今は','今日は'] },
+            { id: 'tomorrow',     kw: ['明日','あした','明朝','明日は'], w: 2 },
+            { id: 'week',         kw: ['今週','一週間','１週間','7日間','向こう','何日','何日間','何回','これから何日','先週'] },
+            { id: 'conditions',   kw: ['条件','基準','閾値','何ミリ','降水量','湿度','風速','判定基準','どんな天気'] },
+            { id: 'score',        kw: ['スコア','点数','何点','乾燥スコア','100点','80点','何点以上','採点'] },
+            { id: 'notification', kw: ['通知','お知らせ','プッシュ','アラート','通知設定','通知したい','知らせて','メール'] },
+            { id: 'add_spot',     kw: ['干場を追加','干場追加','新しい干場','地点を追加','場所を追加','追加したい','追加方法'] },
+            { id: 'delete_spot',  kw: ['干場を削除','削除','消したい','消す'] },
+            { id: 'favorites',    kw: ['お気に入り','おきにいり','ブックマーク','★','お気に入りとは','スター'] },
+            { id: 'nickname',     kw: ['ニックネーム','呼び名','名前を変え','名前をつけ','別名','愛称'] },
+            { id: 'weather_now',  kw: ['今の天気','現在の天気','今天気','気温は','今の気温','現在気温'] },
+            { id: 'warning',      kw: ['警報','注意報','気象警報','大雨','暴風','暴風雪','波浪警報'] },
+            { id: 'seasonal',     kw: ['今年の夏','シーズン','長期予報','エルニーニョ','ラニーニャ','太平洋高気圧','オホーツク','チベット','夏全体','今後の見通し'] },
+            { id: 'terrain',      kw: ['地形','森林','海岸','標高','補正','場所によって','なぜ違う','差がある'] },
+            { id: 'offday',       kw: ['沖止め','沖止め日','休み','休漁','出漁','漁期','漁休日'] },
+            { id: 'accuracy',     kw: ['精度','正確','当たる','信頼','どのくらい正しい','予報の精度','外れる'] },
+            { id: 'disclaimer',   kw: ['免責','責任','保証','波浪','出漁判断','安全','海の安全'] },
+            { id: 'emagram',      kw: ['エマグラム','上空','高層','大気','層厚','逆転層'] },
+            { id: 'contour',      kw: ['等値線','等温線','等湿線','等圧線','解析マップ','島内全域'] },
+            { id: 'record',       kw: ['記録','乾燥記録','干せた','干せなかった','完全乾燥','中止','結果を登録','実績'] },
+            { id: 'filter',       kw: ['絞り込み','エリア','地区','部落','仙法志','鴛泊','鬼脇','沓形','絞込','フィルタ'] },
+            { id: 'map',          kw: ['地図','マップ','マーカー','ピン','◉','●','地図の見方'] },
+            { id: 'pwa',          kw: ['ホーム画面','アプリ追加','インストール','スマホに追加','PWA','ブックマーク追加'] },
+        ];
+
+        // クイックリプライ群
+        const QR_DEFAULT  = ['今日干せる？','今週の予報','使い方を教えて','通知の設定','干場の追加','乾燥の条件'];
+        const QR_FORECAST = ['明日は？','今週全体は？','条件の詳細','スコアとは？','警報は出てる？'];
+        const QR_HOWTO    = ['干場を追加したい','通知を設定したい','お気に入りとは？','記録の付け方','エリア絞込とは？'];
+        const QR_AREA     = ['今日の予報', '今週全体は？', '使い方を教えて', '乾燥の条件'];
+
+        // ----------------------------------------
+        // 内部状態
+        // ----------------------------------------
+        let chatOpen = false;
+        let chatAreaIndex = null; // 部落/地区名 → スポット のマップ
+
+        // ----------------------------------------
+        // エリア名インデックスを構築
+        // ----------------------------------------
+        function buildAreaIndex() {
+            if (chatAreaIndex) return chatAreaIndex;
+            chatAreaIndex = {};
+            const spots = (typeof hoshibaSpots !== 'undefined') ? hoshibaSpots : [];
+            spots.forEach(s => {
+                if (!s.name.startsWith('H_')) return;
+                [s.buraku, s.district, s.town].forEach(n => {
+                    if (n && n !== '—' && n.length >= 2) {
+                        if (!chatAreaIndex[n]) chatAreaIndex[n] = [];
+                        chatAreaIndex[n].push(s);
+                    }
+                });
+            });
+            return chatAreaIndex;
+        }
+
+        function detectArea(text) {
+            const idx = buildAreaIndex();
+            // 長い名前を優先（「沓形泉町」が「沓形」より先にマッチ）
+            const names = Object.keys(idx).sort((a, b) => b.length - a.length);
+            return names.find(n => text.includes(n)) || null;
+        }
+
+        // ----------------------------------------
+        // パターンスコアリング
+        // ----------------------------------------
+        function bestPattern(text) {
+            let best = null, bestScore = 0;
+            for (const p of PATTERNS) {
+                let score = 0;
+                for (const kw of p.kw) if (text.includes(kw)) score += (p.w || 1);
+                if (score > bestScore) { bestScore = score; best = p; }
+            }
+            return bestScore > 0 ? best : null;
+        }
+
+        // ----------------------------------------
+        // UI ヘルパー
+        // ----------------------------------------
+        function escHtml(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function addMessage(text, role) {
+            const box = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'chat-bubble ' + role;
+            div.innerHTML = escHtml(text).replace(/\n/g,'<br>');
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function showTyping() {
+            const box = document.getElementById('chatMessages');
+            const el = document.createElement('div');
+            el.className = 'chat-typing';
+            el.id = 'chatTyping';
+            el.textContent = '···';
+            box.appendChild(el);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function hideTyping() {
+            const el = document.getElementById('chatTyping');
+            if (el) el.remove();
+        }
+
+        function setQuickReplies(labels) {
+            const div = document.getElementById('chatQuickReplies');
+            div.innerHTML = labels.map(l =>
+                `<button type="button" class="chat-qr-btn" onclick="window.sendChatQuickReply(${JSON.stringify(l)})">${escHtml(l)}</button>`
+            ).join('');
+        }
+
+        // ----------------------------------------
+        // 予報ヘルパー
+        // ----------------------------------------
+        function suitLabel(s) {
+            return s === 'suitable' ? '✅ 乾燥適' : s === 'marginal' ? '⚠️ やや不適' : '❌ 不適';
+        }
+
+        function getRepSpot() {
+            // お気に入りがあればその先頭、なければ島中心近くのスポット
+            if (typeof favorites !== 'undefined' && favorites.length > 0) {
+                const name = favorites[0];
+                const spots = (typeof hoshibaSpots !== 'undefined') ? hoshibaSpots : [];
+                const found = spots.find(s => s.name === name);
+                if (found) return found;
+            }
+            // デフォルト：沓形アメダス付近
+            return { lat: 45.1783, lon: 141.1383, name: '島中心部' };
+        }
+
+        async function fetchForecast(lat, lon) {
+            const resp = await fetch(`/api/forecast?lat=${lat}&lon=${lon}`);
+            return resp.json();
+        }
+
+        // ----------------------------------------
+        // レスポンス生成
+        // ----------------------------------------
+        async function generateResponse(text) {
+            // 1. エリア名 + 予報系クエリ
+            const area = detectArea(text);
+            const forecastTriggers = ['何日','干せ','予報','どうです','今週','今日','天気','乾燥','スコア'];
+            if (area && forecastTriggers.some(t => text.includes(t))) {
+                return await respondAreaForecast(area, text);
+            }
+
+            // 2. パターンマッチ
+            const p = bestPattern(text);
+            if (!p) return respondUnknown();
+
+            switch (p.id) {
+                case 'greeting':     return respondGreeting();
+                case 'howto':        return respondHowto();
+                case 'today':        return await respondDayForecast(0);
+                case 'tomorrow':     return await respondDayForecast(1);
+                case 'week':         return await respondWeekForecast();
+                case 'conditions':   return respondConditions();
+                case 'score':        return respondScore();
+                case 'notification': return respondNotification();
+                case 'add_spot':     return respondAddSpot();
+                case 'delete_spot':  return respondDeleteSpot();
+                case 'favorites':    return respondFavorites();
+                case 'nickname':     return respondNickname();
+                case 'weather_now':  return await respondWeatherNow();
+                case 'warning':      return await respondWarning();
+                case 'seasonal':     return await respondSeasonal();
+                case 'terrain':      return respondTerrain();
+                case 'offday':       return respondOffDay();
+                case 'accuracy':     return respondAccuracy();
+                case 'disclaimer':   return respondDisclaimer();
+                case 'emagram':      return respondEmagram();
+                case 'contour':      return respondContour();
+                case 'record':       return respondRecord();
+                case 'filter':       return respondFilter();
+                case 'map':          return respondMap();
+                case 'pwa':          return respondPwa();
+                default:             return respondUnknown();
+            }
+        }
+
+        // ---------- 静的レスポンス ----------
+
+        function respondGreeting() {
+            setQuickReplies(QR_DEFAULT);
+            return '🌿 こんにちは！利尻干場予報アシスタントです。\n昆布干しの予報や使い方についてお答えします。\n\n下のボタンを押すか、質問を入力してください👇';
+        }
+
+        function respondHowto() {
+            setQuickReplies(QR_HOWTO);
+            return '📱 アプリの基本的な使い方\n\n① 地図の◉をタップ\n　→ その干場の7日間の乾燥予報を表示\n\n② ★でお気に入り登録\n　→ 毎日16:00（翌日予報）・01:30（当日予報）に通知\n\n③ エリア絞込タブ\n　→ 町・地区・部落で干場を絞り込める\n\n④ 干場管理\n　→ 新しい干場の追加・削除\n\n「○○（部落名）では何日干せますか？」のように聞くと予報もお答えします。';
+        }
+
+        function respondConditions() {
+            setQuickReplies(['スコアとは？', '今日干せる？', '地形補正とは？', '予報の精度は？']);
+            return '🌤️ 乾燥適性の判定条件\n\n以下の3条件をすべて満たした日が「乾燥適」です：\n\n☔ 降水量：0mm（1ミリでも雨があればNG）\n💧 最低湿度：94%以下\n💨 平均風速：2.0m/s以上\n\nこの閾値は2025年6〜8月の21件の実測記録から導き出されています。';
+        }
+
+        function respondScore() {
+            setQuickReplies(['乾燥の条件', '今日干せる？', '今週の予報']);
+            return '📊 乾燥スコア（0〜100点）の見方\n\n🟢 80〜100点：乾燥に最適\n🟡 60〜79点：良好\n🟠 40〜59点：やや不良\n🔴 0〜39点：不適\n\n降水量・湿度・風速の3条件をもとに、達成度を0〜100点で数値化しています。3条件すべて満たせば高スコアになります。';
+        }
+
+        function respondNotification() {
+            setQuickReplies(['お気に入りとは？', '沖止め日設定とは？', '使い方を教えて']);
+            return '🔔 通知の設定手順\n\n① 左サイドバーの「🔔 通知設定」を開く\n② 「通知を有効にする」をONにする\n③ ブラウザの通知許可ダイアログで「許可」を選ぶ\n④ 干場を★お気に入りに追加すると通知対象になる\n\n通知タイミング：\n・毎日16:00：翌日の乾燥予報\n・毎日01:30：当日の最新予報\n・緊急アラート：スコアが30点以上急変した場合\n・気象警報：利尻島に警報発表時（即時）';
+        }
+
+        function respondAddSpot() {
+            setQuickReplies(['干場を削除したい', 'お気に入りとは？', '使い方を教えて']);
+            return '➕ 干場の追加方法\n\n① 左サイドバーの「干場管理」を開く\n② 「➕ 新しい干場を追加」をタップ\n③ 地図上の追加したい場所をタップ\n\n座標から自動的に干場名（H_XXXX_XXXX形式）が付きます。追加した干場はCSV・KML・JSファイルに自動同期されます。';
+        }
+
+        function respondDeleteSpot() {
+            setQuickReplies(['干場を追加したい', '使い方を教えて']);
+            return '🗑️ 干場の削除について\n\n削除は以下の5条件をすべて満たす場合のみ可能です：\n\n① 乾燥記録データがない\n② お気に入りに登録されていない\n③ 通知設定で使用されていない\n④ 同時編集ロック中でない（5分間）\n⑤ 学習データとして使用されていない\n\n条件を満たす場合、干場選択後に「削除」ボタンが表示されます。';
+        }
+
+        function respondFavorites() {
+            setQuickReplies(['通知の設定', '呼び名をつけたい', '使い方を教えて']);
+            return '⭐ お気に入り機能\n\n干場をタップ → 「★ お気に入りに追加」をタップするだけです。\n\nお気に入り登録のメリット：\n・通知の対象になる（16:00・01:30・緊急アラート）\n・サイドバーのお気に入り一覧で素早くアクセス\n・複数登録できます（登録数の上限なし）';
+        }
+
+        function respondNickname() {
+            setQuickReplies(['お気に入りとは？', '使い方を教えて']);
+            return '✏️ 呼び名（ニックネーム）機能\n\nお気に入りに登録した干場に、自分だけの呼び名をつけられます。\n\n設定方法：\n① お気に入り一覧を開く\n② 干場名の横の「✏️」をタップ\n③ 好きな名前を入力して保存\n\n⚠️ 呼び名はこの端末だけに保存されます。他のユーザーには表示されません（乾燥記録は全員で共有）。';
+        }
+
+        function respondTerrain() {
+            setQuickReplies(['乾燥の条件', '予報の精度は？', '使い方を教えて']);
+            return '🏔️ 地形補正について\n\nOpen-Meteo（5km格子）のデータを干場スケール（数百m）に補正しています：\n\n🌲 森林：風速を60%減衰\n🌊 海岸：海からの風が吹く時は風速増加・湿度上昇\n⛰️ 標高：気圧低下で湿度を補正\n\nこれにより、同じ気象データでも干場の位置や向きによって異なる予報が出ます。山頂（利尻山）のデータはonshore/offshore判定にも使われています。';
+        }
+
+        function respondOffDay() {
+            setQuickReplies(['通知の設定', '漁期設定とは？', '使い方を教えて']);
+            return '⛵ 沖止め日・漁期設定\n\n沖止め日（漁がない日）を設定すると、前日の16:00通知が自動でスキップされます。\n\n設定場所：通知設定パネル内の「🚢 沖止め日設定」\n\n漁期（6〜9月推奨）を設定すると、漁期外は通知が届かなくなります。「📅 漁期設定」から開始日・終了日を登録してください。';
+        }
+
+        function respondAccuracy() {
+            setQuickReplies(['乾燥の条件', '地形補正とは？', '予報について']);
+            return '📈 予報精度について\n\nベースは気象庁JMA MSM（5km解像度）モデルです。\n\n2025年6〜8月の21件の実測データとの照合では：\n・降水量0mm条件：高精度で一致\n・湿度・風速条件：概ね一致、地形要因で誤差あり\n\n7日先になるほど誤差が大きくなります。前日夜・当日早朝の予報を重視してください。\n\n⚠️ この予報は干場の乾燥条件のみです。波浪・海況は含まれません。';
+        }
+
+        function respondDisclaimer() {
+            setQuickReplies(['出漁判断について', '予報の精度は？', '使い方を教えて']);
+            return '⚠️ 重要な免責事項\n\nこのアプリは干場における昆布の乾燥条件のみを予測します。\n\n❌ 予報に含まれないもの：\n・波浪・うねり（海の荒れ具合）\n・視界・霧（航行安全性）\n・潮流・海流（漁場条件）\n\n出漁判断には必ず以下も確認してください：\n🌊 気象庁 波浪予想\n🚢 海上保安庁 海の安全情報\n📡 地元漁協・ラジオ・テレビの海況情報';
+        }
+
+        function respondEmagram() {
+            setQuickReplies(['等値線解析とは？', '地形補正とは？', '使い方を教えて']);
+            return '📉 エマグラム機能\n\n上空の大気の縦断面（温度・湿度の鉛直分布）を表示する気象解析ツールです。\n\n📍 見方：\n・赤線：気温（右に高温）\n・青線：露点温度（気温に近いほど湿潤）\n・気温と露点が接近 → 霧・雲が発生しやすい層\n・逆転層 → 霧や汚染物質が閉じ込められる\n\nサイドバーの「🌪️ 等値線解析」タブから確認できます。';
+        }
+
+        function respondContour() {
+            setQuickReplies(['エマグラムとは？', '使い方を教えて']);
+            return '🌪️ 等値線解析\n\n利尻島全体の気象分布を解析するツールです。\n\nサイドバーの「🌪️ 等値線解析」タブで以下を確認できます：\n・等温線（気温分布）\n・等湿線（湿度分布）\n・等圧線（気圧分布）\n・風向・風速場\n・降水量分布\n\n特定の時刻を選択して、島内の気象の空間的な差を確認できます。';
+        }
+
+        function respondRecord() {
+            setQuickReplies(['お気に入りとは？', '記録は共有される？', '使い方を教えて']);
+            return '📋 乾燥記録の付け方\n\n① 地図から干場を選択\n② 日付を選んで「記録を追加」をタップ\n③ 結果を選択：\n　・完全乾燥\n　・干したが完全には乾かせなかった\n　・中止\n\n記録はすべてのユーザーで共有されます（乾燥予報の精度向上に活用）。\n\n⚠️ 削除できない条件のひとつになるため、慎重に登録してください。';
+        }
+
+        function respondFilter() {
+            setQuickReplies(['地図の見方', '干場を追加したい', '使い方を教えて']);
+            return '📍 エリア絞込機能\n\nサイドバーの「📍 エリア絞込」タブで使えます。\n\n絞込の階層：\n町（利尻富士町・利尻町）\n　↓\n地区（鬼脇・鴛泊・沓形 など）\n　↓\n部落（野中・南浜・富士 など）\n\n選択するとそのエリアの干場だけが地図に表示され、右パネルに一覧が出ます。';
+        }
+
+        function respondMap() {
+            setQuickReplies(['エリア絞込とは？', '干場を追加したい', '使い方を教えて']);
+            return '🗺️ 地図の見方\n\n◉ マーカー：各干場の位置\n　・色は乾燥スコアに応じて変化（緑：高スコア、赤：低スコア）\n\nマーカーをタップすると：\n・7日間の乾燥予報\n・スコアグラフ\n・乾燥記録の確認・追加\n\n地図はOpenStreetMapを使用。ピンチイン/アウトで拡大縮小できます。';
+        }
+
+        function respondPwa() {
+            setQuickReplies(['通知の設定', '使い方を教えて']);
+            return '📲 ホーム画面への追加（PWA）\n\nこのアプリはホーム画面に追加してアプリとして使えます。\n\n【iPhone（Safari）】\n① 下部の「共有」ボタンをタップ\n② 「ホーム画面に追加」を選択\n\n【Android（Chrome）】\n① ブラウザのメニュー（⋮）をタップ\n② 「ホーム画面に追加」を選択\n\nオフライン時も最後のデータをキャッシュから表示します。';
+        }
+
+        function respondUnknown() {
+            setQuickReplies(QR_DEFAULT);
+            return 'すみません、その質問にはお答えできませんでした🙏\n\n以下のような聞き方を試してみてください：\n・「今日干せますか？」\n・「○○（部落名）では今週何日干せますか？」\n・「通知の設定方法は？」\n・「乾燥できる条件を教えて」';
+        }
+
+        // ---------- 動的レスポンス（API呼び出し） ----------
+
+        async function respondDayForecast(index) {
+            const spot = getRepSpot();
+            try {
+                const data = await fetchForecast(spot.lat, spot.lon);
+                const entry = data.forecasts && data.forecasts[index];
+                if (!entry) return '予報データを取得できませんでした。';
+                const s = entry.daily_summary;
+                const label = index === 0 ? '今日' : '明日';
+                const dayNames = ['日','月','火','水','木','金','土'];
+                const d = new Date(entry.date);
+                const dow = dayNames[d.getDay()];
+                setQuickReplies(QR_FORECAST);
+                return `${label}（${entry.date}・${dow}）の予報\n\n${suitLabel(s.suitability)}\nスコア: ${s.drying_score}点\n\n☔ 降水量: ${s.precipitation}mm\n💧 最低湿度: ${s.humidity}%\n💨 平均風速: ${s.wind_speed}m/s\n\n📍 ${spot.name || '代表地点'}`;
+            } catch(e) {
+                return '予報データの取得に失敗しました。サーバーが起動しているか確認してください。';
+            }
+        }
+
+        async function respondWeekForecast() {
+            const spot = getRepSpot();
+            try {
+                const data = await fetchForecast(spot.lat, spot.lon);
+                if (!data.forecasts) return '予報データを取得できませんでした。';
+                let ok = 0, marginal = 0, bad = 0;
+                const lines = data.forecasts.slice(0,7).map(f => {
+                    const s = f.daily_summary.suitability;
+                    const score = f.daily_summary.drying_score;
+                    if (s === 'suitable')  ok++;
+                    else if (s === 'marginal') marginal++;
+                    else bad++;
+                    const icon = s === 'suitable' ? '✅' : s === 'marginal' ? '⚠️' : '❌';
+                    return `${icon} ${f.date}  ${score}点`;
+                }).join('\n');
+                setQuickReplies(QR_FORECAST);
+                return `向こう7日間の乾燥予報\n📍 ${spot.name || '代表地点'}\n\n${lines}\n\n✅ 乾燥適: ${ok}日\n⚠️ やや不適: ${marginal}日\n❌ 不適: ${bad}日`;
+            } catch(e) {
+                return '予報データの取得に失敗しました。';
+            }
+        }
+
+        async function respondAreaForecast(areaName, text) {
+            const idx = buildAreaIndex();
+            const spots = (idx[areaName] || []).filter(s => s.name.startsWith('H_'));
+            if (spots.length === 0) {
+                return `「${areaName}」の干場データが見つかりませんでした。\n部落名・地区名で検索しています（例：野中、南浜、鴛泊）。`;
+            }
+            const rep = spots[0];
+            // 今日 or 今週どちらを聞いているか
+            const wantDay = ['今日','本日','きょう'].some(t => text.includes(t));
+            try {
+                const data = await fetchForecast(rep.lat, rep.lon);
+                if (!data.forecasts) return '予報データを取得できませんでした。';
+                if (wantDay) {
+                    const f = data.forecasts[0];
+                    const s = f.daily_summary;
+                    setQuickReplies(QR_AREA);
+                    return `${areaName}・今日（${f.date}）の予報\n\n${suitLabel(s.suitability)}\nスコア: ${s.drying_score}点\n\n☔ 降水量: ${s.precipitation}mm\n💧 最低湿度: ${s.humidity}%\n💨 平均風速: ${s.wind_speed}m/s\n\n📍 代表地点: ${rep.name}`;
+                }
+                let ok = 0, marginal = 0, bad = 0;
+                data.forecasts.slice(0,7).forEach(f => {
+                    const s = f.daily_summary.suitability;
+                    if (s === 'suitable') ok++;
+                    else if (s === 'marginal') marginal++;
+                    else bad++;
+                });
+                setQuickReplies(QR_AREA);
+                return `${areaName}エリアの向こう7日間\n📍 代表地点: ${rep.name}\n\n✅ 乾燥適: ${ok}日\n⚠️ やや不適: ${marginal}日\n❌ 不適: ${bad}日\n\n（${spots.length}箇所の干場があります）`;
+            } catch(e) {
+                return `${areaName}の予報データ取得に失敗しました。`;
+            }
+        }
+
+        async function respondWeatherNow() {
+            try {
+                const resp = await fetch('/api/weather');
+                const d = await resp.json();
+                const c = d.current || {};
+                setQuickReplies(['今日干せる？', '警報は出てる？']);
+                return `現在の天気（利尻島）\n\n🌡️ 気温: ${c.temperature != null ? c.temperature + '°C' : '—'}\n💨 風速: ${c.wind_speed != null ? c.wind_speed.toFixed(1) + 'm/s' : '—'}\n🧭 風向: ${c.wind_direction != null ? c.wind_direction + '°' : '—'}`;
+            } catch(e) {
+                return '現在の天気データを取得できませんでした。';
+            }
+        }
+
+        async function respondWarning() {
+            try {
+                const resp = await fetch('/api/jma_warnings');
+                const d = await resp.json();
+                setQuickReplies(['今日干せる？', '出漁判断について']);
+                if (!d.hasWarnings || d.warnings.length === 0) {
+                    return '⭕ 現在、利尻島への気象警報・注意報の発表はありません。';
+                }
+                const lines = d.warnings.map(a =>
+                    `📍 ${a.area}\n` + a.warnings.map(w => `　⚠️ ${w.name}（${w.status}）`).join('\n')
+                ).join('\n');
+                return `⚠️ 気象庁 警報・注意報（発表中）\n\n${lines}\n\n出漁判断には地元漁協・海上保安庁の情報も必ず確認してください。`;
+            } catch(e) {
+                return '警報情報を取得できませんでした。';
+            }
+        }
+
+        async function respondSeasonal() {
+            try {
+                const resp = await fetch('/api/seasonal_outlook');
+                const d = await resp.json();
+                setQuickReplies(['乾燥の条件', '予報の精度は？']);
+                if (!d.months || !Object.values(d.months).some(m => m.outlook)) {
+                    return '📅 季節予報はまだ入力されていません。\n\nサイドバーの「📅 昆布季節予報」タブから確認・入力できます。\n気象庁の3ヶ月予報をもとに月1回更新する仕組みです。';
+                }
+                const mLines = Object.entries(d.months)
+                    .filter(([,v]) => v.outlook)
+                    .map(([m,v]) => `${m}月: ${v.outlook}${v.confidence ? '（信頼度:'+v.confidence+'）' : ''}`)
+                    .join('\n');
+                let text = `📅 ${d.season || '今年'}の昆布シーズン長期予報\n\n${mLines}`;
+                if (d.enso) text += `\n\n🌊 ENSO: ${d.enso}`;
+                if (d.expertComment) text += `\n\n📝 ${d.expertComment}`;
+                if (d.updated) text += `\n\n更新: ${d.updated}`;
+                return text;
+            } catch(e) {
+                return '季節予報データを取得できませんでした。';
+            }
+        }
+
+        // ----------------------------------------
+        // メインディスパッチャー
+        // ----------------------------------------
+        async function handleMessage(text) {
+            if (!text.trim()) return;
+            addMessage(text, 'user');
+            document.getElementById('chatTextInput').value = '';
+            showTyping();
+            // 最小400ms待機（自然な応答感）
+            const [response] = await Promise.all([
+                generateResponse(text),
+                new Promise(r => setTimeout(r, 400))
+            ]);
+            hideTyping();
+            addMessage(response, 'bot');
+        }
+
+        // ----------------------------------------
+        // 公開API
+        // ----------------------------------------
+        window.toggleChatBot = function() {
+            chatOpen = !chatOpen;
+            document.getElementById('chatBotPanel').style.display = chatOpen ? 'flex' : 'none';
+            if (chatOpen && document.getElementById('chatMessages').children.length === 0) {
+                // 初回オープン時のあいさつ
+                addMessage(respondGreeting(), 'bot');
+            }
+            if (chatOpen) document.getElementById('chatTextInput').focus();
+        };
+
+        window.submitChatMessage = function() {
+            const input = document.getElementById('chatTextInput');
+            const text = input.value.trim();
+            if (text) handleMessage(text);
+        };
+
+        window.sendChatQuickReply = function(label) {
+            handleMessage(label);
+        };
+
+    })();
+    </script>
+
+    <!-- ===== チャットボット ===== -->
+    <button type="button" id="chatBotBtn" onclick="toggleChatBot()" title="干場アシスタント">💬</button>
+    <div id="chatBotPanel" style="display:none;" role="dialog" aria-label="干場アシスタント">
+        <div id="chatHeader">
+            <span>🤖 干場アシスタント</span>
+            <button type="button" onclick="toggleChatBot()" style="background:none;border:none;color:white;font-size:1.1rem;cursor:pointer;line-height:1;" aria-label="閉じる">✕</button>
+        </div>
+        <div id="chatMessages" aria-live="polite"></div>
+        <div id="chatQuickReplies"></div>
+        <div id="chatInputRow">
+            <input type="text" id="chatTextInput" placeholder="質問を入力..." autocomplete="off"
+                   onkeydown="if(event.key==='Enter')submitChatMessage()">
+            <button type="button" id="chatSendBtn" onclick="submitChatMessage()">送信</button>
+        </div>
+    </div>
 
 </body>
 </html>
