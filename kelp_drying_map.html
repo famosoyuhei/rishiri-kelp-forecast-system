@@ -5542,10 +5542,11 @@
             { id: 'filter',       kw: ['絞り込み','エリア','地区','部落','仙法志','鴛泊','鬼脇','沓形','絞込','フィルタ'] },
             { id: 'map',          kw: ['地図','マップ','マーカー','ピン','◉','●','地図の見方'] },
             { id: 'pwa',          kw: ['ホーム画面','アプリ追加','インストール','スマホに追加','PWA','ブックマーク追加'] },
+            { id: 'compare_dir',  kw: ['東側と西側','西側と東側','南側と北側','北側と南側','東と西','西と東','南と北','比べて','どちらが','差はある','違いは'] },
         ];
 
         // クイックリプライ群
-        const QR_DEFAULT  = ['今日干せる？','今週の予報','使い方を教えて','通知の設定','干場の追加','乾燥の条件'];
+        const QR_DEFAULT  = ['今日干せる？','今週の予報','東側と西側を比べて','使い方を教えて','通知の設定','乾燥の条件'];
         const QR_FORECAST = ['明日は？','今週全体は？','条件の詳細','スコアとは？','警報は出てる？'];
         const QR_HOWTO    = ['干場を追加したい','通知を設定したい','お気に入りとは？','記録の付け方','エリア絞込とは？'];
         const QR_AREA     = ['今日の予報', '今週全体は？', '使い方を教えて', '乾燥の条件'];
@@ -5658,12 +5659,110 @@
         }
 
         // ----------------------------------------
+        // 方位計算（利尻山頂を原点）
+        // ----------------------------------------
+        const SUMMIT_LAT = 45.1800, SUMMIT_LON = 141.2392;
+
+        function spotBearing(s) {
+            const dLat = s.lat - SUMMIT_LAT;
+            const dLon = s.lon - SUMMIT_LON;
+            return ((Math.atan2(dLon, dLat) * 180 / Math.PI) + 360) % 360;
+        }
+
+        function bearingToDir(b) {
+            if (b < 45 || b >= 315) return '北';
+            if (b < 135) return '東';
+            if (b < 225) return '南';
+            return '西';
+        }
+
+        /** 方角キーワード → 代表スポットを返す */
+        function getDirKeyword(text) {
+            if (/(東側|東の|島の東|鬼脇側)/.test(text)) return '東';
+            if (/(西側|西の|島の西|沓形側)/.test(text)) return '西';
+            if (/(南側|南の|島の南|仙法志側)/.test(text)) return '南';
+            if (/(北側|北の|島の北|鴛泊側)/.test(text)) return '北';
+            return null;
+        }
+
+        function getSpotsByDir(dir) {
+            const spots = (typeof hoshibaSpots !== 'undefined') ? hoshibaSpots : [];
+            return spots.filter(s => s.name.startsWith('H_') && bearingToDir(spotBearing(s)) === dir);
+        }
+
+        function repSpotForDir(dir) {
+            const spots = getSpotsByDir(dir);
+            if (!spots.length) return null;
+            // 代表スポット：中央値的な1点（ソート後の中間）
+            const sorted = [...spots].sort((a, b) => spotBearing(a) - spotBearing(b));
+            return sorted[Math.floor(sorted.length / 2)];
+        }
+
+        function dirLabel(dir) {
+            const spots = getSpotsByDir(dir);
+            const burakunNames = [...new Set(spots.map(s => s.buraku).filter(n => n && n !== '—'))];
+            return `${dir}側（${burakunNames.slice(0,3).join('・')}${burakunNames.length > 3 ? '…' : ''}）`;
+        }
+
+        /** 2エリアの乾燥スコアを比較してコメント生成 */
+        function compareComment(n1, s1, n2, s2) {
+            const diff = s1.drying_score - s2.drying_score;
+            const absDiff = Math.abs(diff);
+            const better = diff >= 0 ? n1 : n2;
+            const worse  = diff >= 0 ? n2 : n1;
+            const bScore = diff >= 0 ? s1 : s2;
+            const wScore = diff >= 0 ? s2 : s1;
+
+            let verdict;
+            if (absDiff <= 5)       verdict = `両エリアはほぼ同条件です（スコア差${absDiff}点）。`;
+            else if (absDiff <= 20) verdict = `${better}がやや有利です（スコア差+${absDiff}点）。`;
+            else                    verdict = `${better}が明らかに有利です（スコア差+${absDiff}点）。`;
+
+            const reasons = [];
+            if (Math.abs(bScore.precipitation - wScore.precipitation) > 0)
+                reasons.push(`降水量: ${better} ${bScore.precipitation}mm / ${worse} ${wScore.precipitation}mm`);
+            if (Math.abs(bScore.humidity - wScore.humidity) >= 3)
+                reasons.push(`最低湿度: ${better} ${bScore.humidity}% / ${worse} ${wScore.humidity}%`);
+            if (Math.abs(bScore.wind_speed - wScore.wind_speed) >= 0.5)
+                reasons.push(`平均風速: ${better} ${bScore.wind_speed}m/s / ${worse} ${wScore.wind_speed}m/s`);
+
+            return verdict + (reasons.length ? '\n\n' + reasons.join('\n') : '');
+        }
+
+        // ----------------------------------------
         // レスポンス生成
         // ----------------------------------------
         async function generateResponse(text) {
-            // 1. エリア名 + 予報系クエリ
-            const area = detectArea(text);
-            const forecastTriggers = ['何日','干せ','予報','どうです','今週','今日','天気','乾燥','スコア'];
+            const forecastTriggers = ['何日','干せ','予報','どうです','今週','今日','天気','乾燥','スコア','比べ','どちら','差'];
+
+            // 1. 方角比較（東側と西側、など）
+            const dir1 = getDirKeyword(text);
+            const compareKw = ['と','比べ','どちら','差','違い','versus','vs'];
+            if (dir1 && compareKw.some(k => text.includes(k))) {
+                // 2つ目の方角を探す
+                const dirs = ['東','西','南','北'].filter(d => d !== dir1 && text.includes(d + '側') || text.includes(d + 'の'));
+                const dir2 = dirs[0] || (['東','西','南','北'].find(d => d !== dir1));
+                return await respondDirComparison(dir1, dir2, text);
+            }
+
+            // 2. 2つのエリア名を検出 → 比較
+            const idx = buildAreaIndex();
+            const names = Object.keys(idx).sort((a,b) => b.length - a.length);
+            const foundAreas = [];
+            let remaining = text;
+            for (const n of names) {
+                if (remaining.includes(n)) {
+                    foundAreas.push(n);
+                    remaining = remaining.replace(n, '');
+                    if (foundAreas.length === 2) break;
+                }
+            }
+            if (foundAreas.length === 2) {
+                return await respondAreaComparison(foundAreas[0], foundAreas[1], text);
+            }
+
+            // 3. 1エリア名 + 予報系クエリ
+            const area = foundAreas[0] || detectArea(text);
             if (area && forecastTriggers.some(t => text.includes(t))) {
                 return await respondAreaForecast(area, text);
             }
@@ -5698,6 +5797,7 @@
                 case 'filter':       return respondFilter();
                 case 'map':          return respondMap();
                 case 'pwa':          return respondPwa();
+                case 'compare_dir':  return await respondDirComparison('東', '西', text);
                 default:             return respondUnknown();
             }
         }
@@ -5841,6 +5941,69 @@
                 }).join('\n');
                 setQuickReplies(QR_FORECAST);
                 return `向こう7日間の乾燥予報\n📍 ${spot.name || '代表地点'}\n\n${lines}\n\n✅ 乾燥適: ${ok}日\n⚠️ やや不適: ${marginal}日\n❌ 不適: ${bad}日`;
+            } catch(e) {
+                return '予報データの取得に失敗しました。';
+            }
+        }
+
+        /** 方角vs方角の比較 */
+        async function respondDirComparison(dir1, dir2, text) {
+            const rep1 = repSpotForDir(dir1);
+            const rep2 = repSpotForDir(dir2);
+            if (!rep1 || !rep2) return `方角データが取得できませんでした（${dir1}側 or ${dir2}側の干場がない可能性があります）。`;
+            const wantWeek = ['今週','何日','7日','一週間'].some(t => text.includes(t));
+            try {
+                const [d1, d2] = await Promise.all([
+                    fetchForecast(rep1.lat, rep1.lon),
+                    fetchForecast(rep2.lat, rep2.lon)
+                ]);
+                const lbl1 = dirLabel(dir1), lbl2 = dirLabel(dir2);
+                if (wantWeek) {
+                    const cnt = arr => arr.forecasts.slice(0,7).filter(f => f.daily_summary.suitability === 'suitable').length;
+                    const ok1 = cnt(d1), ok2 = cnt(d2);
+                    const better = ok1 >= ok2 ? lbl1 : lbl2;
+                    const diff = Math.abs(ok1 - ok2);
+                    setQuickReplies(QR_FORECAST);
+                    return `今週の方角別比較\n\n${lbl1}: 乾燥適 ${ok1}日\n${lbl2}: 乾燥適 ${ok2}日\n\n${diff === 0 ? '両エリアはほぼ同じ日数の見込みです。' : `${better}が${diff}日多い見込みです。`}\n\n📍 代表地点: ${rep1.name} / ${rep2.name}`;
+                }
+                const s1 = d1.forecasts[0].daily_summary, s2 = d2.forecasts[0].daily_summary;
+                const comment = compareComment(lbl1, s1, lbl2, s2);
+                setQuickReplies(['今週全体を比べて','今日の予報','乾燥の条件']);
+                return `今日の方角別比較\n\n${lbl1}: ${suitLabel(s1.suitability)}（${s1.drying_score}点）\n${lbl2}: ${suitLabel(s2.suitability)}（${s2.drying_score}点）\n\n${comment}\n\n📍 代表地点: ${rep1.name} / ${rep2.name}`;
+            } catch(e) {
+                return '予報データの取得に失敗しました。';
+            }
+        }
+
+        /** 2エリア名の比較 */
+        async function respondAreaComparison(name1, name2, text) {
+            const idx = buildAreaIndex();
+            const spots1 = (idx[name1] || []).filter(s => s.name.startsWith('H_'));
+            const spots2 = (idx[name2] || []).filter(s => s.name.startsWith('H_'));
+            if (!spots1.length || !spots2.length) {
+                return `「${!spots1.length ? name1 : name2}」の干場データが見つかりませんでした。`;
+            }
+            const wantWeek = ['今週','何日','7日','一週間'].some(t => text.includes(t));
+            try {
+                const [d1, d2] = await Promise.all([
+                    fetchForecast(spots1[0].lat, spots1[0].lon),
+                    fetchForecast(spots2[0].lat, spots2[0].lon)
+                ]);
+                const dir1 = bearingToDir(spotBearing(spots1[0]));
+                const dir2 = bearingToDir(spotBearing(spots2[0]));
+                const lbl1 = `${name1}（${dir1}側）`, lbl2 = `${name2}（${dir2}側）`;
+                if (wantWeek) {
+                    const cnt = arr => arr.forecasts.slice(0,7).filter(f => f.daily_summary.suitability === 'suitable').length;
+                    const ok1 = cnt(d1), ok2 = cnt(d2);
+                    const better = ok1 >= ok2 ? lbl1 : lbl2;
+                    const diff = Math.abs(ok1 - ok2);
+                    setQuickReplies(QR_FORECAST);
+                    return `今週の比較\n\n${lbl1}: 乾燥適 ${ok1}日\n${lbl2}: 乾燥適 ${ok2}日\n\n${diff === 0 ? '両エリアはほぼ同じ日数の見込みです。' : `${better}が${diff}日多い見込みです。`}\n\n📍 ${spots1[0].name} / ${spots2[0].name}`;
+                }
+                const s1 = d1.forecasts[0].daily_summary, s2 = d2.forecasts[0].daily_summary;
+                const comment = compareComment(lbl1, s1, lbl2, s2);
+                setQuickReplies(['今週全体を比べて', '今日の全島予報', '乾燥の条件']);
+                return `今日の比較\n\n${lbl1}: ${suitLabel(s1.suitability)}（${s1.drying_score}点）\n${lbl2}: ${suitLabel(s2.suitability)}（${s2.drying_score}点）\n\n${comment}\n\n📍 ${spots1[0].name} / ${spots2[0].name}`;
             } catch(e) {
                 return '予報データの取得に失敗しました。';
             }
