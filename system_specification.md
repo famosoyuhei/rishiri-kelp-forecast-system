@@ -386,43 +386,87 @@
 - 干場を選択し、その干場がお気に入りに未登録の場合は「お気に入りに追加」、すでにお気に入りに登録されている場合は「お気に入りから外す」という表示がある
 - 当初の画面で地図上のお気に入りに登録されている干場は明るい色で表示される
 
-## 通知について（2025年10月実装完了）✅
+## 通知システム（v2.6.0 全機能実装完了）✅
 
-### UI統合
-- **通知設定パネル**: `kelp_drying_map.html`のサイドパネルに統合（lines 672-726）
-- **設定項目**:
-  - 通知有効/無効チェックボックス
-  - お気に入り干場リスト表示（自動更新）
-  - 沖止め日設定（日付追加・削除）
-  - 漁期設定（開始日・終了日）
-- **実装ファイル**: `kelp_drying_map.html` (lines 2355-2721)
+### 通知種別
 
-### 通知ロジック
-- ユーザーがお気に入りの干場を複数選ぶことができ、6月以降であれば登録、通知設定して以降**毎日午後4時（16:00 JST）**に通知が現れる
-- 沖止め等で昆布漁が休みの日を設定し、該当する日の前日は通知が来ないように設定できる
-- 通知は9月終了とともに終了するが、それ以前であってもその年は昆布漁終了を設定すればそれ以降は翌年まで通知が来ない
-- 10月から5月までは予報通知なし
-- 5月31日アプリ保持者には**午後4時（16:00 JST）**に予報通知されるが、そこで昆布漁開始日を設定する選択肢があり、それを設定すればその前日午後4時まで通知されない
+| 種別 | 時刻 | 内容 | 実装関数 |
+|------|------|------|---------|
+| 夕方通知 | 毎日16:00 JST | 翌日の乾燥予報 | `checkAndSendNotification()` |
+| 早朝通知 | 毎日01:30 JST | 当日の乾燥予報 | `scheduleEarlyMorningNotification()` |
+| 緊急アラート | 随時（1時間ポーリング） | スコア30点以上の急変 | `checkEmergencyAlerts()` |
 
-### PWA通知機能
-- **ブラウザ通知API**: Notification API活用
-- **権限リクエスト**: 初回有効化時に自動的に許可を要求
-- **通知内容**: 干場名、降水量、湿度、風速、判定結果
-- **スケジューリング**: `setTimeout()`による**午後4時（16:00 JST）**の定時通知
-- **自動再スケジュール**: 通知送信後、次の24時間後（翌日16:00 JST）を自動設定
-- **タイムゾーン処理**: サーバー側・クライアント側ともに日本標準時（JST）で処理
-- **実装関数**:
-  - `scheduleNextNotification()` (lines 2505-2525)
-  - `checkAndSendNotification()` (lines 2527-2555)
-  - `sendForecastNotifications()` (lines 2557-2586)
+### 通知ゲーティング（重要）
 
-### データ管理
-- **LocalStorage**: `hoshibaNotificationData` キーで設定を永続化
-- **保存データ**:
-  - `enabled`: 通知有効/無効
-  - `offDays`: 沖止め日配列
-  - `seasonStart`: 漁期開始日
-  - `seasonEnd`: 漁期終了日
+**`shouldSendNotification(targetDate)`** がすべての通知の統一判定関数。
+
+```
+enabled = true
+AND 対象日が6〜9月（JST）
+AND seasonStart〜seasonEnd の範囲内（設定済みの場合）
+AND targetDate が offDays に含まれない
+```
+
+- **夕方通知**は `targetDate = tomorrowUTC` を渡す
+  → 翌日が沖止め日なら当日夜の通知もスキップ
+- **早朝通知**は `targetDate = todayUTC` を渡す
+
+### データ構造（localStorage: `hoshibaNotificationData`）
+
+```javascript
+{
+  enabled: false,           // 通知全体のON/OFF
+  eveningEnabled: true,     // 16:00 通知
+  earlyMorningEnabled: true,// 01:30 通知
+  emergencyAlertEnabled: true, // 緊急アラート
+  offDays: [],              // 沖止め日 (ISO日付文字列配列)
+  seasonStart: null,        // 漁期開始日
+  seasonEnd: null,          // 漁期終了日
+  lastForecastScores: {},   // 緊急アラート用スコア比較ベース
+  disclaimerAccepted: false,// 免責事項同意フラグ
+  disabledSpots: [],        // 通知をOFFにした干場名の配列
+  soundEnabled: true,       // 通知音（Web Audio API）
+  vibrationEnabled: true    // バイブレーション（Vibration API）
+}
+```
+
+### 免責事項モーダル
+
+- 通知有効化時、`disclaimerAccepted` が false なら免責事項モーダルを表示
+- チェックボックスにチェックしないと「同意する」ボタンが押せない
+- 同意後のみ通知が有効化される
+
+### 干場ごとの通知ON/OFF
+
+- `notificationData.disabledSpots` 配列で管理
+- 通知設定パネルに各お気に入り干場のチェックボックスを表示
+- `toggleSpotNotification(spotName, enabled)` で追加/削除
+- `sendForecastNotifications()` と `checkEmergencyAlerts()` でスキップ判定
+
+### 通知音・バイブレーション
+
+| 種別 | 音（Web Audio API） | バイブ（Vibration API） |
+|------|--------------------|-----------------------|
+| 夕方 | 2音（サイン波） | [200, 100, 200] ms |
+| 早朝 | 3音（上昇） | [100, 50, 100, 50, 200] ms |
+| 緊急 | 4音（矩形波） | [300, 100, 300, 100, 300, 100, 500] ms |
+
+- `playNotificationSound(type)` / `vibrateNotification(type)`
+- 設定パネルのチェックボックスで個別に切替可能（変更時プレビュー再生）
+
+### 通知履歴
+
+- `saveNotificationHistory(entry)` でlocalStorage（`hoshibaNotificationHistory`）に保存
+- 最大50件、超過時は古いものから削除
+- 設定パネル内の「通知履歴」セクションで一覧表示
+- 各エントリ: `{timestamp, type, title, body, spots}`
+
+### テスト送信ボタン
+
+設定パネルに3つのテストボタンを配置：
+- 「テスト：夕方通知」→ `sendForecastNotifications('evening')`
+- 「テスト：早朝通知」→ `sendForecastNotifications('earlyMorning')`
+- 「テスト：緊急アラート」→ 擬似的に緊急通知を発火
 
 ## 予報精度について
 
@@ -974,3 +1018,174 @@
 - **可視化強化**: 等値線図・カラーマップによる直感的理解
 - **超高解像度予測**: 100m格子による干場間差異の定量化
 - **リアルタイム対応**: 条件変化への動的予報修正システム
+---
+
+## チャットボット「干場アシスタント」（v2.6.0）✅
+
+### 概要
+
+AIなし・API不要のルールベースパターンマッチング型チャットボット。
+右下フローティングボタン（💬）から起動。会話履歴はセッション中のみ保持。
+
+### アーキテクチャ
+
+```
+ユーザー入力
+  → detectAreaName(text)       # 部落名の検出（hoshibaSpots配列から動的生成）
+  → detectTwoAreas(text)       # 複数エリア比較の検出
+  → detectDirection(text)      # 方角ワードの検出
+  → scorePattern(text)         # キーワードスコアリング
+  → processMessage(text)       # ディスパッチャ
+  → 各respond*()関数           # レスポンス生成（静的 or API呼出）
+```
+
+### 方角判定システム
+
+利尻山頂（R_1800_2392: 45.1800°N, 141.2392°E）を原点として各干場の方位角を動的計算。
+ハードコードなし。`hoshibaSpots` 配列の実座標から毎回算出。
+
+```javascript
+bearing = (atan2(dLon, dLat) * 180/π + 360) % 360
+北: 315〜45°  / 東: 45〜135°  / 南: 135〜225°  / 西: 225〜315°
+```
+
+**部落分布（2026年4月5日測定値）：**
+- 北: 野塚・本泊・富士岬・栄町・港町（鴛泊）
+- 東: 旭浜・石崎・二石・鬼脇・金崎（鬼脇）、雄忠志内（鴛泊）
+- 南: 南浜・野中・沼浦（鬼脇）、御崎・元村・本町・政泊・神磯（仙法志）、湾内（鴛泊）
+- 西: 長浜・久連（仙法志）、蘭泊・神居・泉町・種富町・新湊・栄浜（沓形）、大磯（鴛泊）
+
+### 対応パターン一覧
+
+| ID | 主要キーワード | レスポンス種別 |
+|----|--------------|--------------|
+| greeting | こんにちは・はじめまして | 静的 |
+| howto_general | 使い方・操作・教えて | 静的 |
+| today_forecast | 今日・干せる | API（forecasts[0]） |
+| tomorrow_forecast | 明日・あした | API（forecasts[1]） |
+| week_forecast | 今週・何日・向こう | API（全7日） |
+| conditions | 条件・降水量・湿度・風速 | 静的 |
+| score_explain | スコア・点数 | 静的 |
+| notification | 通知・お知らせ | 静的 |
+| add_spot | 干場を追加・新しい干場 | 静的 |
+| favorites | お気に入り・★ | 静的 |
+| nickname | ニックネーム・呼び名 | 静的 |
+| emagram | エマグラム | 静的（詳細モード付） |
+| contour | 等値線 | 静的（詳細モード付） |
+| humidity_exp | 湿度とは・湿度について | 静的（詳細モード付） |
+| wind_exp | なぜ風・風の役割 | 静的（詳細モード付） |
+| okhotsk_exp | オホーツク高気圧 | 静的（詳細モード付） |
+| elnino_exp | エルニーニョ・ラニーニャ | 静的（詳細モード付） |
+| inversion_exp | 逆転層 | 静的（詳細モード付） |
+| onshore_exp | 海風・陸風 | 静的（詳細モード付） |
+| fog_exp | 霧・海霧・放射霧 | 静的（詳細モード付） |
+| warning | 警報・注意報 | API（/api/jma_warnings） |
+| seasonal | 今年の夏・シーズン | API（/api/seasonal_outlook） |
+| compare_area | 部落名×2 + 比較ワード | API（2地点並列取得） |
+| compare_dir | 東側と西側・南と北 など | API（代表地点×2） |
+| terrain | 地形・森林・海岸 | 静的 |
+| offday | 沖止め・休漁 | 静的 |
+| accuracy | 精度・正確 | 静的 |
+| disclaimer | 免責・責任・安全 | 静的 |
+
+### 詳細モード
+
+`isDetail(text)` が以下キーワードを検出すると詳細解説に切替：
+「初心者」「わかりやすく」「詳しく」「丁寧に」「ゆっくり」「説明して」「とはなんですか」
+
+---
+
+## 干場ニックネーム機能（v2.6.0）✅
+
+### 設計方針
+
+| データ種別 | 保存先 | 共有範囲 |
+|-----------|--------|---------|
+| 乾燥記録（干せた/干せない） | サーバー（hoshiba_records.csv） | **全ユーザーで共有** |
+| 干場ニックネーム | localStorage | **この端末のみ** |
+
+UIに「この呼び名はこの端末だけに保存されます」と明記し、混乱を防止。
+
+### データ構造
+
+```javascript
+localStorage key: 'hoshibaNicknames'
+value: { "H_1631_1434": "うちの干場", "H_xxxx_xxxx": "○○の場所", ... }
+```
+
+---
+
+## 昆布シーズン長期予報タブ（v2.6.0）✅
+
+### 概要
+
+6〜9月の昆布漁期に向けた月別季節見通しを表示する専用タブ。
+サイドバーの「昆布シーズン長期予報」タブから参照。
+
+### 表示ロジック
+
+現在月（JST）に応じて残りシーズンの月のみ表示：
+
+| 現在月 | 表示対象月 |
+|--------|-----------|
+| ≤5月 | 6・7・8・9月 |
+| 6月 | 7・8・9月 |
+| 7月 | 8・9月 |
+| 8月 | 9月 |
+| ≥9月 | シーズン終了表示 |
+
+### データ構造（seasonal_outlook.json）
+
+```json
+{
+  "updated": "2026-05-31",
+  "season": "2026",
+  "enso": "neutral",
+  "months": {
+    "6": { "outlook": "平年並み", "confidence": "中", "notes": "..." },
+    "7": { "outlook": "平年より多い", "confidence": "高", "notes": "..." },
+    "8": { "outlook": "平年より少ない", "confidence": "低", "notes": "..." },
+    "9": { "outlook": "平年並み", "confidence": "中", "notes": "..." }
+  },
+  "pressure_systems": {
+    "pacific_high": "平年より北偏",
+    "okhotsk_high": "平年より弱い",
+    "tibetan_high": "平年並み"
+  },
+  "expert_comment": "エルニーニョ監視中...",
+  "sources": "気象庁3ヶ月予報（2026年5月31日発表）"
+}
+```
+
+### 更新方法
+
+管理者が月1回、`POST /api/seasonal_outlook` で上記JSONを送信して更新。
+詳細は外部リンク（JMA季節予報・エルニーニョ監視速報）から各自確認。
+
+---
+
+## アプリロゴ統一（v2.6.0）✅
+
+全UIページにアプリロゴ（`static/img/logo.png`）を含むスティッキーヘッダーを追加。
+
+| ファイル | ロゴサイズ | 実装方法 |
+|---------|-----------|---------|
+| kelp_drying_map.html | 48px | sticky header, z-index:2000, backdrop-filter |
+| dashboard.html | 48px | sticky header |
+| mobile_forecast_interface.html | 40px | sticky header（モバイル最適化） |
+| rishiri-kelp-forecast-system/kelp_drying_map.html | 48px | 同上 |
+
+`static/img/logo.png` は `app_icon.png` をコピーして作成。
+
+---
+
+## デプロイ環境（v2.6.0時点）✅
+
+- **本番サービス**: `rishiri-kelp-forecast-system`（Render）
+- **URL**: `https://rishiri-kelp-forecast-system.onrender.com`
+- **GitHubリポジトリ**: `famosoyuhei/rishiri-kelp-forecast-system`（mainブランチ自動デプロイ）
+- **旧サービス**: `rishiri-kelp-forecast`（v2.0.0）は2026年4月5日削除済み
+
+---
+
+*system_specification.md 最終更新: 2026年4月5日 (v2.6.0)*
