@@ -1,12 +1,23 @@
-# 🌊 利尻島昆布干場予報システム (Rishiri Island Kelp Drying Forecast System)
+<div align="center">
+
+<img src="app_icon.png" alt="利尻島昆布干場予報システム" width="200"/>
+
+# 🌊 利尻島昆布干場予報システム
+## Rishiri Island Kelp Drying Forecast System
 
 ![System Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.4.1-blue)
+![Version](https://img.shields.io/badge/Version-2.5.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Flask](https://img.shields.io/badge/Flask-2.3+-red)
-![Implementation](https://img.shields.io/badge/Implementation-100%25-success)
+![Implementation](https://img.shields.io/badge/Implementation-98%25-success)
 
-利尻島の331干場を対象とした、実測データ基準の高精度昆布乾燥予報システムです。
+**利尻島の334地点（331干場+3観測点）を対象とした、実測データ基準の高精度昆布乾燥予報システム**
+
+[クイックスタート](#-クイックスタート) • [機能](#-システム機能) • [API](#-api-リファレンス) • [ドキュメント](#-開発ガイド)
+
+</div>
+
+---
 
 ## ⏰ 重要: 時刻表記について
 

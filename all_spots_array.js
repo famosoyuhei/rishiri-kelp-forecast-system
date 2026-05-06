@@ -329,5 +329,8 @@ const hoshibaSpots = [
     { name: "H_0980_2384", lat: 45.0980579, lon: 141.2384079, town: "利尻町", district: "仙法志", buraku: "御崎" },
     { name: "H_1047_2387", lat: 45.1047120, lon: 141.2387548, town: "利尻町", district: "仙法志", buraku: "御崎" },
     { name: "H_0988_2393", lat: 45.0988451, lon: 141.2393708, town: "利尻町", district: "仙法志", buraku: "御崎" },
-    { name: "H_0988_2398", lat: 45.0988214, lon: 141.2398858, town: "利尻町", district: "仙法志", buraku: "御崎" }
+    { name: "H_0988_2398", lat: 45.0988214, lon: 141.2398858, town: "利尻町", district: "仙法志", buraku: "御崎" },
+    { name: "A_1783_1383", lat: 45.1783000, lon: 141.1383000, town: "利尻町", district: "沓形", buraku: "泉町" },
+    { name: "A_2417_1867", lat: 45.2417000, lon: 141.1867000, town: "利尻富士町", district: "鴛泊", buraku: "本泊" },
+    { name: "R_1800_2392", lat: 45.1800000, lon: 141.2392000, town: "―", district: "―", buraku: "―" }
 ];

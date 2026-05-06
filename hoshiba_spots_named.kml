@@ -1325,5 +1325,17 @@
 <name>H_0988_2398</name>
 <Point><coordinates>141.2398858,45.0988214</coordinates></Point>
 </Placemark>
+<Placemark>
+<name>A_1783_1383</name>
+<Point><coordinates>141.1383000,45.1783000</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>A_2417_1867</name>
+<Point><coordinates>141.1867000,45.2417000</coordinates></Point>
+</Placemark>
+<Placemark>
+<name>R_1800_2392</name>
+<Point><coordinates>141.2392000,45.1800000</coordinates></Point>
+</Placemark>
 </Document>
 </kml>
