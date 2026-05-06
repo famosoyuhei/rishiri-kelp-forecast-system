@@ -4,7 +4,7 @@ Security configurations for Rishiri Kelp Forecast System
 """
 
 import os
-from flask import request, jsonify
+from flask import request, jsonify, redirect
 from functools import wraps
 import time
 from collections import defaultdict
