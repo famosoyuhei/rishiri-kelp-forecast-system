@@ -152,25 +152,60 @@ kelp_drying_map.html (6,235行)
 | 補正項目 | 実装状況 | 理由 |
 |---------|---------|------|
 | **気温補正** | ❌ 削除 | Open-Meteoが既に0.7°C/100mで標高補正済み |
-| **風速補正** | ✅ 実装 | 森林減衰・海岸増強（Open-Meteoは未実施） |
-| **湿度補正** | ✅ 実装 | 水蒸気圧ベース・物理的妥当性考慮 |
-| **onshore wind判定** | ✅ 実装 | 海風・陸風の自動判定（独自機能） |
+| **風速補正** | ✅ 実装（加算型・簡易版） | 森林減衰・海岸増強（Open-Meteoは未実施） |
+| **湿度補正** | ✅ 実装（固定値・簡易版） | 森林保水・海岸潮湿効果 |
+| **onshore wind判定** | ✅ 実装（表示のみ） | 風向と山頂方位角の角度差を計算し表示 |
+| **霧リスクスコア** | 🔲 未実装（要対応） | 露点降下量からの高精度霧判定 |
+| **フロード数診断** | 🔲 未実装（要対応） | 流れ体制（越山/回り込み）の切り替え |
+| **山背風フェーンボーナス** | 🔲 未実装（要対応） | 角度差>150°の乾燥促進をスコアへ反映 |
 
-**補正の詳細：**
+#### 現行の補正値（start.py `get_forecast()` 内、約L847-L863）
 
-- **風速補正（乗算型）**:
-  - 森林: ×0.4（60%減衰）
-  - 海岸: ×1.25（風向依存、onshore時のみ）
+```python
+# 風速補正（加算型）
+if is_forest:  wind_speed -= 2.5          # 森林：風速減少
+if is_coastal: wind_speed += 1.0          # 海岸：常時増加（⚠️ onshore限定が望ましい）
 
-- **湿度補正（水蒸気圧ベース）**:
-  - 森林: 季節・日射依存（夏季・昼間最大）
-  - 海岸: 風向依存（onshore時のみ）
-  - 標高: 気圧低下を考慮
+# 湿度補正（固定値）
+if is_forest:  humidity += 10.0           # 森林：常時+10%
+if is_coastal: humidity += 5.0            # 海岸：常時+5%（⚠️ onshore限定が望ましい）
+if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
+```
 
-- **onshore wind判定**:
+> **注意**: CLAUDE.md旧版に「乗算型（×0.4, ×1.25）」「水蒸気圧ベース」と記載があったが、
+> 実際のコードは加算型・固定値の簡易実装。[ISLAND_METEOROLOGY_RESEARCH.md](ISLAND_METEOROLOGY_RESEARCH.md) §12に
+> 詳細なギャップ分析と改善提案あり。
+
+#### 改善ロードマップ
+
+**気象地形補正（[ISLAND_METEOROLOGY_RESEARCH.md §11](ISLAND_METEOROLOGY_RESEARCH.md)より）**
+
+1. **霧リスクスコア** — `dewpoint_2m`データは既取得済み。`(temp - dewpoint) < 2°C` → 霧高リスクとしてスコア減算
+2. **onshore限定補正** — 海岸補正を`wind_mountain_angle_diff < 90°`（onshore方向）の時のみ適用
+3. **山背風（フェーン）ボーナス** — `wind_mountain_angle_diff > 150°`かつ風速>3 m/s → 乾燥スコア+10〜15点
+4. **フロード数 Fr = U/(Nh)** — 850/700 hPaデータは既取得済み。Fr < 0.4 → 回り込みモード、Fr > 1 → 越山モードで補正切替
+5. **カタバ風スコア** — 早朝01:30通知用：雲量<20% + 地上風速<3 m/s → 夜間カタバ風（乾燥）を加点
+
+**昆布乾燥スコア改善（[KOMBU_DRYING_RESEARCH.md §10](KOMBU_DRYING_RESEARCH.md)より）**
+
+6. **日射スコア追加（K1・最優先）** — `calculate_enhanced_drying_score()` に `avg_solar_radiation` を引数追加。日射≥400 W/m²で+15、<50 W/m²で-15
+7. **降水0mm絶対条件（K8）** — `precipitation < 1` を `precipitation == 0` に変更。0.5mm雨でも昆布干し不可
+8. **曇天時 solar_score 下限修正（K4）** — 日射<50 W/m² の solar_score を 20→0 に変更
+9. **再吸湿リスク算出（K6）** — 10〜16時の湿度上昇率(>3%/時)を算出し取り込み推奨時刻を自動調整
+
+**Windyアプリ比較からの導入候補（[WINDY_RESEARCH.md §6](WINDY_RESEARCH.md)より）**
+
+10. **CAPE指数（W10・最優先）** — Open-Meteo URL に `cape` 追加のみ（極小コスト）。突発積乱雲リスクをスコアに反映
+11. **降水確率・PoP（W11）** — `precipitation_probability` を API に追加。「確率35%」表示でユーザーの計画判断を支援
+12. **海水温・SST（W6）** — Open-Meteo Marine API から SST 取得。SST<15°C → 霧リスクフラグ追加
+13. **潮汐予報（W5）** — JMA 潮位 API 統合。干場カードに満潮/干潮時刻を表示
+14. **ソルナー指数（W9）** — 外部 API 不要（月齢計算のみ）。月相と漁業活性の参考情報を表示
+
+- **onshore wind判定（現行）**:
   - 利尻山頂を極とした放射方向で海の方向を計算
   - 気象学的方位角（北=0°、東=90°、南=180°、西=270°）
-  - cos関数でonshore係数を算出（0.0～1.0）
+  - 風向と山頂方位角の角度差（`wind_mountain_angle_diff`）として計算・表示中
+  - スコアへの反映は未実装（次フェーズ）
 
 **標高データの統合**:
 - Open-Meteo Elevation API（Copernicus GLO-90 DEM）を使用

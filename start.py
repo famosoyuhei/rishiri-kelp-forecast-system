@@ -583,7 +583,7 @@ def get_weather():
             'coordinates': {'lat': float(lat), 'lon': float(lon)},
             'current': {
                 'temperature': current.get('temperature'),
-                'wind_speed': current.get('windspeed') / 3.6 if current.get('windspeed') else None,  # Convert km/h to m/s
+                'wind_speed': current.get('windspeed') / 3.6 if current.get('windspeed') is not None else None,  # Convert km/h to m/s
                 'wind_direction': current.get('winddirection'),
                 'weather_code': current.get('weathercode')
             },
@@ -682,6 +682,36 @@ def update_seasonal_outlook():
         return jsonify({'error': str(e), 'status': 'error'}), 500
 
 
+def _save_forecast_history(spot_name, forecasts):
+    """Save each day's forecast to forecast_history/ for later accuracy comparison."""
+    today_str = datetime.now().strftime('%Y%m%d')
+    spot_dir = os.path.join('forecast_history', spot_name)
+    os.makedirs(spot_dir, exist_ok=True)
+    for fc in forecasts:
+        target_date_str = fc['date'].replace('-', '')
+        filepath = os.path.join(spot_dir, f'forecast_{today_str}_for_{target_date_str}.json')
+        if os.path.exists(filepath):
+            continue
+        hourly = fc.get('hourly_details', [])
+        valid_humidity = [h['humidity'] for h in hourly if h.get('humidity') is not None]
+        valid_wind = [h['wind_speed'] for h in hourly if h.get('wind_speed') is not None]
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'forecast_date': today_str,
+                    'target_date': fc['date'],
+                    'day_number': fc['day_number'],
+                    'max_temp': fc['daily_summary']['temperature_max'],
+                    'min_humidity': min(valid_humidity) if valid_humidity else None,
+                    'avg_wind': sum(valid_wind) / len(valid_wind) if valid_wind else None,
+                    'precipitation': fc['daily_summary']['precipitation'],
+                    'drying_score': fc['daily_summary']['drying_score'],
+                    'suitability': fc['daily_summary']['suitability'],
+                }, f, ensure_ascii=False)
+        except Exception as e:
+            print(f'[forecast_history] save error for {spot_name} {target_date_str}: {e}')
+
+
 @app.route('/api/forecast')
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
@@ -712,7 +742,7 @@ def get_forecast():
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
         # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,direct_radiation,pressure_msl,precipitation,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum&timezone=Asia/Tokyo&forecast_days=7"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
 
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -732,6 +762,9 @@ def get_forecast():
             6: {'accuracy': 50, 'confidence': '低', 'usage': '傾向把握'}
         }
 
+        # SST（海面水温）取得 — 7日分をまとめて取得（WINDY_RESEARCH §6 W6）
+        sst_list = get_sea_surface_temperature(lat, lon)
+
         # Enhanced kelp drying forecasts
         forecasts = []
         for i in range(min(7, len(daily.get('time', [])))):
@@ -743,6 +776,7 @@ def get_forecast():
             humidity = daily['relative_humidity_2m_mean'][i]
             wind_speed = daily['wind_speed_10m_max'][i] / 3.6  # Convert km/h to m/s
             precipitation = daily['precipitation_sum'][i]
+            pop_max = daily['precipitation_probability_max'][i] if 'precipitation_probability_max' in daily and daily['precipitation_probability_max'][i] is not None else None
 
             # Calculate daily representative wind direction (average of working hours)
             daily_wind_directions = []
@@ -769,7 +803,7 @@ def get_forecast():
 
             for h in range(start_hour, min(end_hour, len(hourly.get('temperature_2m', [])))):
                 if h < len(hourly['temperature_2m']):
-                    wind_dir = hourly['wind_direction_10m'][h] if hourly['wind_direction_10m'][h] else None
+                    wind_dir = hourly['wind_direction_10m'][h] if hourly['wind_direction_10m'][h] is not None else None
                     # Calculate angle difference between wind direction and mountain azimuth
                     # Wind direction = where wind comes FROM, so wind blows TOWARD (wind_dir + 180°)
                     if wind_dir is not None:
@@ -783,30 +817,46 @@ def get_forecast():
 
                     hour_data = {
                         'time': f"{h % 24:02d}:00",
-                        'temperature': hourly['temperature_2m'][h] if hourly['temperature_2m'][h] else None,
-                        'humidity': hourly['relative_humidity_2m'][h] if hourly['relative_humidity_2m'][h] else None,
-                        'wind_speed': hourly['wind_speed_10m'][h] / 3.6 if hourly['wind_speed_10m'][h] else None,  # Convert km/h to m/s
+                        'temperature': hourly['temperature_2m'][h] if hourly['temperature_2m'][h] is not None else None,
+                        'humidity': hourly['relative_humidity_2m'][h] if hourly['relative_humidity_2m'][h] is not None else None,
+                        'wind_speed': hourly['wind_speed_10m'][h] / 3.6 if hourly['wind_speed_10m'][h] is not None else None,  # Convert km/h to m/s
                         'wind_direction': wind_dir,
                         'wind_angle_diff': wind_mountain_angle_diff,  # 後方互換性のため
                         'wind_mountain_angle_diff': wind_mountain_angle_diff,  # 風向と山頂方位角の角度差
-                        'cloud_cover': hourly['cloud_cover'][h] if hourly['cloud_cover'][h] else None,
-                        'solar_radiation': hourly['direct_radiation'][h] if hourly['direct_radiation'][h] else None,
-                        'pressure': hourly['pressure_msl'][h] if hourly['pressure_msl'][h] else None,
-                        'precipitation': hourly['precipitation'][h] if hourly['precipitation'][h] else 0.0,
+                        'cloud_cover': hourly['cloud_cover'][h] if hourly['cloud_cover'][h] is not None else None,
+                        'solar_radiation': hourly['direct_radiation'][h] if hourly['direct_radiation'][h] is not None else None,
+                        'pressure': hourly['pressure_msl'][h] if hourly['pressure_msl'][h] is not None else None,
+                        'precipitation': hourly['precipitation'][h] if hourly['precipitation'][h] is not None else 0.0,
                         # 700hPa pressure level data (for vertical velocity estimation)
-                        'temp_700hpa': hourly['temperature_700hPa'][h] if h < len(hourly.get('temperature_700hPa', [])) and hourly['temperature_700hPa'][h] else None,
-                        'humidity_700hpa': hourly['relative_humidity_700hPa'][h] if h < len(hourly.get('relative_humidity_700hPa', [])) and hourly['relative_humidity_700hPa'][h] else None,
-                        'wind_speed_700hpa': hourly['wind_speed_700hPa'][h] / 3.6 if h < len(hourly.get('wind_speed_700hPa', [])) and hourly['wind_speed_700hPa'][h] else None,
-                        'wind_direction_700hpa': hourly['wind_direction_700hPa'][h] if h < len(hourly.get('wind_direction_700hPa', [])) and hourly['wind_direction_700hPa'][h] else None,
+                        'temp_700hpa': hourly['temperature_700hPa'][h] if h < len(hourly.get('temperature_700hPa', [])) and hourly['temperature_700hPa'][h] is not None else None,
+                        'humidity_700hpa': hourly['relative_humidity_700hPa'][h] if h < len(hourly.get('relative_humidity_700hPa', [])) and hourly['relative_humidity_700hPa'][h] is not None else None,
+                        'wind_speed_700hpa': hourly['wind_speed_700hPa'][h] / 3.6 if h < len(hourly.get('wind_speed_700hPa', [])) and hourly['wind_speed_700hPa'][h] is not None else None,
+                        'wind_direction_700hpa': hourly['wind_direction_700hPa'][h] if h < len(hourly.get('wind_direction_700hPa', [])) and hourly['wind_direction_700hPa'][h] is not None else None,
                         # 850hPa pressure level data (for equivalent potential temperature)
-                        'temp_850hpa': hourly['temperature_850hPa'][h] if h < len(hourly.get('temperature_850hPa', [])) and hourly['temperature_850hPa'][h] else None,
-                        'humidity_850hpa': hourly['relative_humidity_850hPa'][h] if h < len(hourly.get('relative_humidity_850hPa', [])) and hourly['relative_humidity_850hPa'][h] else None,
-                        'wind_speed_850hpa': hourly['wind_speed_850hPa'][h] / 3.6 if h < len(hourly.get('wind_speed_850hPa', [])) and hourly['wind_speed_850hPa'][h] else None,
-                        'wind_direction_850hpa': hourly['wind_direction_850hPa'][h] if h < len(hourly.get('wind_direction_850hPa', [])) and hourly['wind_direction_850hPa'][h] else None,
+                        'temp_850hpa': hourly['temperature_850hPa'][h] if h < len(hourly.get('temperature_850hPa', [])) and hourly['temperature_850hPa'][h] is not None else None,
+                        'humidity_850hpa': hourly['relative_humidity_850hPa'][h] if h < len(hourly.get('relative_humidity_850hPa', [])) and hourly['relative_humidity_850hPa'][h] is not None else None,
+                        'wind_speed_850hpa': hourly['wind_speed_850hPa'][h] / 3.6 if h < len(hourly.get('wind_speed_850hPa', [])) and hourly['wind_speed_850hPa'][h] is not None else None,
+                        'wind_direction_850hpa': hourly['wind_direction_850hPa'][h] if h < len(hourly.get('wind_direction_850hPa', [])) and hourly['wind_direction_850hPa'][h] is not None else None,
                         # Dewpoint and surface pressure for PWV calculation
                         'dewpoint': hourly['dewpoint_2m'][h] if h < len(hourly.get('dewpoint_2m', [])) and hourly['dewpoint_2m'][h] is not None else None,
-                        'surface_pressure': hourly['surface_pressure'][h] if h < len(hourly.get('surface_pressure', [])) and hourly['surface_pressure'][h] is not None else None
+                        'surface_pressure': hourly['surface_pressure'][h] if h < len(hourly.get('surface_pressure', [])) and hourly['surface_pressure'][h] is not None else None,
+                        # CAPE (convective instability) and precipitation probability (Windy W10/W11)
+                        'cape': hourly['cape'][h] if h < len(hourly.get('cape', [])) and hourly['cape'][h] is not None else None,
+                        'precipitation_probability': hourly['precipitation_probability'][h] if h < len(hourly.get('precipitation_probability', [])) and hourly['precipitation_probability'][h] is not None else None,
                     }
+                    # Fog risk from dew point depression (ISLAND_METEOROLOGY_RESEARCH §7, G4)
+                    temp_val = hour_data.get('temperature')
+                    dew_val  = hour_data.get('dewpoint')
+                    if temp_val is not None and dew_val is not None:
+                        depression = temp_val - dew_val
+                        if depression < 2:
+                            hour_data['fog_risk'] = 'high'
+                        elif depression < 5:
+                            hour_data['fog_risk'] = 'medium'
+                        else:
+                            hour_data['fog_risk'] = 'low'
+                    else:
+                        hour_data['fog_risk'] = 'unknown'
                     hourly_data.append(hour_data)
 
             # 地形補正を時間帯別データに適用（等値線図との整合性確保）
@@ -818,10 +868,16 @@ def get_forecast():
                 # 地形補正を適用
                 # 気温補正は削除：Open-Meteoが既に0.7°C/100mで補正済み
 
+                # onshore 判定（ISLAND_METEOROLOGY_RESEARCH §11 G2）
+                # 風が山側から吹く方向かどうか: angle_diff < 90° = onshore
+                angle_diff = hour_data.get('wind_mountain_angle_diff')
+                is_onshore = (angle_diff is not None and angle_diff < 90)
+
                 if hour_data.get('humidity') is not None:
                     if is_forest:
                         hour_data['humidity'] = min(100, hour_data['humidity'] + 10.0)
-                    if is_coastal:
+                    # 海岸湿度補正: onshore 風のときのみ適用（改善: onshore限定）
+                    if is_coastal and is_onshore:
                         hour_data['humidity'] = min(100, hour_data['humidity'] + 5.0)
                     if elevation > 10:
                         hour_data['humidity'] = max(0, hour_data['humidity'] - (elevation / 100) * 1.0)
@@ -829,8 +885,16 @@ def get_forecast():
                 if hour_data.get('wind_speed') is not None:
                     if is_forest:
                         hour_data['wind_speed'] = max(0, hour_data['wind_speed'] - 2.5)
-                    if is_coastal:
+                    # 海岸風速補正: onshore 限定に改善
+                    if is_coastal and is_onshore:
                         hour_data['wind_speed'] += 1.0
+
+                # フェーンボーナス（ISLAND_METEOROLOGY_RESEARCH §11 G6）
+                # 山背風: angle_diff > 150° かつ風速 > 3 m/s → 乾燥促進フラグ
+                wind_spd = hour_data.get('wind_speed', 0) or 0
+                hour_data['foehn_effect'] = (
+                    angle_diff is not None and angle_diff > 150 and wind_spd > 3.0
+                )
 
             # Calculate enhanced vertical p-velocity estimation using 700hPa data
             for j, hour_data in enumerate(hourly_data):
@@ -875,11 +939,69 @@ def get_forecast():
                 pwv_pblh_analysis = calculate_pwv_pblh_combined_score(pwv, pblh)
                 hour_data['pwv_pblh_analysis'] = pwv_pblh_analysis
 
-            # Enhanced drying score calculation
-            score = calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation, lat, lon)
+            # 作業時間帯（4:00-16:00）の平均日射量を算出して enhanced score に渡す
+            solar_values = [h.get('solar_radiation') for h in hourly_data if h.get('solar_radiation') is not None]
+            avg_solar = sum(solar_values) / len(solar_values) if solar_values else None
+
+            # Enhanced drying score calculation (K1/K2/K8: solar + Arrhenius temp + 0mm rule)
+            score = calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation,
+                                                    lat, lon, avg_solar_radiation=avg_solar,
+                                                    pop_max=pop_max)
 
             # Stage-based drying assessment according to specification
             stage_analysis = calculate_stage_based_drying_assessment(hourly_data, i)
+
+            # --- 再吸湿リスク (K6) ---
+            remoistening_risk = calculate_remoistening_risk(hourly_data)
+
+            # --- CAPE リスク (W10) ---
+            cape_values = [h.get('cape') for h in hourly_data if h.get('cape') is not None]
+            max_cape = max(cape_values) if cape_values else None
+            cape_risk = assess_cape_risk(max_cape)
+
+            # --- CAPE ペナルティをスコアに反映 ---
+            score = max(0, min(100, score + cape_risk['score_penalty']))
+
+            # --- フェーンボーナス: stage_analysis の overall_score に加算 ---
+            foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
+            foehn_bonus = min(15, foehn_hours * 3)  # 最大+15点
+            if foehn_hours > 0:
+                stage_analysis['overall_score'] = min(
+                    100, stage_analysis['overall_score'] + foehn_bonus
+                )
+
+            # --- 霧リスク: 作業時間帯の fog_risk 集計 ---
+            fog_hours_high = sum(1 for h in hourly_data if h.get('fog_risk') == 'high')
+            if fog_hours_high >= 4:
+                fog_summary = 'high'
+                stage_analysis['overall_score'] = max(
+                    0, stage_analysis['overall_score'] - 15
+                )
+            elif fog_hours_high >= 2:
+                fog_summary = 'medium'
+                stage_analysis['overall_score'] = max(
+                    0, stage_analysis['overall_score'] - 7
+                )
+            else:
+                fog_summary = 'low'
+
+            # --- SST & 霧リスク (W6) ---
+            sst_today = sst_list[i] if i < len(sst_list) else None
+            sst_fog_risk = assess_sst_fog_risk(sst_today, temp_max)
+            if sst_fog_risk in ('very_high', 'high'):
+                stage_analysis['overall_score'] = max(
+                    0, stage_analysis['overall_score'] - 10
+                )
+
+            # --- ソルナー指数 (W9) ---
+            try:
+                target_dt = datetime.strptime(date_str, '%Y-%m-%d')
+                solunar_score, moon_phase_name, moon_age = calculate_solunar_score(target_dt)
+            except Exception:
+                solunar_score, moon_phase_name, moon_age = 0, '不明', 0.0
+
+            # --- 予報信頼度（日数ベース簡易版、W14）---
+            reliability_stars = max(1, 5 - i)  # Day0=5, Day6=1 (概算)
 
             # Determine suitability based on both traditional score and stage analysis
             if stage_analysis['overall_score'] >= 80:
@@ -899,6 +1021,7 @@ def get_forecast():
                 'date': date_str,
                 'day_number': i,  # 0=今日, 1=明日, 2=明後日...
                 'reliability': reliability_table.get(i, reliability_table[6]),
+                'reliability_stars': reliability_stars,  # W14: 1〜5 の簡易信頼度
                 'daily_summary': {
                     'temperature_max': temp_max,
                     'temperature_min': temp_min,
@@ -906,14 +1029,31 @@ def get_forecast():
                     'wind_speed': wind_speed,
                     'wind_direction': representative_wind_dir,
                     'precipitation': precipitation,
+                    'precipitation_probability': pop_max,      # W11: 降水確率
+                    'avg_solar_radiation': round(avg_solar, 1) if avg_solar is not None else None,
                     'drying_score': score,
                     'suitability': suitability,
                     'estimated_drying_time': drying_time,
-                    'stage_analysis': stage_analysis
+                    'stage_analysis': stage_analysis,
+                    # --- 新規リスク評価 ---
+                    'remoistening_risk': remoistening_risk,    # K6: 再吸湿リスク
+                    'cape_risk': cape_risk,                    # W10: 対流不安定リスク
+                    'fog_risk_summary': fog_summary,           # G4: 霧リスク（露点）
+                    'foehn_bonus': foehn_bonus,                # G6: フェーンボーナス点数
+                    'sea_surface_temperature': sst_today,      # W6: 海面水温
+                    'sst_fog_risk': sst_fog_risk,              # W6: SST由来霧リスク
+                    'solunar': {                               # W9: ソルナー指数
+                        'score': solunar_score,
+                        'moon_phase': moon_phase_name,
+                        'moon_age_days': moon_age
+                    }
                 },
                 'hourly_details': hourly_data
             }
             forecasts.append(forecast_day)
+
+        spot_name_param = request.args.get('name', f'spot_{lat}_{lon}')
+        _save_forecast_history(spot_name_param, forecasts)
 
         return {
             'location': 'Rishiri Island',
@@ -932,33 +1072,63 @@ def get_forecast():
             'status': 'error'
         }, 503
 
-def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation, lat, lon):
-    """Enhanced drying score with terrain corrections"""
+def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation, lat, lon,
+                                    avg_solar_radiation=None, pop_max=None):
+    """Enhanced drying score with terrain corrections.
+    Improved per KOMBU_DRYING_RESEARCH.md §10 (K1/K2/K8) and WINDY_RESEARCH.md §6 (W11).
+    """
     score = 0
 
-    # Base weather conditions
-    if temp_max > 15: score += 25
-    if temp_max > 20: score += 15
-    if humidity < 70: score += 20
-    if humidity < 60: score += 10
-    if wind_speed > 1.5: score += 15  # Fisherman practical knowledge
-    if wind_speed > 3: score += 10
-    if precipitation < 1: score += 15
+    # --- 降水量: 0mm絶対条件 (K8) ---
+    # 実測21件すべて0mm。0.5mmでも昆布は吸湿し乾燥失敗となる。
+    if precipitation == 0:
+        score += 15
+    elif precipitation < 0.5:
+        score += 5   # 微量雨：乾燥困難
+    # precipitation >= 0.5 は加点なし
 
-    # Terrain corrections (simplified)
-    # Forest effect: reduce wind, increase humidity
+    # --- 気温: アレニウス近似で細粒度化 (K2) ---
+    # 10°C上昇で乾燥速度定数 k が1.5倍。25°Cを基準に連続スコア化。
+    if temp_max is not None:
+        temp_factor = 1.5 ** ((temp_max - 25) / 10)
+        score += min(40, max(0, int(temp_factor * 20)))
+
+    # --- 湿度 ---
+    if humidity is not None:
+        if humidity < 70: score += 20
+        if humidity < 60: score += 10
+
+    # --- 風速: 2.0 m/s 境界層閾値を明示 ---
+    if wind_speed is not None:
+        if wind_speed >= 2.0: score += 15  # 境界層十分薄化の下限（物理的根拠）
+        if wind_speed > 3.0:  score += 10
+
+    # --- 日射量: Deff 7倍効果を反映 (K1) ---
+    # 日射400 W/m²以上でDeffが最大7倍向上（KOMBU_DRYING_RESEARCH §3-2）
+    if avg_solar_radiation is not None:
+        if avg_solar_radiation >= 600:   score += 20
+        elif avg_solar_radiation >= 400: score += 15  # Deff 7倍の閾値
+        elif avg_solar_radiation >= 200: score += 8
+        elif avg_solar_radiation >= 50:  score += 3
+        else:                            score -= 15  # 曇天・日射なし → 乾燥ほぼ停止
+
+    # --- 降水確率ペナルティ (W11) ---
+    if pop_max is not None:
+        if pop_max >= 70:   score = int(score * 0.3)
+        elif pop_max >= 50: score = int(score * 0.6)
+        elif pop_max >= 30: score = int(score * 0.85)
+
+    # --- 地形補正 ---
     if is_forest_area(lat, lon):
-        score -= 5  # Reduced ventilation
+        score -= 5  # 森林：通風減少
 
-    # Coastal effect: increase wind, increase humidity
     if is_coastal_area(lat, lon):
-        score += 5  # Better ventilation
-        score -= 3  # Higher humidity
+        score += 5  # 海岸：通風増加
+        score -= 3  # 海岸：湿度増加
 
-    # Elevation effect
     elevation = get_elevation(lat, lon)
     if elevation > 100:
-        score += int(elevation / 100) * 2  # Better conditions at elevation
+        score += int(elevation / 100) * 2
 
     return max(0, min(100, score))
 
@@ -1484,19 +1654,179 @@ def delete_spot():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+RECORD_COLUMNS = ["date", "name", "result", "stop_cause", "did_dry",
+                  "collection_time", "recorded_at", "correction_count", "correction_reason"]
+
+VALID_RESULTS = ["完全乾燥", "概ね乾燥", "半乾燥", "ほぼ乾燥なし"]
+VALID_STOP_CAUSES = ["雨が降った", "霧が出た・昆布が湿り戻った", "飛散リスク・強風",
+                     "曇り続きで乾かなかった", "天候以外"]
+VALID_CORRECTION_REASONS = ["記録の誤り（日付・干場の選択ミス）", "判断が変わった（再評価）", "その他"]
+
+def merge_records_with_spots(records_df, spots_df):
+    """
+    hoshiba_records.csv と hoshiba_spots.csv を安全にマージする。
+
+    - records 側: date, name, result のみ使用（余分カラムで _x/_y 衝突を防ぐ）
+    - spots 側:   name, lat, lon, town, district, buraku のみ使用
+    - validate="many_to_one" で spots の name 重複を検出
+    - _merge != "both" の行が孤児レコード（spots に存在しない name）
+
+    Returns:
+        merged (DataFrame): left-joined DataFrame。
+            '_merge' カラムで "both"/"left_only" を確認できる。
+        orphans (DataFrame): spots に存在しない孤児レコードの部分集合。
+    """
+    rec_cols = [c for c in ['date', 'name', 'result'] if c in records_df.columns]
+    spot_cols = [c for c in ['name', 'lat', 'lon', 'town', 'district', 'buraku'] if c in spots_df.columns]
+
+    merged = pd.merge(
+        records_df[rec_cols],
+        spots_df[spot_cols],
+        on='name',
+        how='left',
+        validate='many_to_one',
+        indicator=True,
+    )
+    orphans = merged[merged['_merge'] != 'both'].copy()
+    return merged, orphans
+
+# ── 予報精度フィードバック ──────────────────────────────────────────────────────
+FEEDBACK_FILE = "feedback_log.csv"
+FEEDBACK_COLUMNS = [
+    "date", "spot_name",
+    "actual_result", "actual_label",          # 実記録
+    "forecast_score", "forecast_suitability", "forecast_label",  # 予報
+    "judgment_correct",                        # 判定の正誤 (True/False)
+    "days_ahead",                              # 何日前の予報か
+    "recorded_at",
+]
+
+def _result_to_label(result):
+    """乾燥記録結果 → 二値ラベル（可/不可）"""
+    return "可" if result in ("完全乾燥", "概ね乾燥") else "不可"
+
+def _suitability_to_label(suitability):
+    """予報 suitability → 二値ラベル（可/不可）"""
+    return "可" if suitability in ("excellent", "good") else "不可"
+
+def _record_forecast_feedback(name, date_str, result):
+    """
+    記録追加・更新のたびに呼び出す。
+    forecast_history/{name}/ から対象日の予報ファイルを検索し、
+    予報判定と実結果の正誤を feedback_log.csv に記録する。
+    記録が訂正された場合は既存行を上書きする。
+    """
+    try:
+        import glob as _glob
+        from datetime import datetime as _dt, timezone as _tz2, timedelta as _td2
+
+        target_date_str = date_str.replace('-', '')
+        spot_dir = os.path.join('forecast_history', name)
+        fc_files = _glob.glob(os.path.join(spot_dir, f'forecast_*_for_{target_date_str}.json'))
+
+        if not fc_files:
+            return  # 予報履歴なし → フィードバック不可
+
+        actual_label = _result_to_label(result)
+        jst = _tz2(_td2(hours=9))
+        now_jst = _dt.now(jst).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
+        # 既存フィードバックログを読み込み
+        try:
+            fb_df = pd.read_csv(FEEDBACK_FILE)
+            for col in FEEDBACK_COLUMNS:
+                if col not in fb_df.columns:
+                    fb_df[col] = None
+        except FileNotFoundError:
+            fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
+
+        new_rows = []
+        for fc_file in fc_files:
+            try:
+                with open(fc_file, 'r', encoding='utf-8') as f:
+                    fc_data = json.load(f)
+
+                forecast_date_str = fc_data.get('forecast_date', '')
+                if not forecast_date_str:
+                    continue
+
+                try:
+                    fc_dt = _dt.strptime(forecast_date_str, '%Y%m%d')
+                    tg_dt = _dt.strptime(target_date_str, '%Y%m%d')
+                    days_ahead = (tg_dt - fc_dt).days
+                except ValueError:
+                    days_ahead = None
+
+                fc_score = fc_data.get('drying_score')
+                fc_suit = fc_data.get('suitability', '')
+                fc_label = _suitability_to_label(fc_suit)
+                correct = (actual_label == fc_label)
+
+                # 同一 date + spot_name + days_ahead の行は上書き（訂正対応）
+                mask = (
+                    (fb_df['date'] == date_str) &
+                    (fb_df['spot_name'] == name) &
+                    (fb_df['days_ahead'] == days_ahead)
+                )
+                if mask.any():
+                    fb_df.loc[mask, 'actual_result']       = result
+                    fb_df.loc[mask, 'actual_label']        = actual_label
+                    fb_df.loc[mask, 'judgment_correct']    = correct
+                    fb_df.loc[mask, 'recorded_at']         = now_jst
+                else:
+                    new_rows.append({
+                        'date':                 date_str,
+                        'spot_name':            name,
+                        'actual_result':        result,
+                        'actual_label':         actual_label,
+                        'forecast_score':       fc_score,
+                        'forecast_suitability': fc_suit,
+                        'forecast_label':       fc_label,
+                        'judgment_correct':     correct,
+                        'days_ahead':           days_ahead,
+                        'recorded_at':          now_jst,
+                    })
+            except Exception as e:
+                print(f'[feedback] parse error {fc_file}: {e}')
+
+        if new_rows:
+            fb_df = pd.concat([fb_df, pd.DataFrame(new_rows)], ignore_index=True)
+
+        fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
+        print(f'[feedback] {name} {date_str} → {result} ({len(fc_files)} forecast(s) evaluated)')
+
+    except Exception as e:
+        print(f'[feedback] error: {e}')
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _load_records():
+    """hoshiba_records.csvを読み込み、旧カラム構造を自動移行して返す"""
+    try:
+        df = pd.read_csv(RECORD_FILE)
+    except FileNotFoundError:
+        return pd.DataFrame(columns=RECORD_COLUMNS)
+    for col in RECORD_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    return df[RECORD_COLUMNS]
+
 @app.route('/record', methods=['POST'])
 def add_record():
-    """記録を追加または更新"""
+    """記録を追加または更新（v2.6.0: 9カラム拡張版）"""
     try:
         data = request.get_json()
         name = data.get("name")
         date = data.get("date")
         result = data.get("result")
+        stop_cause = data.get("stop_cause")
+        did_dry = data.get("did_dry")
+        collection_time = data.get("collection_time")
+        correction_reason = data.get("correction_reason")
 
         if not all([name, date, result]):
             return jsonify({"status": "error", "message": "name, date, resultがすべて必要です"}), 400
 
-        # 特別地点の記録禁止（干場ではないため）
         PROTECTED_SPOTS = ['A_1783_1383', 'A_2417_1867', 'R_1800_2392']
         if name in PROTECTED_SPOTS:
             spot_descriptions = {
@@ -1509,64 +1839,100 @@ def add_record():
                 "message": f"{spot_descriptions[name]}は観測点であり干場ではないため、乾燥記録を登録できません"
             }), 400
 
-        # 有効な記録結果かチェック
-        valid_results = ["完全乾燥", "中止", "干したが完全には乾かせなかった（泣）"]
-        if result not in valid_results:
-            return jsonify({"status": "error", "message": "無効な記録結果です"}), 400
-
-        # 既存記録を読み込み
+        # hoshiba_spots.csv に存在しない干場名は拒否（孤児レコード生成防止）
         try:
-            df = pd.read_csv(RECORD_FILE)
+            spots_df = pd.read_csv(CSV_FILE)
+            if name not in spots_df['name'].values:
+                return jsonify({
+                    "status": "error",
+                    "message": f"干場 '{name}' は存在しません。先に干場を登録してください。"
+                }), 400
         except FileNotFoundError:
-            # ファイルが存在しない場合は新規作成
-            df = pd.DataFrame(columns=["date", "name", "result"])
+            return jsonify({"status": "error", "message": "干場データベースが見つかりません"}), 500
 
-        # 既存の記録があるかチェック
-        existing_record = df[(df["name"] == name) & (df["date"] == date)]
+        if result not in VALID_RESULTS:
+            return jsonify({"status": "error", "message": f"無効な記録結果です。有効値: {VALID_RESULTS}"}), 400
 
-        if len(existing_record) > 0:
-            # 既存記録を更新
-            df.loc[(df["name"] == name) & (df["date"] == date), "result"] = result
+        if stop_cause is not None and stop_cause not in VALID_STOP_CAUSES:
+            return jsonify({"status": "error", "message": f"無効な主因です。有効値: {VALID_STOP_CAUSES}"}), 400
+
+        if correction_reason is not None and correction_reason not in VALID_CORRECTION_REASONS:
+            return jsonify({"status": "error", "message": f"無効な訂正理由です。"}), 400
+
+        from datetime import timezone as _tz, timedelta as _td
+        jst = _tz(_td(hours=9))
+        now_jst = datetime.now(jst).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
+        df = _load_records()
+        mask = (df["name"] == name) & (df["date"] == date)
+        existing = df[mask]
+
+        if len(existing) > 0:
+            current_count = int(existing.iloc[0].get("correction_count") or 0)
+            df.loc[mask, "result"] = result
+            df.loc[mask, "stop_cause"] = stop_cause
+            df.loc[mask, "did_dry"] = did_dry
+            df.loc[mask, "collection_time"] = collection_time
+            df.loc[mask, "recorded_at"] = now_jst
+            df.loc[mask, "correction_count"] = current_count + 1
+            df.loc[mask, "correction_reason"] = correction_reason
             message = f"記録が更新されました: {name} ({date}) - {result}"
         else:
-            # 新規記録を追加
             new_row = pd.DataFrame([{
                 "date": date,
                 "name": name,
-                "result": result
+                "result": result,
+                "stop_cause": stop_cause,
+                "did_dry": did_dry,
+                "collection_time": collection_time,
+                "recorded_at": now_jst,
+                "correction_count": 0,
+                "correction_reason": None
             }])
             df = pd.concat([df, new_row], ignore_index=True)
             message = f"記録が追加されました: {name} ({date}) - {result}"
 
-        # CSV保存
         df.to_csv(RECORD_FILE, index=False, encoding="utf-8")
 
-        return jsonify({
-            "status": "success",
-            "message": message
-        })
+        # 予報精度フィードバックを自動記録（失敗してもメインの記録保存には影響しない）
+        _record_forecast_feedback(name, date, result)
+
+        return jsonify({"status": "success", "message": message})
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/record/<name>/<date>', methods=['GET'])
 def get_record(name, date):
-    """指定した干場・日付の記録を取得"""
+    """指定した干場・日付の記録を取得（v2.6.0: 全カラム返却）"""
     try:
-        try:
-            df = pd.read_csv(RECORD_FILE)
-        except FileNotFoundError:
-            return jsonify({"exists": False})
+        df = _load_records()
+        existing = df[(df["name"] == name) & (df["date"] == date)]
 
-        existing_record = df[(df["name"] == name) & (df["date"] == date)]
-
-        if len(existing_record) > 0:
+        if len(existing) > 0:
+            row = existing.iloc[0]
+            def _val(v):
+                import math
+                if v is None:
+                    return None
+                try:
+                    if math.isnan(float(v)):
+                        return None
+                except (TypeError, ValueError):
+                    pass
+                return v
             return jsonify({
                 "exists": True,
                 "record": {
-                    "date": existing_record.iloc[0]["date"],
-                    "name": existing_record.iloc[0]["name"],
-                    "result": existing_record.iloc[0]["result"]
+                    "date": _val(row.get("date")),
+                    "name": _val(row.get("name")),
+                    "result": _val(row.get("result")),
+                    "stop_cause": _val(row.get("stop_cause")),
+                    "did_dry": _val(row.get("did_dry")),
+                    "collection_time": _val(row.get("collection_time")),
+                    "recorded_at": _val(row.get("recorded_at")),
+                    "correction_count": int(row.get("correction_count") or 0),
+                    "correction_reason": _val(row.get("correction_reason"))
                 }
             })
         else:
@@ -2666,7 +3032,7 @@ def get_contour_analysis():
 
                 # ジェット強度判定
                 jet_intensity = "弱"
-                if wind_speed_300:
+                if wind_speed_300 is not None:
                     wind_speed_ms = wind_speed_300 / 3.6  # km/h to m/s
                     if wind_speed_ms >= 50:
                         jet_intensity = "非常に強い"
@@ -2682,7 +3048,7 @@ def get_contour_analysis():
                     'parameter': 'ジェット気流',
                     'unit': 'm/s',
                     'wind_speed_300hpa': wind_speed_300,
-                    'wind_speed_ms': wind_speed_300 / 3.6 if wind_speed_300 else None,
+                    'wind_speed_ms': wind_speed_300 / 3.6 if wind_speed_300 is not None else None,
                     'wind_direction_300hpa': wind_dir_300,
                     'geopotential_height_300hpa': geo_height_300,
                     'jet_intensity': jet_intensity,
@@ -3244,6 +3610,46 @@ def get_forecast_accuracy():
 
         total_samples = sum(data['count'] for data in accuracy_by_day.values())
 
+        # ── 記録ベースの判定正誤率（feedback_log.csv） ──────────────────────────
+        judgment_accuracy = {}
+        judgment_overall = None
+        try:
+            if os.path.exists(FEEDBACK_FILE):
+                fb_df = pd.read_csv(FEEDBACK_FILE)
+                if not fb_df.empty and 'days_ahead' in fb_df.columns:
+                    # days_ahead ごとに正答率を集計
+                    for da in sorted(fb_df['days_ahead'].dropna().unique()):
+                        da = int(da)
+                        subset = fb_df[fb_df['days_ahead'] == da]
+                        total = len(subset)
+                        if total == 0:
+                            continue
+                        correct = int(subset['judgment_correct'].sum())
+                        tp = int(((subset['actual_label'] == '可') & (subset['forecast_label'] == '可')).sum())
+                        fp = int(((subset['actual_label'] == '不可') & (subset['forecast_label'] == '可')).sum())
+                        fn = int(((subset['actual_label'] == '可') & (subset['forecast_label'] == '不可')).sum())
+                        tn = int(((subset['actual_label'] == '不可') & (subset['forecast_label'] == '不可')).sum())
+                        judgment_accuracy[f'{da}_day'] = {
+                            'correct': correct,
+                            'total': total,
+                            'hit_rate': round(correct / total * 100, 1),
+                            'true_positive': tp,
+                            'false_positive': fp,
+                            'false_negative': fn,
+                            'true_negative': tn,
+                        }
+
+                    all_total = len(fb_df)
+                    all_correct = int(fb_df['judgment_correct'].sum()) if all_total > 0 else 0
+                    judgment_overall = {
+                        'total': all_total,
+                        'correct': all_correct,
+                        'hit_rate': round(all_correct / all_total * 100, 1) if all_total > 0 else None,
+                    }
+        except Exception as _e:
+            print(f'[accuracy] feedback_log read error: {_e}')
+        # ──────────────────────────────────────────────────────────────────────
+
         return jsonify({
             'status': 'success',
             'spot': spot_name,
@@ -3254,13 +3660,109 @@ def get_forecast_accuracy():
                 'data_coverage': f'{total_samples}/{days_back * 6} days',
                 'average_accuracy': round(sum(s['accuracy'] for s in accuracy_summary.values()) / 7, 1)
             },
-            'data_source': '沓形アメダス(11151) vs 予報データ比較',
-            'methodology': '気温・湿度・風速の平均絶対誤差(MAE)に基づく総合精度スコア',
+            'judgment_accuracy_by_day': judgment_accuracy,
+            'judgment_accuracy_overall': judgment_overall,
+            'data_source': '沓形アメダス(11151) vs 予報データ比較 + hoshiba_records.csv 実記録',
+            'methodology': '(1) 気温・湿度・風速のMAEによる数値精度スコア  (2) 干せた/干せないの判定正誤率（feedback_log.csv）',
             'note': 'アメダスデータがない期間は仕様書の理論精度値を使用'
         })
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _collect_amedas_from_openmeteo(target_date_str):
+    """Fetch one day's actual weather from Open-Meteo Archive API for both amedas stations.
+
+    Saves to amedas_data/amedas_11151_{YYYYMMDD}.json (沓形) and
+    amedas_data/amedas_11311_{YYYYMMDD}.json (本泊).
+    Returns True on success, False on failure.
+    """
+    STATIONS = [
+        {'id': '11151', 'lat': 45.1783, 'lon': 141.1383, 'name': '沓形'},
+        {'id': '11311', 'lat': 45.2417, 'lon': 141.1867, 'name': '本泊'},
+    ]
+    os.makedirs('amedas_data', exist_ok=True)
+    success = True
+    for st in STATIONS:
+        filepath = os.path.join('amedas_data', f'amedas_{st["id"]}_{target_date_str}.json')
+        if os.path.exists(filepath):
+            continue
+        url = (
+            f'https://archive-api.open-meteo.com/v1/archive'
+            f'?latitude={st["lat"]}&longitude={st["lon"]}'
+            f'&start_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
+            f'&end_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
+            f'&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation'
+            f'&timezone=Asia%2FTokyo'
+        )
+        try:
+            import urllib.request
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+            hourly = data.get('hourly', {})
+            times = hourly.get('time', [])
+            temps = hourly.get('temperature_2m', [])
+            humids = hourly.get('relative_humidity_2m', [])
+            winds = hourly.get('wind_speed_10m', [])
+            precips = hourly.get('precipitation', [])
+            valid_h = [h for h in humids if h is not None]
+            valid_w = [w for w in winds if w is not None]
+            valid_p = [p for p in precips if p is not None]
+            record = {
+                'date': f'{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}',
+                'station_id': st['id'],
+                'station_name': st['name'],
+                'hourly': [
+                    {'time': t, 'temperature': te, 'humidity': hu, 'wind_speed': wi, 'precipitation': pr}
+                    for t, te, hu, wi, pr in zip(times, temps, humids, winds, precips)
+                ],
+                'daily_summary': {
+                    'min_humidity': min(valid_h) if valid_h else None,
+                    'avg_wind': round(sum(valid_w) / len(valid_w), 2) if valid_w else None,
+                    'total_precipitation': round(sum(valid_p), 2) if valid_p else None,
+                },
+                'collected_at': datetime.now().isoformat(),
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(record, f, ensure_ascii=False)
+            print(f'[amedas] saved {filepath}')
+        except Exception as e:
+            print(f'[amedas] fetch error for {st["id"]} {target_date_str}: {e}')
+            success = False
+    return success
+
+
+@app.route('/api/collect_amedas')
+def collect_amedas():
+    """Manually trigger amedas data collection for one or more past days.
+
+    Query params:
+      days (int, default 1): how many past days to collect (1 = yesterday only)
+    """
+    days = int(request.args.get('days', 1))
+    days = min(days, 90)  # cap at 90 days to avoid abuse
+    results = []
+    for i in range(1, days + 1):
+        target = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+        ok = _collect_amedas_from_openmeteo(target)
+        results.append({'date': target, 'success': ok})
+    return jsonify({'status': 'ok', 'results': results})
+
+
+def _daily_amedas_collection():
+    """Background thread: collect yesterday's amedas data once a day at 03:00 JST."""
+    import time
+    while True:
+        now = datetime.now()
+        # Target 03:00 JST (same timezone the app runs in)
+        next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+        if now >= next_run:
+            next_run = next_run + timedelta(days=1)
+        time.sleep((next_run - now).total_seconds())
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+        _collect_amedas_from_openmeteo(yesterday)
+
 
 def generate_terrain_description(is_forest, is_coastal, elevation):
     """Generate human-readable terrain description"""
@@ -4041,23 +4543,21 @@ def calculate_stage_based_drying_assessment(hourly_data, day_number):
             else:
                 temp_score = 20
 
-            # Solar radiation score (W/m²)
-            if solar_radiation > 800:
-                solar_score = 100
-            elif solar_radiation > 600:
-                solar_score = 80
-            elif solar_radiation > 400:
-                solar_score = 60
-            elif solar_radiation > 200:
-                solar_score = 40
-            else:
-                solar_score = 20
+            # Solar radiation score (W/m²) — K4: 曇天(< 50 W/m²)は下限0に修正
+            # 日射400 W/m²以上でDeff 7倍向上（KOMBU_DRYING_RESEARCH §3-2）
+            if solar_radiation >= 800:   solar_score = 100
+            elif solar_radiation >= 600: solar_score = 80
+            elif solar_radiation >= 400: solar_score = 60
+            elif solar_radiation >= 200: solar_score = 35
+            elif solar_radiation >= 50:  solar_score = 15
+            else:                         solar_score = 0  # 曇天・霧：乾燥促進効果なし
 
             # Humidity penalty
             humidity_factor = max(0, (100 - humidity) / 100)
 
-            # Combined heat supply score
-            hour_score = (temp_score * 0.6 + solar_score * 0.4) * humidity_factor
+            # Combined heat supply score — K3: 温度と日射を同等重みに変更(0.5/0.5)
+            # 研究知見「温度 ≈ 日射」(KOMBU_DRYING_RESEARCH §4-5)
+            hour_score = (temp_score * 0.5 + solar_score * 0.5) * humidity_factor
             heat_supply_scores.append(hour_score)
 
         heat_supply_score = sum(heat_supply_scores) / len(heat_supply_scores) if heat_supply_scores else 0
@@ -4359,6 +4859,136 @@ def calculate_pwv_pblh_combined_score(pwv, pblh):
         'sea_fog_risk': sea_fog_risk,
         'risk_level': risk_level
     }
+
+def calculate_remoistening_risk(hourly_data):
+    """
+    再吸湿リスク評価（KOMBU_DRYING_RESEARCH.md §10 K6）
+    10:00〜16:00 の湿度上昇率から昆布の取り込み推奨時刻を算出する。
+    Returns dict: risk level, rise_rate(%/h), recommended_collection_time
+    """
+    afternoon = [
+        h for h in hourly_data
+        if h.get('humidity') is not None and 10 <= int(h['time'].split(':')[0]) <= 16
+    ]
+    if len(afternoon) < 2:
+        return {'risk': 'unknown', 'rise_rate': None, 'advice': '取り込み時刻: データ不足'}
+
+    rise_rate = (afternoon[-1]['humidity'] - afternoon[0]['humidity']) / len(afternoon)
+
+    if rise_rate > 4.0:
+        return {'risk': 'high',   'rise_rate': round(rise_rate, 1),
+                'advice': '14:00以前の早期取り込みを推奨（夕方湿度急上昇）'}
+    elif rise_rate > 2.0:
+        return {'risk': 'medium', 'rise_rate': round(rise_rate, 1),
+                'advice': '16:00までに取り込み完了を推奨'}
+    else:
+        return {'risk': 'low',    'rise_rate': round(rise_rate, 1),
+                'advice': '通常通り取り込み可（夕方の湿度上昇は緩やか）'}
+
+
+def assess_cape_risk(cape_value):
+    """
+    CAPE指数による対流不安定リスク評価（WINDY_RESEARCH.md §6 W10）
+    突発的な積乱雲・にわか雨リスクをスコアペナルティに変換する。
+    """
+    if cape_value is None:
+        return {'risk': 'unknown', 'score_penalty': 0, 'warning': None}
+    if cape_value > 1000:
+        return {'risk': 'high',   'score_penalty': -20,
+                'warning': f'CAPE {cape_value:.0f} J/kg — 突発的な強雨リスク高、緊急取り込み準備'}
+    elif cape_value > 500:
+        return {'risk': 'medium', 'score_penalty': -10,
+                'warning': f'CAPE {cape_value:.0f} J/kg — 積乱雲発達リスクあり'}
+    elif cape_value > 200:
+        return {'risk': 'low',    'score_penalty': -3,
+                'warning': f'CAPE {cape_value:.0f} J/kg — にわか雨注意'}
+    else:
+        return {'risk': 'none',   'score_penalty': 0, 'warning': None}
+
+
+def get_sea_surface_temperature(lat, lon):
+    """
+    Open-Meteo Marine API から海面水温 (SST) を取得（WINDY_RESEARCH.md §6 W6）
+    SST < 15°C のとき海霧リスク高（ISLAND_METEOROLOGY_RESEARCH §7）
+    """
+    try:
+        url = (
+            f"https://marine-api.open-meteo.com/v1/marine"
+            f"?latitude={lat}&longitude={lon}"
+            f"&daily=sea_surface_temperature"
+            f"&timezone=Asia/Tokyo"
+            f"&forecast_days=7"
+        )
+        response = requests.get(url, timeout=8)
+        response.raise_for_status()
+        data = response.json()
+        sst_list = data.get('daily', {}).get('sea_surface_temperature', [])
+        return sst_list  # list of 7 values (°C)
+    except Exception:
+        return [None] * 7
+
+
+def assess_sst_fog_risk(sst, air_temp=None):
+    """SST から霧リスクレベルを評価"""
+    if sst is None:
+        return 'unknown'
+    if sst < 10:
+        return 'very_high'   # 冷水塊（親潮）接近: 海霧ほぼ確実
+    elif sst < 15:
+        return 'high'        # 親潮影響域: 海霧リスク高
+    elif air_temp is not None and (air_temp - sst) > 5:
+        return 'medium'      # 暖気移流＋冷海面: 移流霧リスク
+    return 'low'
+
+
+def calculate_solunar_score(target_date):
+    """
+    ソルナー指数（WINDY_RESEARCH.md §6 W9）
+    月相（新月・満月付近）が漁業活性・昆布採取の好機とされる経験則を数値化。
+    外部 API 不要 — 月齢計算のみ。
+    Returns: score (0-100), phase_name (str), moon_age_days (float)
+    """
+    from datetime import timezone as _tz
+    # 2000-01-06 18:14 UTC = 新月（基準点）
+    new_moon_epoch = datetime(2000, 1, 6, 18, 14, tzinfo=_tz.utc)
+    lunar_cycle = 29.530588853  # 朔望月（日）
+
+    if target_date.tzinfo is None:
+        target_date = target_date.replace(tzinfo=_tz.utc)
+
+    elapsed_days = (target_date - new_moon_epoch).total_seconds() / 86400
+    moon_age = elapsed_days % lunar_cycle          # 0 = 新月, ~14.8 = 満月
+    phase_ratio = moon_age / lunar_cycle            # 0.0〜1.0
+
+    # 新月(0)・満月(0.5)付近で高スコア
+    proximity_new  = min(phase_ratio, 1 - phase_ratio)      # 0〜0.5
+    proximity_full = abs(phase_ratio - 0.5)                  # 0〜0.5
+    best = min(proximity_new, proximity_full)                 # 0 = 新/満月
+    score = max(0, int(100 - best * 400))
+
+    if moon_age < 1.5 or moon_age > 28:
+        phase_name = '新月'
+    elif moon_age < 7:
+        phase_name = '三日月（上弦へ）'
+    elif moon_age < 8.5:
+        phase_name = '上弦の月'
+    elif moon_age < 13.5:
+        phase_name = '十三夜（満月へ）'
+    elif moon_age < 16.5:
+        phase_name = '満月'
+    elif moon_age < 22:
+        phase_name = '十六夜（下弦へ）'
+    elif moon_age < 23.5:
+        phase_name = '下弦の月'
+    else:
+        phase_name = '晦（新月へ）'
+
+    return score, phase_name, round(moon_age, 1)
+
+
+import threading as _threading
+_amedas_thread = _threading.Thread(target=_daily_amedas_collection, daemon=True)
+_amedas_thread.start()
 
 if __name__ == '__main__':
     main()

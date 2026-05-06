@@ -1272,18 +1272,72 @@
         <div id="map"></div>
 
         <!-- 記録フォーム（非表示） -->
-        <div id="recordFormContainer" class="record-form" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000;">
-            <h4>📝 乾燥記録の入力</h4>
-            <div id="recordSpotInfo"></div>
-            <label for="recordDate">日付を選択してください:</label>
-            <input type="date" id="recordDate" />
-            <div id="existingRecordInfo"></div>
-            <div id="recordButtons" class="record-buttons">
-                <button class="record-btn success" onclick="submitRecord('完全乾燥')">完全乾燥</button>
-                <button class="record-btn warning" onclick="submitRecord('干したが完全には乾かせなかった（泣）')">干したが完全には乾かせなかった（泣）</button>
-                <button class="record-btn danger" onclick="submitRecord('中止')">中止</button>
+        <div id="recordFormContainer" class="record-form" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-height: 90vh; overflow-y: auto; min-width: 320px; max-width: 480px;">
+            <h4 style="margin-top:0;">📝 乾燥記録の入力</h4>
+            <div id="recordSpotInfo" style="margin-bottom:8px;"></div>
+
+            <label for="recordDate" style="font-weight:bold;">日付を選択してください:</label>
+            <input type="date" id="recordDate" style="display:block;margin:4px 0 2px;" />
+            <small style="color:#e74c3c;">⚠️ 日付の入力間違いは予報精度に影響します</small>
+
+            <!-- 既存記録 conflict notice -->
+            <div id="existingRecordNotice" style="display:none; margin-top:10px;"></div>
+
+            <!-- Step 1: 乾燥結果 -->
+            <div id="recordStep1" style="margin-top:14px;">
+                <p style="font-weight:bold;margin-bottom:6px;">① 乾燥結果を選択してください</p>
+                <div class="record-buttons" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                    <button class="record-btn result-btn" data-result="完全乾燥"     style="background:#28a745;color:white;">完全乾燥</button>
+                    <button class="record-btn result-btn" data-result="概ね乾燥"     style="background:#8bc34a;color:white;">概ね乾燥</button>
+                    <button class="record-btn result-btn" data-result="半乾燥"       style="background:#ffc107;color:#333;">半乾燥</button>
+                    <button class="record-btn result-btn" data-result="ほぼ乾燥なし" style="background:#dc3545;color:white;">ほぼ乾燥なし</button>
+                </div>
             </div>
-            <button onclick="closeRecordForm()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin-top: 10px;">キャンセル</button>
+
+            <!-- Step 2: 主因 + 干した/干さなかった -->
+            <div id="recordStep2" style="display:none;margin-top:14px;">
+                <p style="font-weight:bold;margin-bottom:6px;">② 主な原因を選択してください</p>
+                <div class="record-buttons" style="display:flex;flex-direction:column;gap:5px;">
+                    <button class="record-btn cause-btn" data-cause="雨が降った">🌧 雨が降った</button>
+                    <button class="record-btn cause-btn" data-cause="霧が出た・昆布が湿り戻った">🌫 霧が出た・昆布が湿り戻った</button>
+                    <button class="record-btn cause-btn" data-cause="飛散リスク・強風">💨 飛散リスク・強風</button>
+                    <button class="record-btn cause-btn" data-cause="曇り続きで乾かなかった">☁ 曇り続きで乾かなかった</button>
+                    <button class="record-btn cause-btn" data-cause="天候以外">📋 天候以外の理由</button>
+                </div>
+                <!-- did_dry sub-section (ほぼ乾燥なしのみ) -->
+                <div id="recordDidDrySection" style="display:none;margin-top:10px;border-top:1px solid #ddd;padding-top:10px;">
+                    <p style="font-weight:bold;margin-bottom:6px;">昆布を干しましたか？</p>
+                    <div style="display:flex;gap:8px;">
+                        <button class="record-btn didry-btn" data-didry="干した"     style="flex:1;background:#17a2b8;color:white;">干した</button>
+                        <button class="record-btn didry-btn" data-didry="干さなかった" style="flex:1;background:#6c757d;color:white;">干さなかった</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: 取り込み時刻 -->
+            <div id="recordStep3" style="display:none;margin-top:14px;">
+                <p style="font-weight:bold;margin-bottom:6px;">③ 取り込み時刻（任意）</p>
+                <input type="time" id="recordCollectionTime" style="padding:6px;border:1px solid #ccc;border-radius:4px;" />
+                <small style="display:block;color:#666;margin-top:3px;">入力しない場合は空欄のままで構いません</small>
+            </div>
+
+            <!-- 訂正理由（訂正フローのみ） -->
+            <div id="recordCorrectionReasonSection" style="display:none;margin-top:14px;">
+                <p style="font-weight:bold;margin-bottom:6px;">④ 訂正理由（任意）</p>
+                <select id="recordCorrectionReasonSelect" style="width:100%;padding:6px;border:1px solid #ccc;border-radius:4px;">
+                    <option value="">（選択しない）</option>
+                    <option value="記録の誤り（日付・干場の選択ミス）">記録の誤り（日付・干場の選択ミス）</option>
+                    <option value="判断が変わった（再評価）">判断が変わった（再評価）</option>
+                    <option value="その他">その他</option>
+                </select>
+            </div>
+
+            <!-- 確定ボタン -->
+            <div id="recordSubmitSection" style="display:none;margin-top:16px;">
+                <button id="recordSubmitBtn" onclick="submitRecord()" style="width:100%;background:#007bff;color:white;border:none;padding:10px;border-radius:6px;font-size:1rem;font-weight:bold;cursor:pointer;">✅ 記録を確定する</button>
+            </div>
+
+            <button onclick="closeRecordForm()" style="width:100%;background:#6c757d;color:white;border:none;padding:8px;border-radius:5px;cursor:pointer;margin-top:8px;">キャンセル</button>
         </div>
 
         <div class="forecast-panel" id="forecastPanel">
@@ -4449,98 +4503,194 @@
 
         // 記録機能
         let currentRecordSpotIndex = null;
+        let recordState = { result: null, stopCause: null, didDry: null, isCorrection: false };
 
         function showRecordForm(index) {
-            console.log('showRecordForm called with index:', index);
             currentRecordSpotIndex = index;
             const spot = hoshibaSpots[index];
-            console.log('Selected spot:', spot);
 
             const container = document.getElementById('recordFormContainer');
-            const spotInfo = document.getElementById('recordSpotInfo');
-            const dateInput = document.getElementById('recordDate');
-            const existingInfo = document.getElementById('existingRecordInfo');
+            if (!container) return;
 
-            console.log('Container element:', container);
+            document.getElementById('recordSpotInfo').innerHTML =
+                `<strong>${spot.name}</strong><br><small>${spot.town} ${spot.district}</small>`;
 
-            if (!container) {
-                console.error('Record form container not found!');
-                return;
-            }
-
-            // 干場情報を表示
-            spotInfo.innerHTML = `<strong>${spot.name}</strong><br><small>${spot.town} ${spot.district}</small>`;
-
-            // 今日の日付をデフォルトに設定
             const today = new Date().toISOString().split('T')[0];
-            dateInput.value = today;
+            document.getElementById('recordDate').value = today;
 
-            // 既存記録をクリア
-            existingInfo.innerHTML = '';
-
-            // フォームを表示
+            _resetRecordForm();
             container.style.display = 'block';
-            console.log('Record form should be visible now');
 
-            // 日付変更時のイベントリスナー
-            dateInput.onchange = function() {
+            document.getElementById('recordDate').onchange = function() {
+                _resetRecordForm();
                 checkExistingRecord(spot.name, this.value);
             };
 
-            // 初期チェック
             checkExistingRecord(spot.name, today);
+        }
+
+        function _resetRecordForm() {
+            recordState = { result: null, stopCause: null, didDry: null, isCorrection: false };
+            document.getElementById('existingRecordNotice').style.display = 'none';
+            document.getElementById('existingRecordNotice').innerHTML = '';
+            document.getElementById('recordStep1').style.display = 'block';
+            document.getElementById('recordStep2').style.display = 'none';
+            document.getElementById('recordDidDrySection').style.display = 'none';
+            document.getElementById('recordStep3').style.display = 'none';
+            document.getElementById('recordCorrectionReasonSection').style.display = 'none';
+            document.getElementById('recordSubmitSection').style.display = 'none';
+            document.getElementById('recordCollectionTime').value = '';
+            document.getElementById('recordCorrectionReasonSelect').value = '';
+            // Clear button selections
+            document.querySelectorAll('.result-btn,.cause-btn,.didry-btn').forEach(b => b.style.outline = '');
+
+            // Attach step-button handlers (re-attach each reset to avoid duplicate listeners)
+            document.querySelectorAll('.result-btn').forEach(btn => {
+                btn.onclick = () => _selectResult(btn.dataset.result);
+            });
+            document.querySelectorAll('.cause-btn').forEach(btn => {
+                btn.onclick = () => _selectCause(btn.dataset.cause);
+            });
+            document.querySelectorAll('.didry-btn').forEach(btn => {
+                btn.onclick = () => _selectDidDry(btn.dataset.didry);
+            });
+        }
+
+        function _selectResult(result) {
+            recordState.result = result;
+            recordState.stopCause = null;
+            recordState.didDry = null;
+            document.querySelectorAll('.result-btn').forEach(b =>
+                b.style.outline = b.dataset.result === result ? '3px solid #333' : '');
+
+            if (result === '完全乾燥') {
+                document.getElementById('recordStep2').style.display = 'none';
+                document.getElementById('recordStep3').style.display = 'block';
+                _updateSubmit();
+            } else {
+                document.getElementById('recordStep2').style.display = 'block';
+                document.getElementById('recordStep3').style.display = 'none';
+                // show did_dry sub-section only for ほぼ乾燥なし
+                document.getElementById('recordDidDrySection').style.display =
+                    result === 'ほぼ乾燥なし' ? 'none' : 'none'; // shown after cause selected
+                document.getElementById('recordSubmitSection').style.display = 'none';
+            }
+        }
+
+        function _selectCause(cause) {
+            recordState.stopCause = cause;
+            recordState.didDry = null;
+            document.querySelectorAll('.cause-btn').forEach(b =>
+                b.style.outline = b.dataset.cause === cause ? '3px solid #333' : '');
+
+            if (recordState.result === 'ほぼ乾燥なし') {
+                document.getElementById('recordDidDrySection').style.display = 'block';
+                document.getElementById('recordStep3').style.display = 'none';
+                document.getElementById('recordSubmitSection').style.display = 'none';
+                document.querySelectorAll('.didry-btn').forEach(b => b.style.outline = '');
+            } else {
+                document.getElementById('recordDidDrySection').style.display = 'none';
+                document.getElementById('recordStep3').style.display = 'block';
+                _updateSubmit();
+            }
+        }
+
+        function _selectDidDry(val) {
+            recordState.didDry = val;
+            document.querySelectorAll('.didry-btn').forEach(b =>
+                b.style.outline = b.dataset.didry === val ? '3px solid #333' : '');
+            if (val === '干した') {
+                document.getElementById('recordStep3').style.display = 'block';
+            } else {
+                document.getElementById('recordStep3').style.display = 'none';
+            }
+            _updateSubmit();
+        }
+
+        function _updateSubmit() {
+            const { result, stopCause, didDry } = recordState;
+            let ready = false;
+            if (result === '完全乾燥') {
+                ready = true;
+            } else if (result === 'ほぼ乾燥なし') {
+                ready = stopCause !== null && didDry !== null;
+            } else {
+                ready = stopCause !== null;
+            }
+            document.getElementById('recordSubmitSection').style.display = ready ? 'block' : 'none';
         }
 
         async function checkExistingRecord(name, date) {
             try {
                 const response = await fetch(`/record/${name}/${date}`);
                 const data = await response.json();
-                const existingInfo = document.getElementById('existingRecordInfo');
+                const notice = document.getElementById('existingRecordNotice');
 
                 if (data.exists) {
-                    existingInfo.innerHTML = `
-                        <div class="existing-record">
-                            <strong>既存の記録:</strong><br>
-                            ${data.record.date}: ${data.record.result}<br>
-                            <small>記録を変更する場合は、下のボタンを選択してください</small>
-                        </div>
-                    `;
+                    const r = data.record;
+                    const corrCount = r.correction_count || 0;
+                    const recAt = r.recorded_at ? `（記録日時: ${r.recorded_at}）` : '';
+                    const corrText = corrCount > 0 ? `　訂正回数: ${corrCount}回` : '';
+                    notice.style.display = 'block';
+                    notice.innerHTML = `
+                        <div class="existing-record" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:5px;margin-top:8px;">
+                            <strong>⚠️ 既に他のユーザーによって以下の記録が行われています</strong><br>
+                            <span style="font-size:1.1em;font-weight:bold;">${r.result}</span>
+                            ${r.stop_cause ? `<br>主因: ${r.stop_cause}` : ''}
+                            ${r.collection_time ? `<br>取り込み時刻: ${r.collection_time}` : ''}
+                            <br><small style="color:#666;">${recAt}${corrText}</small>
+                            <div style="margin-top:8px;display:flex;gap:8px;">
+                                <button onclick="closeRecordForm()" style="flex:1;padding:6px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;">戻る</button>
+                                <button onclick="_startCorrection()" style="flex:1;padding:6px;background:#fd7e14;color:white;border:none;border-radius:4px;cursor:pointer;">記録を訂正する</button>
+                            </div>
+                        </div>`;
+                    document.getElementById('recordStep1').style.display = 'none';
                 } else {
-                    existingInfo.innerHTML = '';
+                    notice.style.display = 'none';
+                    document.getElementById('recordStep1').style.display = 'block';
                 }
             } catch (error) {
                 console.error('記録確認エラー:', error);
             }
         }
 
-        async function submitRecord(result) {
+        function _startCorrection() {
+            recordState.isCorrection = true;
+            document.getElementById('existingRecordNotice').style.display = 'none';
+            document.getElementById('recordStep1').style.display = 'block';
+            document.getElementById('recordCorrectionReasonSection').style.display = 'block';
+        }
+
+        async function submitRecord() {
             if (currentRecordSpotIndex === null) return;
 
             const spot = hoshibaSpots[currentRecordSpotIndex];
             const date = document.getElementById('recordDate').value;
+            if (!date) { alert('日付を選択してください'); return; }
 
-            if (!date) {
-                alert('日付を選択してください');
-                return;
-            }
+            const { result, stopCause, didDry, isCorrection } = recordState;
+            const collectionTime = document.getElementById('recordCollectionTime').value || null;
+            const correctionReason = isCorrection
+                ? (document.getElementById('recordCorrectionReasonSelect').value || null)
+                : null;
 
             try {
                 const response = await fetch('/record', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         name: spot.name,
-                        date: date,
-                        result: result
+                        date,
+                        result,
+                        stop_cause: stopCause,
+                        did_dry: didDry,
+                        collection_time: collectionTime,
+                        correction_reason: correctionReason
                     })
                 });
-
                 const data = await response.json();
-
                 if (data.status === 'success') {
-                    alert(data.message);
+                    alert('✅ ' + data.message);
                     closeRecordForm();
                 } else {
                     alert(`エラー: ${data.message}`);
@@ -4553,6 +4703,7 @@
         function closeRecordForm() {
             document.getElementById('recordFormContainer').style.display = 'none';
             currentRecordSpotIndex = null;
+            recordState = { result: null, stopCause: null, didDry: null, isCorrection: false };
         }
 
         // ============================================================
@@ -5962,7 +6113,7 @@
 
         function respondRecord() {
             setQuickReplies(['お気に入りとは？', '記録は共有される？', '使い方を教えて']);
-            return '📋 乾燥記録の付け方\n\n① 地図から干場を選択\n② 日付を選んで「記録を追加」をタップ\n③ 結果を選択：\n　・完全乾燥\n　・干したが完全には乾かせなかった\n　・中止\n\n記録はすべてのユーザーで共有されます（乾燥予報の精度向上に活用）。\n\n⚠️ 削除できない条件のひとつになるため、慎重に登録してください。';
+            return '📋 乾燥記録の付け方\n\n① 地図から干場を選択\n② 日付を選択（デフォルトは当日）\n③ 段階式フォームで入力：\n\n【① 乾燥結果（4択）】\n　・完全乾燥\n　・概ね乾燥\n　・半乾燥\n　・ほぼ乾燥なし\n\n【② 主因（完全乾燥以外で表示）】\n　・雨が降った\n　・霧が出た・昆布が湿り戻った\n　・飛散リスク・強風\n　・曇り続きで乾かなかった\n　・天候以外\n\n「ほぼ乾燥なし」の場合は「干した／干さなかった」も選択します。\n\n【③ 取り込み時刻（任意）】\n\n記録はすべてのユーザーで共有されます（精度向上に活用）。\n\n⚠️ 1干場1日1記録。既存記録がある場合は「訂正」フローで上書きできます。日付の入力間違いにご注意を。';
         }
 
         function respondFilter() {
