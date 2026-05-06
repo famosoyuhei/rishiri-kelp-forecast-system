@@ -1,269 +1,188 @@
-# 🌊 利尻島昆布干場予報システム (Rishiri Island Kelp Drying Forecast System)
+# 利尻島昆布干場予報システム (Rishiri Island Kelp Drying Forecast System)
 
-![System Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
-![Version](https://img.shields.io/badge/Version-2.4.1-blue)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
+![Version](https://img.shields.io/badge/Version-2.6.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![Flask](https://img.shields.io/badge/Flask-2.3+-red)
-![Implementation](https://img.shields.io/badge/Implementation-100%25-success)
+![Implementation](https://img.shields.io/badge/Implementation-99%25-success)
 
-利尻島の331干場を対象とした、実測データ基準の高精度昆布乾燥予報システムです。
+北海道利尻島の334地点（331干場 + 3観測/基準点）を対象とした、実測データ基準の高精度昆布乾燥予報システムです。
 
-## ⏰ 重要: 時刻表記について
+## 時刻表記について
 
-**本システムで使用されるすべての時刻は、特に断りがない限り日本標準時（JST, UTC+9）です。**
-
-- システム内部処理: JST
-- 通知時刻「午後4時」: 16:00 JST
-- データ収集「毎日16:00」: 16:00 JST
-- すべてのログ・タイムスタンプ: JST
+**本システムで使用されるすべての時刻は日本標準時（JST, UTC+9）です。**
 
 開発者が海外にいる場合でも、利尻島の現地時刻（JST）で統一されています。
 
-## 🎯 プロジェクト概要
+## プロジェクト概要
 
-利尻島での昆布干し作業を支援する、実測データ基準の科学的予報システムです。H_1631_1434地点の21件実測記録に基づく検証済み閾値により、信頼性の高い乾燥可否判定を提供します。
+利尻島での昆布干し作業を支援する、実測データ基準の科学的予報システムです。H_1631_1434地点の21件実測記録（2025年6-8月）に基づく検証済み閾値により、信頼性の高い乾燥可否判定を提供します。
 
 ### 主な特徴
 
-- ✅ **実測データ基準閾値**: H_1631_1434の21件記録（2025/6-8）で検証済み
-- 🎯 **7日間乾燥予報**: 降水量0mm、最低湿度≤94%、風速≥2.0m/sの科学的判定
-- 🧭 **風向角度差表示**: 気象風向と干場θ値の角度差による局地風向判定
-- 🗺️ **331干場データベース**: 全干場の位置・地形・標高データ統合
-- 🌬️ **利尻島伝統風名**: 16方位の地域固有風名（コタン風、ナイホ風等）
-- 🔒 **削除制限機能**: 記録・お気に入り・通知設定・編集ロックの4条件制限
-- 🔄 **4ファイル自動同期**: CSV/KML/JS/Records の完全自動同期（2025年11月実装）
-- 📱 **PWAオフライン対応**: Service Worker による完全オフライン動作
+- **実測データ基準閾値**: 降水量0mm・最低湿度≤94%・風速≥2.0m/sの科学的判定
+- **334地点データベース**: 331干場 + アメダス2地点 + 利尻山頂（特別地点）
+- **地形補正システム**: 森林減衰・海岸増強・onshore wind判定による干場スケールダウンスケーリング
+- **通知システム**: 夕方16:00・早朝01:30・緊急アラートの多段階通知
+- **チャットボット**: ルールベース「干場アシスタント」（AI不要・無料）
+- **エマグラム**: 16気圧面の鉛直プロファイル・LCL/LFC/EL自動検出
+- **等値線解析**: 気温・湿度・風速の空間分布可視化
+- **利尻島伝統風名**: 16方位の地域固有風名（コタン風、ナイホ風等）
+- **PWAオフライン対応**: Service Workerによる完全オフライン動作
+- **昆布シーズン長期予報**: 月別見通し・ENSO状況表示
 
-## 🚀 クイックスタート
+## クイックスタート
 
 ### 必要要件
 
 - Python 3.8+
-- pip (Python package manager)
-- インターネット接続（外部気象API用）
+- pip
+- インターネット接続（Open-Meteo API用）
 
 ### インストール
 
-1. **リポジトリのクローン**
 ```bash
-git clone https://github.com/yourusname/rishiri_konbu_weather_tool.git
-cd rishiri_konbu_weather_tool
-```
-
-2. **依存関係のインストール**
-```bash
-pip install flask pandas requests
-```
-
-3. **システムの起動**
-```bash
+git clone https://github.com/famosoyuhei/rishiri-kelp-forecast-system.git
+cd rishiri-kelp-forecast-system
+pip install -r requirements.txt
 python start.py
 ```
 
-4. **アクセス**
-- システム情報: http://localhost:5000
-- 干場マップ: http://localhost:5000/ui
-- 乾燥予報マップ: http://localhost:5000/drying-map
+### アクセス
+
+- メインUI: http://localhost:5000/
 - ダッシュボード: http://localhost:5000/dashboard
 - モバイル版: http://localhost:5000/mobile
 
-## 📋 システム機能
-
-### 🌊 API エンドポイント (13個)
+## API エンドポイント（13個）
 
 | カテゴリ | エンドポイント | 機能 |
 |---------|--------------|------|
-| **情報** | `GET /` | システム情報・API一覧 |
-| **情報** | `GET /health` | ヘルスチェック |
-| **天気** | `GET /api/weather` | 現在天気取得 |
-| **予報** | `GET /api/forecast` | 7日間乾燥予報（風向角度差含む） |
-| **干場** | `GET /api/spots` | 干場リスト（331地点） |
-| **干場** | `POST /add` | 干場追加 |
-| **干場** | `POST /delete` | 干場削除（4条件制限付き） |
-| **記録** | `POST /record` | 乾燥記録追加・更新 |
-| **記録** | `GET /record/<name>/<date>` | 記録取得 |
-| **地形** | `GET /api/terrain/<spot_name>` | 地形情報・補正値 |
-| **分析** | `GET /api/analysis/contours` | 等値線解析 |
-| **分析** | `GET /api/analysis/spot-differences` | 干場間気象差異 |
-| **検証** | `GET /api/validation/accuracy` | 予報精度検証 |
+| 情報 | `GET /` | メインUI（kelp_drying_map.html） |
+| 情報 | `GET /health` | ヘルスチェック |
+| 情報 | `GET /api/info` | システム情報・API一覧 |
+| 天気 | `GET /api/weather` | 現在天気取得 |
+| 予報 | `GET /api/forecast` | 7日間乾燥予報 |
+| 干場 | `GET /api/spots` | 干場リスト（334地点） |
+| 干場 | `POST /add` | 干場追加 |
+| 干場 | `POST /delete` | 干場削除（5条件制限付き） |
+| 記録 | `POST /record` | 乾燥記録追加・更新 |
+| 記録 | `GET /record/<name>/<date>` | 記録取得 |
+| 地形 | `GET /api/terrain/<spot_name>` | 地形情報・補正値 |
+| 分析 | `GET /api/analysis/contours` | 等値線解析 |
+| 分析 | `GET /api/analysis/spot-differences` | 干場間気象差異 |
+| 検証 | `GET /api/validation/accuracy` | 予報精度検証 |
 
-### 🔧 主要機能詳細
-
-- **実測閾値判定**: 降水0mm・最低湿度≤94%・風速≥2.0m/sで段階的スコア計算
-- **風向θ角度差**: 利尻山中心の極座標系による局地風向判定
-- **地形補正**: 森林（風速-2.5m/s, 湿度+10%）、海岸（風速+1.0m/s）、標高（気温-0.6°C/100m）
-- **削除制限**: 記録存在・お気に入り登録・通知設定・編集ロック(5分)の4条件チェック
-- **伝統風名**: コタン風、ナイホ風、クツガタ風等16方位の地域風名表示
-- **PWA対応**: Service Workerによる完全オフライン動作・キャッシュ管理
-
-## 📊 システム構成
+## システム構成
 
 ```
-rishiri_konbu_weather_tool/
-├── start.py                       ⭐ メインアプリケーション（v2.4.1, 2100+行）
-├── wsgi.py                        🚀 本番デプロイ用WSGIエントリーポイント
-├── config.py                      ⚙️ システム設定
-├── security.py                    🔒 セキュリティ設定
+rishiri-kelp-forecast-system/
+├── start.py                    メインアプリケーション（4,363行）
+├── wsgi.py                     本番デプロイ用WSGIエントリーポイント
+├── requirements.txt
+├── Procfile                    Render用起動設定
 │
-├── /ui/                           # Webインターフェース
-│   ├── kelp_drying_map.html       # 🌟 統合版メインUI（エマグラム+等値線+全機能、4111行）
-│   ├── dashboard.html             # 📊 ダッシュボード
-│   ├── mobile_forecast_interface.html  # 📱 モバイル版
-│   ├── offline.html               # 📴 オフラインページ
-│   ├── all_spots_array.js         # 干場データ（331地点）
-│   ├── rishiri_wind_names.js      # 伝統風名ライブラリ（16方位）
-│   ├── kelp_forecast_api.js       # API連携ライブラリ
-│   └── service-worker.js          # PWA Service Worker
+├── kelp_drying_map.html        統合版メインUI（6,235行）
+├── dashboard.html              ダッシュボード
+├── mobile_forecast_interface.html  モバイル版
+├── offline.html                オフライン対応ページ
+├── all_spots_array.js          干場データ（334地点）
+├── rishiri_wind_names.js       伝統風名ライブラリ（16方位）
+├── service-worker.js           PWA Service Worker
+├── app_icon.png                アプリロゴ
 │
-├── /data/                         # データファイル
-│   ├── hoshiba_spots.csv          # 干場リスト（331地点）
-│   ├── hoshiba_records.csv        # 乾燥記録データ
-│   └── *.json                     # 各種設定ファイル
+├── hoshiba_spots.csv           干場データベース（334地点）
+├── hoshiba_spots_named.kml     Google Earth用KMLファイル
+├── hoshiba_records.csv         乾燥記録データベース
 │
-├── /docs/                         # ドキュメント
-│   ├── README.md                  # 本ファイル
-│   ├── PROJECT_STRUCTURE.md       # プロジェクト構成詳細
-│   ├── THRESHOLD_UPDATE_SUMMARY.md # 実測閾値サマリー
-│   └── system_specification.md    # システム仕様書
-│
-└── /archive/                      # アーカイブ（開発・検証用、約60ファイル）
+└── archive/                    アーカイブ（開発・検証用）
+    └── deprecated/
 ```
 
-詳細は [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) を参照してください。
+## 予報アルゴリズム
 
-## 🔗 API リファレンス
-
-### 7日間乾燥予報 API
-```http
-GET /api/forecast?lat=45.242&lon=141.242&name=神居
-```
-
-レスポンス例:
-```json
-{
-  "spot": {"name": "神居", "lat": 45.242, "lon": 141.242, "theta": 245.6},
-  "forecast": [
-    {
-      "date": "2025-10-04",
-      "precipitation": 0.0,
-      "min_humidity": 65,
-      "avg_wind": 3.2,
-      "wind_direction": 270,
-      "wind_angle_diff": 24.4,
-      "score": 82,
-      "recommendation": "条件良好"
-    }
-  ]
-}
-```
-
-### 地形情報 API
-```http
-GET /api/terrain/神居
-```
-
-### 干場間気象差異分析 API
-```http
-GET /api/analysis/spot-differences?spot1=神居&spot2=本泊
-```
-
-## 📊 データ仕様
-
-### 実測データ基準閾値（H_1631_1434検証済み）
+### 実測データ基準閾値（H_1631_1434、21件、2025年6-8月）
 
 | 要因 | 閾値 | 根拠 |
 |-----|------|------|
-| **降水量** | 0mm（絶対条件） | 成功例は全て0mm |
-| **最低湿度** | ≤94% | 94%まで成功、95%以上は困難 |
-| **平均風速** | ≥2.0m/s | 2.0m/sで成功例あり |
-| **気温** | ≥18.3°C（補助） | 成功例の最低値 |
-| **日照時間** | ≥5h（参考） | 短時間でも他条件次第で成功 |
+| 降水量 | 0mm（絶対条件） | 成功例は全て0mm |
+| 最低湿度 | ≤94% | 94%まで成功、95%以上は困難 |
+| 平均風速 | ≥2.0m/s | 2.0m/sで成功例あり |
 
-**データソース**: 沓形アメダス実測値（H_1631_1434、21件、2025年6-8月）
+### 地形補正（Open-Meteo 5kmメッシュ → 干場スケールへのダウンスケーリング）
 
-### 地形補正係数
+| 補正項目 | 内容 |
+|---------|------|
+| 風速補正（乗算型） | 森林: ×0.4 / 海岸: ×1.25（onshore時のみ） |
+| 湿度補正（水蒸気圧ベース） | 森林: 季節・日射依存 / 海岸: onshore時のみ |
+| onshore wind判定 | 利尻山頂を極とした放射方向で海の方向を計算 |
 
-| 地形 | 風速補正 | 湿度補正 | 気温補正 |
-|-----|---------|---------|---------|
-| 森林 | -2.5m/s | +10% | - |
-| 海岸 | +1.0m/s | +5% | - |
-| 標高（100m毎） | - | -1.0% | -0.6°C |
+## 特別地点（3地点）
 
-## 📈 システム指標
+| 地点名 | 座標 | 役割 |
+|-------|------|------|
+| A_1783_1383（アメダス沓形） | 45.1783N, 141.1383E, 標高14m | 公式観測データで予報精度を検証 |
+| A_2417_1867（アメダス本泊） | 45.2417N, 141.1867E, 標高39m | 利尻島北部の公式データ |
+| R_1800_2392（利尻山頂） | 45.1800N, 141.2392E, 標高1,721m | 風上/風下効果の判定、フェーン現象の検出 |
 
-- **実装率**: 97%（仕様書完全準拠）
-- **干場データベース**: 331地点
-- **予報期間**: 7日間
-- **API応答時間**: <500ms
-- **オフライン対応**: 完全対応（PWA）
+## 干場削除の5条件制限
 
-## 🛠️ 開発ガイド
+干場削除は以下の全条件をクリアする必要があります（`start.py:985-996`）：
 
-### プロジェクト構成
+1. 記録データが存在しない
+2. お気に入り登録されていない
+3. 通知設定で使用されていない
+4. 同時編集ロックがかかっていない（5分間）
+5. 機械学習の訓練データとして使用されていない
 
-詳細なファイル構成と開発ガイドラインは以下を参照:
-- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - ファイル構成・デプロイ構成
-- [system_specification.md](system_specification.md) - 詳細仕様書
-- [THRESHOLD_UPDATE_SUMMARY.md](THRESHOLD_UPDATE_SUMMARY.md) - 実測閾値解説
+## デプロイ
 
-### 主要ファイル
+- **本番環境**: Render
+- **URL**: https://rishiri-kelp-forecast-system.onrender.com
+- **GitHub**: https://github.com/famosoyuhei/rishiri-kelp-forecast-system（mainブランチ自動デプロイ）
 
-| ファイル | 行数 | 役割 |
-|---------|------|------|
-| `start.py` | 1,034 | メインアプリケーション（v2.1.0） |
-| `hoshiba_spots.csv` | 331 | 干場データベース |
-| `rishiri_wind_names.js` | - | 伝統風名ライブラリ |
+詳細は [DEPLOYMENT.md](DEPLOYMENT.md) を参照してください。
 
-### 開発ポリシー
+## ドキュメント
 
-- `start.py`が1500行を超えたらモジュール分割検討
-- 新規APIエンドポイントは必ずドキュメント更新
-- データバックアップ: `hoshiba_records.csv` 毎日、`hoshiba_spots.csv` 変更時
+### 開発者向け
 
-## 📝 バージョン履歴
+- [CLAUDE.md](CLAUDE.md) - 開発ガイド（Claude Code向け）
+- [system_specification.md](system_specification.md) - 詳細仕様書（2,000行超）
+- [THRESHOLD_UPDATE_SUMMARY.md](THRESHOLD_UPDATE_SUMMARY.md) - 実測閾値の詳細
+- [FOUR_FILE_SYNC_IMPLEMENTATION.md](FOUR_FILE_SYNC_IMPLEMENTATION.md) - 4ファイル同期システム
+- [EMAGRAM_DOCUMENTATION.md](EMAGRAM_DOCUMENTATION.md) - エマグラム機能仕様
+- [PWA_IMPLEMENTATION_COMPLETE.md](PWA_IMPLEMENTATION_COMPLETE.md) - PWA/オフライン機能
+- [DEPLOYMENT.md](DEPLOYMENT.md) - デプロイ手順
+- [ISLAND_METEOROLOGY_RESEARCH.md](ISLAND_METEOROLOGY_RESEARCH.md) - 円錐形孤立島の気象研究（フロード数・後流渦・海陸風・霧・地形性降水）
+- [KOMBU_DRYING_RESEARCH.md](KOMBU_DRYING_RESEARCH.md) - 昆布乾燥メカニズム研究（Pageモデル・有効拡散係数・閾値の物理的根拠）
+- [WINDY_RESEARCH.md](WINDY_RESEARCH.md) - Windyアプリ機能調査 & 当アプリとのギャップ分析（潮汐・CAPE・降水確率・SST等）
 
-### v2.1.0 (2025-10-03) - Current ✨
-- ✅ 地形情報API追加
-- ✅ 等値線解析API追加
-- ✅ 予報精度検証API追加
-- ✅ 干場間気象差異API追加
-- ✅ プロジェクト構成整理（43%ファイル削減）
+### 外部向け（docs/）
 
-### v2.0.0 (2025-10-03)
-- ✅ 実測データ閾値完全統合（H_1631_1434基準）
-- ✅ 干場削除4条件制限実装
-- ✅ 風向θ角度差表示実装
-- ✅ PWA/オフライン機能完全統合
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) - アプリ使い方説明書（スマホ初心者向け）
+- [docs/MARKETING.md](docs/MARKETING.md) - 営業・広告素材集（コピー・動画スクリプト・チラシ）
 
-### v1.0.0 (2025-09-XX)
-- ✅ 基本予報機能
-- ✅ 7日間予報UI
-- ✅ 伝統風名16方位
-- ✅ 記録機能
+## バージョン履歴
 
-## 👥 謝辞
+### v2.6.0（2026年4月5日）
+- 通知システム全機能実装（夕方16:00・早朝01:30・緊急アラート・音・バイブ・履歴）
+- ルールベースチャットボット「干場アシスタント」実装（無料・AI不使用）
+- 干場ニックネーム機能（localStorage・端末個別）
+- 昆布シーズン長期予報タブ
+- アプリロゴ（app_icon.png）を全UIページに統一追加
 
-このシステムは利尻島の昆布漁師の皆様の貴重な記録データにより開発されました。
+### v2.5.0（2026年1月8日）
+- 特別地点システム（3地点: アメダス沓形・本泊、利尻山頂）
+- 334地点体制への拡大（331干場 + 3観測/基準点）
+- Open-Meteo Elevation API統合（Copernicus GLO-90 DEM）
+- onshore wind判定システム実装
 
-### 特別感謝
-- H_1631_1434地点の実測記録提供
-- 気象データ: Open-Meteo API
-- 地図データ: OpenStreetMap
-
-## 🗺️ ロードマップ
-
-### v2.2.0 (予定)
-- [ ] 時別値API統合（作業時間帯4-16時の最低湿度計算）
-- [ ] ラジオゾンデデータ統合（850hPa風向・湿度）
-- [ ] 他干場での閾値検証拡大
-
-### 長期計画
-- [ ] 100m格子点高解像度予測
-- [ ] アメダス統計値データベース構築
-- [ ] 機械学習モデル導入
+### v2.4.1（2025年12月）
+- エマグラム機能完成（θₑ補正・LCL/LFC/EL自動検出）
+- 等値線解析・時間解像度統一
+- HTMLエンドポイント統合（v1/v2を統合版に一本化）
 
 ---
 
-**🌊 利尻島の昆布干し作業を科学的データでサポート 🌊**
-
-*Version 2.1.0 - Implementation Rate: 97%*# Auto-Deploy Test - Sun, Oct 12, 2025  9:37:42 AM
+**最終更新**: 2026年4月5日 / Version 2.6.0 / 実装率 99%
