@@ -1952,7 +1952,7 @@ def get_terrain_info(spot_name):
         # Extract coordinates from spot name
         # Format: H_LLLL_NNNN -> 45.LLLL, 141.NNNN
         parts = spot_name.split('_')
-        if len(parts) != 3 or parts[0] != 'H':
+        if len(parts) != 3 or parts[0] not in ('H', 'A', 'R'):
             return jsonify({"status": "error", "message": "無効な干場名形式"}), 400
 
         lat = 45.0 + float(parts[1]) / 10000.0
@@ -3753,6 +3753,7 @@ def collect_amedas():
 def _daily_amedas_collection():
     """Background thread: collect yesterday's amedas data once a day at 03:00 JST."""
     import time
+    from datetime import timedelta
     while True:
         now = datetime.now()
         # Target 03:00 JST (same timezone the app runs in)
