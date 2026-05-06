@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Rishiri Kelp Forecast System - Production Version with UI
-Version: 2.3.0 (Theta-e Correction Integration)
+Version: 2.6.0
 """
 import os
 import sys
@@ -516,7 +516,7 @@ def api_info():
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.4.1',
+        'version': '2.6.0',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -556,7 +556,7 @@ def api_info():
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'version': '2.1.0'}, 200
+    return {'status': 'healthy', 'version': '2.6.0'}, 200
 
 @app.route('/api/weather')
 def get_weather():
