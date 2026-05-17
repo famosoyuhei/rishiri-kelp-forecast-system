@@ -878,6 +878,99 @@
             .forecast-close-btn {
                 display: block;
             }
+
+            /* ① 折りたたみセクション（スマホのみ） */
+            .mobile-collapsible-body {
+                display: none;
+            }
+            .mobile-collapsible-body.open {
+                display: block;
+            }
+            .mobile-section-btn {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                background: none;
+                border: none;
+                padding: 0;
+                cursor: pointer;
+                font-size: 1rem;
+                font-weight: 600;
+                color: #2c3e50;
+                text-align: left;
+            }
+            .mobile-chevron {
+                font-size: 0.75rem;
+                display: inline-block;
+                transition: transform 0.2s;
+                flex-shrink: 0;
+                margin-left: 6px;
+            }
+            .mobile-chevron.open {
+                transform: rotate(180deg);
+            }
+
+            /* ③ エマグラム/等値線 折りたたみ */
+            .mobile-expert-toggle {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                width: 100%;
+                padding: 10px;
+                background: #f0f4ff;
+                border: 1px solid #c5caf5;
+                border-radius: 8px;
+                color: #667eea;
+                font-size: 0.88rem;
+                font-weight: 600;
+                cursor: pointer;
+                margin-bottom: 10px;
+            }
+            .mobile-expert-body {
+                display: none;
+            }
+            .mobile-expert-body.open {
+                display: block;
+            }
+
+            /* ④ 予報タブ横スクロール */
+            .forecast-tabs {
+                flex-wrap: nowrap !important;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                padding-bottom: 2px;
+            }
+            .forecast-tabs::-webkit-scrollbar {
+                display: none;
+            }
+
+            /* ④ 予報パネルpadding縮小 */
+            .forecast-panel {
+                padding: 12px;
+            }
+        }
+
+        /* PC表示：折りたたみ無効化 */
+        @media (min-width: 769px) {
+            .mobile-collapsible-body {
+                display: block !important;
+            }
+            .mobile-section-btn {
+                pointer-events: none;
+                cursor: default;
+            }
+            .mobile-chevron {
+                display: none;
+            }
+            .mobile-expert-toggle {
+                display: none !important;
+            }
+            .mobile-expert-body {
+                display: block !important;
+            }
         }
     </style>
 </head>
@@ -969,25 +1062,32 @@
     </div>
 
     <div class="instructions">
-        <strong>使い方:</strong> 地図上の🔵マーカーをクリックすると、その干場の詳細な7日間予報が右側に表示されます
+        <strong>使い方:</strong> 地図上の🔵マーカーをタップ/クリックすると、その干場の詳細な7日間予報が表示されます
     </div>
 
     <div class="favorite-controls">
-        <h4>🌟 お気に入り干場管理</h4>
-        <button id="showFavoritesBtn" class="favorite-btn">お気に入り一覧</button>
-        <button id="clearFavoritesBtn" class="favorite-btn remove">全て削除</button>
+        <button class="mobile-section-btn" onclick="toggleMobileSection('favBody', this)" aria-expanded="false">
+            <span>🌟 お気に入り干場管理</span><span class="mobile-chevron">▼</span>
+        </button>
+        <div id="favBody" class="mobile-collapsible-body" style="margin-top: 10px;">
+            <button id="showFavoritesBtn" class="favorite-btn">お気に入り一覧</button>
+            <button id="clearFavoritesBtn" class="favorite-btn remove">全て削除</button>
 
-        <div id="favoritesList" class="favorites-list" style="display: none;">
-            <div style="font-size:0.75rem; color:#888; padding:8px 10px 4px; line-height:1.5; border-bottom:1px solid #f0f0f0; margin-bottom:4px;">
-                📝 乾燥記録はすべてのユーザーと共有されます。<br>
-                ✏️ 呼び名はこの端末だけに保存され、他のユーザーには表示されません。
+            <div id="favoritesList" class="favorites-list" style="display: none;">
+                <div style="font-size:0.75rem; color:#888; padding:8px 10px 4px; line-height:1.5; border-bottom:1px solid #f0f0f0; margin-bottom:4px;">
+                    📝 乾燥記録はすべてのユーザーと共有されます。<br>
+                    ✏️ 呼び名はこの端末だけに保存され、他のユーザーには表示されません。
+                </div>
+                <div id="favoritesContent"></div>
             </div>
-            <div id="favoritesContent"></div>
         </div>
     </div>
 
     <div class="notification-controls" style="background: white; padding: 20px; margin: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-        <h4>🔔 通知設定</h4>
+        <button class="mobile-section-btn" onclick="toggleMobileSection('notifBody', this)" aria-expanded="false">
+            <span>🔔 通知設定</span><span class="mobile-chevron">▼</span>
+        </button>
+        <div id="notifBody" class="mobile-collapsible-body" style="margin-top: 10px;">
 
         <!-- メイン通知トグル -->
         <div style="margin: 15px 0;">
@@ -1130,14 +1230,20 @@
                 </div>
             </div>
         </div>
+
+        </div><!-- /notifBody -->
     </div>
 
     <div class="spot-management-controls">
-        <h4>📍 干場管理</h4>
-        <button id="addSpotBtn" class="management-btn add" onclick="enableAddSpotMode()">➕ 新しい干場を追加</button>
-        <p id="addSpotInstructions" class="instructions" style="display: none;">
-            地図上をクリックして新しい干場を追加してください
-        </p>
+        <button class="mobile-section-btn" onclick="toggleMobileSection('spotMgmtBody', this)" aria-expanded="false">
+            <span>📍 干場管理</span><span class="mobile-chevron">▼</span>
+        </button>
+        <div id="spotMgmtBody" class="mobile-collapsible-body" style="margin-top: 10px;">
+            <button id="addSpotBtn" class="management-btn add" onclick="enableAddSpotMode()">➕ 新しい干場を追加</button>
+            <p id="addSpotInstructions" class="instructions" style="display: none;">
+                地図上をクリックして新しい干場を追加してください
+            </p>
+        </div>
     </div>
 
 <!-- サイドバーのタブナビゲーション -->
@@ -1399,6 +1505,10 @@
             </div>
             <!-- 簡易エマグラム表示セクション -->
             <div id="emagramSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <button class="mobile-expert-toggle" onclick="toggleMobileExpert('emagramBody', this)">
+                    📊 <span id="emagramToggleLabel">エマグラムを見る</span> <span id="emagramToggleIcon">▼</span>
+                </button>
+                <div id="emagramBody" class="mobile-expert-body">
                 <h3 style="color: #1e40af; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; margin-top: 0;">
                     📊 簡易エマグラム - 気温・露点温度鉛直プロファイル
                 </h3>
@@ -1433,10 +1543,15 @@
                         <li><strong>気温と露点の差が大きい</strong>: 乾燥した空気（乾燥に有利）</li>
                     </ul>
                 </div>
+                </div><!-- /emagramBody -->
             </div>
 
             <!-- 等値線マップ表示セクション -->
             <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <button class="mobile-expert-toggle" onclick="toggleMobileExpert('contourBody', this)">
+                    🗺️ <span id="contourToggleLabel">等値線マップを見る</span> <span id="contourToggleIcon">▼</span>
+                </button>
+                <div id="contourBody" class="mobile-expert-body">
                 <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
 
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -1457,6 +1572,7 @@
                     <strong>予報補正情報:</strong>
                     <div id="calibrationDetails"></div>
                 </div>
+                </div><!-- /contourBody -->
             </div>
 
             <div id="forecastContent">
@@ -1907,46 +2023,32 @@
                 });
 
                 marker.bindPopup(`
-                    <div style="text-align: center; padding: 10px;">
-                        <strong>${getSpotDisplayName(spot.name)}</strong><br>
+                    <div style="text-align: center; padding: 8px 4px; min-width: 220px;">
+                        <strong style="font-size:1rem;">${getSpotDisplayName(spot.name)}</strong><br>
                         ${spotNicknames[spot.name] ? `<small style="color:#999">${spot.name}</small><br>` : ''}
-                        <span style="color: #666;">${spot.town} ${spot.district}</span><br>
-                        <button onclick="selectSpot(${index})" style="
-                            background: #667eea;
-                            color: white;
-                            border: none;
-                            padding: 8px 15px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 5px;
-                        ">7日間予報を表示</button>
-                        <button onclick="toggleFavorite(${index})" style="
-                            background: #28a745;
-                            color: white;
-                            border: none;
-                            padding: 8px 15px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 5px;
-                        ">お気に入り登録</button>
-                        <button onclick="deleteSpot(${index})" style="
-                            background: #dc3545;
-                            color: white;
-                            border: none;
-                            padding: 8px 15px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 5px;
-                        ">🗑️ 干場を削除</button>
-                        <button onclick="console.log('Record button clicked for index:', ${index}); showRecordForm(${index})" style="
-                            background: #17a2b8;
-                            color: white;
-                            border: none;
-                            padding: 8px 15px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                            margin: 5px;
-                        ">📝 記録を入力</button>
+                        <span style="color: #666; font-size:0.85rem;">${spot.town} ${spot.district}</span>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px;">
+                            <button onclick="selectSpot(${index})" style="
+                                background: #667eea; color: white; border: none;
+                                padding: 6px 4px; border-radius: 6px; cursor: pointer;
+                                min-height: 44px; font-size: 0.82rem; line-height: 1.4;
+                            ">📋 7日間<br>予報を表示</button>
+                            <button onclick="toggleFavorite(${index})" style="
+                                background: #28a745; color: white; border: none;
+                                padding: 6px 4px; border-radius: 6px; cursor: pointer;
+                                min-height: 44px; font-size: 0.82rem; line-height: 1.4;
+                            ">⭐ お気に入り<br>登録</button>
+                            <button onclick="showRecordForm(${index})" style="
+                                background: #17a2b8; color: white; border: none;
+                                padding: 6px 4px; border-radius: 6px; cursor: pointer;
+                                min-height: 44px; font-size: 0.82rem; line-height: 1.4;
+                            ">📝 記録<br>を入力</button>
+                            <button onclick="deleteSpot(${index})" style="
+                                background: #dc3545; color: white; border: none;
+                                padding: 6px 4px; border-radius: 6px; cursor: pointer;
+                                min-height: 44px; font-size: 0.82rem; line-height: 1.4;
+                            ">🗑️ 干場<br>を削除</button>
+                        </div>
                     </div>
                 `);
 
@@ -1972,6 +2074,9 @@
             updateBreadcrumb();
             updateStats();
             setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
+            if (window.innerWidth <= 768) {
+                setTimeout(() => { document.querySelector('.container').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
+            }
         }
 
         function filterByDistrict() {
@@ -1989,6 +2094,9 @@
             updateBreadcrumb();
             updateStats();
             setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
+            if (window.innerWidth <= 768) {
+                setTimeout(() => { document.querySelector('.container').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
+            }
         }
 
         function filterByBuraku() {
@@ -2002,12 +2110,45 @@
             updateBreadcrumb();
             updateStats();
             setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
+            if (window.innerWidth <= 768) {
+                setTimeout(() => { document.querySelector('.container').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
+            }
         }
 
         function closeForecastPanel() {
             const panel = document.getElementById('forecastPanel');
             panel.classList.remove('active');
             setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
+            if (window.innerWidth <= 768) {
+                setTimeout(() => { document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200);
+            }
+        }
+
+        // ① スマホ管理セクション折りたたみ
+        function toggleMobileSection(bodyId, btn) {
+            if (window.innerWidth > 768) return;
+            const body = document.getElementById(bodyId);
+            if (!body) return;
+            const isOpen = body.classList.toggle('open');
+            const chevron = btn.querySelector('.mobile-chevron');
+            if (chevron) chevron.classList.toggle('open', isOpen);
+            btn.setAttribute('aria-expanded', String(isOpen));
+        }
+
+        // ③ スマホ専門セクション折りたたみ（エマグラム/等値線）
+        function toggleMobileExpert(bodyId, btn) {
+            const body = document.getElementById(bodyId);
+            if (!body) return;
+            const isOpen = body.classList.toggle('open');
+            const labelMap = {
+                emagramBody:  ['エマグラムを見る',    'エマグラムを閉じる'],
+                contourBody:  ['等値線マップを見る',  '等値線マップを閉じる'],
+            };
+            const labels = labelMap[bodyId] || ['詳細を見る', '閉じる'];
+            const labelEl = btn.querySelector('[id$="ToggleLabel"]');
+            const iconEl  = btn.querySelector('[id$="ToggleIcon"]');
+            if (labelEl) labelEl.textContent = isOpen ? labels[1] : labels[0];
+            if (iconEl)  iconEl.textContent  = isOpen ? '▲' : '▼';
         }
 
         function resetFilters() {
