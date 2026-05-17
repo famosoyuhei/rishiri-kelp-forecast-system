@@ -223,6 +223,20 @@
             display: block;
         }
 
+        .forecast-close-btn {
+            display: none;
+            width: 100%;
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.18);
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
         .forecast-header {
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
@@ -837,6 +851,34 @@
             padding: 7px 14px; background: #667eea; color: white;
             border: none; border-radius: 20px; font-size: 0.85rem; cursor: pointer;
         }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: auto;
+                min-height: 0;
+                margin: 12px;
+                overflow: visible;
+            }
+
+            #map {
+                flex: none;
+                width: 100%;
+                height: 62vh;
+                min-height: 360px;
+            }
+
+            .forecast-panel {
+                width: 100%;
+                max-height: none;
+                border-left: none;
+                border-top: 1px solid #e9ecef;
+            }
+
+            .forecast-close-btn {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1344,6 +1386,7 @@
             <div class="forecast-header">
                 <h3 id="selectedSpotName">干場を選択してください</h3>
                 <p id="selectedSpotLocation"></p>
+                <button class="forecast-close-btn" onclick="closeForecastPanel()">← 地図に戻る</button>
             </div>
 
             <div id="autoUpdateStatus" style="text-align: center; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; font-size: 0.85rem; color: #666;">
@@ -1928,6 +1971,7 @@
             applyFilters();
             updateBreadcrumb();
             updateStats();
+            setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
         }
 
         function filterByDistrict() {
@@ -1944,6 +1988,7 @@
             applyFilters();
             updateBreadcrumb();
             updateStats();
+            setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
         }
 
         function filterByBuraku() {
@@ -1956,6 +2001,13 @@
             applyFilters();
             updateBreadcrumb();
             updateStats();
+            setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
+        }
+
+        function closeForecastPanel() {
+            const panel = document.getElementById('forecastPanel');
+            panel.classList.remove('active');
+            setTimeout(() => { if (typeof map !== 'undefined') map.invalidateSize(); }, 150);
         }
 
         function resetFilters() {
