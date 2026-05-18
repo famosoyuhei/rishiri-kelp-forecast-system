@@ -6560,6 +6560,35 @@
     })();
     </script>
 
+    <!-- ===== LINE通知バナー ===== -->
+    <!-- URL は /api/line/status から取得。LINE_ADD_FRIEND_URL 環境変数が未設定の場合は非表示。 -->
+    <div id="line-banner" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+         background:#06C755;color:#fff;padding:8px 16px;border-radius:24px;
+         font-size:0.82rem;white-space:nowrap;z-index:1100;
+         box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;"
+         onclick="sessionStorage.setItem('lineBannerDismissed','1');this.style.display='none';"
+         title="クリックで閉じる">
+      <span style="margin-right:6px;">LINE</span>でも予報通知を受け取れます →
+      <a id="line-add-friend-link" href="#" target="_blank" rel="noopener"
+         style="color:#fff;font-weight:bold;text-decoration:underline;"
+         onclick="event.stopPropagation()">友だち追加</a>
+    </div>
+    <script>
+    (function() {
+      if (sessionStorage.getItem('lineBannerDismissed')) return;
+      fetch('/api/line/status')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+          if (!data || !data.line_enabled || !data.line_add_friend_url) return;
+          var a = document.getElementById('line-add-friend-link');
+          if (a) a.href = data.line_add_friend_url;
+          var banner = document.getElementById('line-banner');
+          if (banner) banner.style.display = 'block';
+        })
+        .catch(function() { /* サーバー未起動時などは無視 */ });
+    })();
+    </script>
+
     <!-- ===== チャットボット ===== -->
     <button type="button" id="chatBotBtn" onclick="toggleChatBot()" title="干場アシスタント">💬</button>
     <div id="chatBotPanel" style="display:none;" role="dialog" aria-label="干場アシスタント">

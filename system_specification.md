@@ -1347,4 +1347,80 @@ value: { "H_1631_1434": "うちの干場", "H_xxxx_xxxx": "○○の場所", ...
 
 ---
 
-*system_specification.md 最終更新: 2026年4月5日 (v2.6.0)*
+## LINE Messaging API 連携（v2.7.0）✅
+
+### 概要
+
+昆布作業者が普段使いするLINEアプリで予報確認・通知受信を可能にする追加機能。
+既存のWeb通知（localStorage）・干場ニックネーム・4ファイル同期には一切影響しない。
+
+実装ファイル: `line_integration.py`（start.py からルートのみ参照）
+
+### 新規エンドポイント
+
+| メソッド | パス | 認証 | 説明 |
+|---------|------|------|------|
+| `POST` | `/line/webhook` | LINE署名検証（X-Line-Signature） | LINE PlatformからのWebhook受信 |
+| `GET` | `/api/line/status` | なし（秘密情報は返さない） | LINE連携状態・友だち追加URLを返す |
+| `POST` | `/api/line/notify` | `LINE_ADMIN_NOTIFY_SECRET` | 購読者への一斉Push通知（Render Cron Job用） |
+
+### セキュリティ要件
+
+- `/line/webhook`: `X-Line-Signature` を HMAC-SHA256 で検証。不正リクエストは **403**。
+- `/api/line/notify`: `secret` フィールドまたは `X-Notify-Secret` ヘッダで `LINE_ADMIN_NOTIFY_SECRET` を検証。不一致は **403**。
+- ログに userId / groupId を直接出力しない（先頭6文字 + `***` でマスク）。
+
+### 環境変数
+
+| 変数名 | 必須 | 説明 |
+|--------|------|------|
+| `LINE_ENABLED` | 必須 | `true` で有効化（デフォルト: `false`） |
+| `LINE_CHANNEL_SECRET` | 必須 | Webhook署名検証キー |
+| `LINE_CHANNEL_ACCESS_TOKEN` | 必須 | メッセージ送信用トークン |
+| `LINE_ADMIN_NOTIFY_SECRET` | 必須 | `/api/line/notify` 認証用シークレット |
+| `LINE_ADD_FRIEND_URL` | 任意 | 友だち追加URL。`/api/line/status` から返却されwebバナーに表示 |
+
+### 購読データ（`line_subscriptions.json`）
+
+- `.gitignore` 登録済み（個人情報保護・誤コミット防止）
+- 既存4ファイルCSV同期とは完全分離
+- 保存項目: `source_id`（マスク保存なし）・`source_type`・`spots`・`areas`・`notify_enabled`・`created_at`・`updated_at`
+- 個人情報最小化: ユーザー名・プロフィール画像等は一切保存しない
+
+### LINEコマンド仕様
+
+| 入力 | 動作 |
+|------|------|
+| `今日` / `明日` / `今週` | 登録干場の予報（登録なし時は案内） |
+| `H_XXXX_XXXX` | 指定干場の7日間予報 |
+| `<地区名>` / `<地区名> 明日` | 地区・部落の予報概況 |
+| `通知登録 <干場IDまたは地区名>` | 毎日16:00/01:30の自動通知に登録 |
+| `通知解除` | 通知をOFF |
+| `ヘルプ` | コマンド一覧 |
+
+特別地点（A_XXXX_XXXX / R_XXXX_XXXX）: 予報確認は可能、乾燥記録対象ではない（既存制約を遵守）。
+
+### 予報精度に関する注意（LINE簡易予報）
+
+LINEメッセージ内の予報は Open-Meteo を直接呼び出す**簡易版**であり、
+`/api/forecast` の以下の機能は適用されない:
+
+- 地形補正（森林・海岸・標高）
+- onshore wind判定によるボーナス/ペナルティ
+- 霧リスク評価（露点降下）
+- ステージ分析（乾燥完了時刻推定）
+
+スコアの差異は概ね ±10〜15点程度。全メッセージに `※LINE簡易予報（Webアプリと値が異なる場合あり）` を付記する。
+
+### 通知スケジュール
+
+| 種別 | JST | UTC | kind |
+|------|-----|-----|------|
+| 夕方通知（翌日予報） | 毎日 16:00 | 07:00 | `evening` |
+| 早朝通知（当日予報） | 毎日 01:30 | 前日 16:30 | `morning` |
+
+- 沖止め日・シーズン範囲設定は現在 localStorage のみ管理のため LINE 通知には**未反映**（TODO）。
+
+---
+
+*system_specification.md 最終更新: 2026年5月18日 (v2.7.0)*
