@@ -332,6 +332,33 @@ def _date_label(date_str: str, day_number: int) -> str:
 
 _LINE_DISCLAIMER = '※LINE簡易予報（Webアプリと値が異なる場合あり）'
 
+_NOTIFY_FOOTER = (
+    '\n─────────────\n'
+    '📅 沖止めは「沖止め」と返信\n'
+    '⚙️「設定確認」で漁期・沖止め確認'
+)
+
+# ---------------------------------------------------------------------------
+# Date parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_date_arg(arg: str) -> 'str | None':
+    """Parse '6/25', '06/25', '2026/6/25' → 'YYYY-MM-DD'. None on failure."""
+    arg = arg.strip().replace('－', '/').replace('−', '/').replace('-', '/')
+    now_jst = datetime.now(JST)
+    year = now_jst.year
+    try:
+        parts = [p for p in arg.split('/') if p]
+        if len(parts) == 2:
+            m, d = int(parts[0]), int(parts[1])
+        elif len(parts) == 3:
+            year, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        else:
+            return None
+        return datetime(year, m, d).strftime('%Y-%m-%d')
+    except (ValueError, IndexError):
+        return None
+
 
 def format_single_day(spot_name: str, fc: dict) -> str:
     """Format one day's forecast as a short LINE text."""
@@ -481,6 +508,26 @@ def parse_command(text: str) -> dict:
         target = parts[1].strip() if len(parts) > 1 else ''
         return {'cmd': 'subscribe', 'target': target}
 
+    # 沖止め解除 — must come before '沖止め' prefix check and area fallback
+    if text in ('沖止め解除', '沖止めを解除'):
+        return {'cmd': 'cancel_nogo'}
+
+    # 沖止め設定: "沖止め" (→翌日) or "沖止め 6/25"
+    if text == '沖止め':
+        return {'cmd': 'set_nogo', 'date': None}
+    if text.startswith('沖止め ') or text.startswith('沖止め　'):
+        return {'cmd': 'set_nogo', 'date': text[3:].strip()}
+
+    # 漁期設定
+    if text.startswith('漁期開始'):
+        return {'cmd': 'set_season_start', 'date': text[4:].strip()}
+    if text.startswith('漁期終了'):
+        return {'cmd': 'set_season_end', 'date': text[4:].strip()}
+
+    # 設定確認
+    if text in ('設定確認', '設定', '漁期確認'):
+        return {'cmd': 'show_settings'}
+
     # Pure day keywords
     if text in _DAY_KEYWORDS:
         day = _DAY_KEYWORDS[text]
@@ -518,6 +565,14 @@ _HELP_TEXT = """\
 「通知登録 H_1631_1434」
 　→ 毎日通知に登録
 「通知解除」→ 通知をOFF
+──────
+「沖止め」→ 翌日を沖止め設定
+「沖止め 6/25」→ 指定日を沖止め設定
+「沖止め解除」→ 直近の沖止めを解除
+「漁期開始 6/15」→ 漁業開始日を設定
+「漁期終了 9/5」→ 漁業終了日を設定
+「設定確認」→ 現在の設定を表示
+──────
 「ヘルプ」→ このメッセージ"""
 
 
@@ -690,6 +745,95 @@ def handle_unsubscribe(source_type: str, source_id: str) -> str:
     return '通知をOFFにしました。再登録は「通知登録 <干場ID>」で行えます。'
 
 
+def handle_set_nogo(source_type: str, source_id: str, date_arg: 'str | None') -> str:
+    now_jst = datetime.now(JST)
+    if date_arg is None:
+        target = (now_jst + timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        target = _parse_date_arg(date_arg)
+        if target is None:
+            return '日付の形式が正しくありません。\n例: 「沖止め 6/25」「沖止め 2026/6/25」'
+    sub = get_subscription(source_type, source_id)
+    today_str = now_jst.strftime('%Y-%m-%d')
+    nogo = [d for d in (sub.get('nogo_dates', []) if sub else []) if d >= today_str]
+    if target not in nogo:
+        nogo.append(target)
+    upsert_subscription(source_type, source_id, {'nogo_dates': sorted(nogo)})
+    dt = datetime.strptime(target, '%Y-%m-%d')
+    return (
+        f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）を沖止め日に設定しました。\n'
+        'この日の通知はスキップします。\n'
+        '「設定確認」で一覧を確認できます。'
+    )
+
+
+def handle_cancel_nogo(source_type: str, source_id: str) -> str:
+    sub = get_subscription(source_type, source_id)
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
+    nogo = sorted(d for d in (sub.get('nogo_dates', []) if sub else []) if d >= today_str)
+    if not nogo:
+        return '有効な沖止め日はありません。'
+    nearest = nogo[0]
+    nogo.remove(nearest)
+    upsert_subscription(source_type, source_id, {'nogo_dates': nogo})
+    dt = datetime.strptime(nearest, '%Y-%m-%d')
+    return f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）の沖止めを解除しました。'
+
+
+def handle_set_season_start(source_type: str, source_id: str, date_arg: str) -> str:
+    if not date_arg:
+        return '開始日を入力してください。\n例: 「漁期開始 6/15」'
+    date_str = _parse_date_arg(date_arg)
+    if date_str is None:
+        return '日付の形式が正しくありません。\n例: 「漁期開始 6/15」'
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    upsert_subscription(source_type, source_id, {'season_start': f'{dt.month:02d}-{dt.day:02d}'})
+    return (
+        f'✓ 漁期開始日を {dt.month}/{dt.day} に設定しました。\n'
+        'この日より前の通知はスキップします。'
+    )
+
+
+def handle_set_season_end(source_type: str, source_id: str, date_arg: str) -> str:
+    if not date_arg:
+        return '終了日を入力してください。\n例: 「漁期終了 9/5」'
+    date_str = _parse_date_arg(date_arg)
+    if date_str is None:
+        return '日付の形式が正しくありません。\n例: 「漁期終了 9/5」'
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    upsert_subscription(source_type, source_id, {'season_end': f'{dt.month:02d}-{dt.day:02d}'})
+    return (
+        f'✓ 漁期終了日を {dt.month}/{dt.day} に設定しました。\n'
+        'この日より後の通知はスキップします。'
+    )
+
+
+def handle_show_settings(source_type: str, source_id: str) -> str:
+    sub = get_subscription(source_type, source_id)
+    if not sub:
+        return '設定が見つかりません。\n「通知登録 H_1631_1434」で登録を始めてください。'
+    lines = ['【現在の設定】']
+    lines.append('通知: ' + ('✅ ON' if sub.get('notify_enabled') else '❌ OFF'))
+    spots = sub.get('spots', [])
+    lines.append('登録干場: ' + (', '.join(spots[:5]) if spots else 'なし'))
+    s = sub.get('season_start', '').replace('-', '/')
+    e = sub.get('season_end', '').replace('-', '/')
+    lines.append(f'漁期: {s or "6/1"}〜{e or "9/30"}')
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
+    nogo = sorted(d for d in sub.get('nogo_dates', []) if d >= today_str)
+    if nogo:
+        nogo_labels = [
+            f'{datetime.strptime(d, "%Y-%m-%d").month}/{datetime.strptime(d, "%Y-%m-%d").day}'
+            for d in nogo[:5]
+        ]
+        lines.append('沖止め: ' + ', '.join(nogo_labels))
+    else:
+        lines.append('沖止め: なし')
+    lines.append('─────────────')
+    lines.append('変更: 「沖止め 6/25」「漁期開始 6/15」等')
+    return '\n'.join(lines)
+
+
 def handle_unknown() -> str:
     return (
         '入力内容が認識できませんでした。\n'
@@ -724,6 +868,11 @@ def notify_all(kind: str) -> dict:
     day_name = '翌日' if kind == 'evening' else '当日'
     kind_label = '夕方（16:00）' if kind == 'evening' else '早朝（01:30）'
 
+    # Target date for this notification (the date whose forecast we send)
+    target_date = now_jst.date() + timedelta(days=day_number)
+    target_date_str = target_date.strftime('%Y-%m-%d')
+    target_mm_dd = f'{target_date.month:02d}-{target_date.day:02d}'
+
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
 
@@ -733,6 +882,33 @@ def notify_all(kind: str) -> dict:
             continue
         spot_ids = sub.get('spots', [])
         if not spot_ids:
+            skipped += 1
+            continue
+
+        # Per-subscriber personal season check (MM-DD comparison)
+        season_start = sub.get('season_start', '')  # e.g. "06-15"
+        season_end = sub.get('season_end', '')       # e.g. "09-05"
+        if season_start and target_mm_dd < season_start:
+            logger.info(
+                'Notify skipped for %s: before personal season start %s',
+                _mask_id(sub['source_id']), season_start,
+            )
+            skipped += 1
+            continue
+        if season_end and target_mm_dd > season_end:
+            logger.info(
+                'Notify skipped for %s: after personal season end %s',
+                _mask_id(sub['source_id']), season_end,
+            )
+            skipped += 1
+            continue
+
+        # Per-subscriber nogo date check
+        if target_date_str in sub.get('nogo_dates', []):
+            logger.info(
+                'Notify skipped for %s: nogo date %s',
+                _mask_id(sub['source_id']), target_date_str,
+            )
             skipped += 1
             continue
 
@@ -751,13 +927,11 @@ def notify_all(kind: str) -> dict:
             continue
 
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
-        # TODO: Respect 沖止め日 and season range settings once server-side
-        #       configuration is implemented (currently only in localStorage).
-        full_msg = header + '\n\n'.join(msgs)
+        full_msg = header + '\n\n'.join(msgs) + _NOTIFY_FOOTER
 
         if push_text(source_id, full_msg):
             sent += 1
-            logger.info('Notified %s (%s spots)', source_id[:8] + '...', len(msgs))
+            logger.info('Notified %s (%s spots)', _mask_id(source_id), len(msgs))
         else:
             failed += 1
 
@@ -857,6 +1031,16 @@ def process_event(event: dict) -> None:
         response = handle_subscribe(source_type, source_id, cmd['target'])
     elif cmd['cmd'] == 'unsubscribe':
         response = handle_unsubscribe(source_type, source_id)
+    elif cmd['cmd'] == 'set_nogo':
+        response = handle_set_nogo(source_type, source_id, cmd.get('date'))
+    elif cmd['cmd'] == 'cancel_nogo':
+        response = handle_cancel_nogo(source_type, source_id)
+    elif cmd['cmd'] == 'set_season_start':
+        response = handle_set_season_start(source_type, source_id, cmd.get('date', ''))
+    elif cmd['cmd'] == 'set_season_end':
+        response = handle_set_season_end(source_type, source_id, cmd.get('date', ''))
+    elif cmd['cmd'] == 'show_settings':
+        response = handle_show_settings(source_type, source_id)
     else:
         response = handle_unknown()
 

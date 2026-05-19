@@ -337,3 +337,229 @@ def test_notify_all_in_season(tmp_sub_file, monkeypatch):
     monkeypatch.setattr(li, "push_text", lambda to, text: True)
     result = li.notify_all("evening")
     assert result.get("reason") != "out_of_season"
+
+
+# ---------------------------------------------------------------------------
+# parse_command — new commands
+# ---------------------------------------------------------------------------
+
+def test_parse_set_nogo_no_date():
+    assert li.parse_command("沖止め") == {"cmd": "set_nogo", "date": None}
+
+
+def test_parse_set_nogo_with_date():
+    r = li.parse_command("沖止め 6/25")
+    assert r["cmd"] == "set_nogo"
+    assert r["date"] == "6/25"
+
+
+def test_parse_cancel_nogo():
+    assert li.parse_command("沖止め解除") == {"cmd": "cancel_nogo"}
+
+
+def test_parse_set_season_start():
+    r = li.parse_command("漁期開始 6/15")
+    assert r["cmd"] == "set_season_start"
+    assert r["date"] == "6/15"
+
+
+def test_parse_set_season_end():
+    r = li.parse_command("漁期終了 9/5")
+    assert r["cmd"] == "set_season_end"
+    assert r["date"] == "9/5"
+
+
+def test_parse_show_settings():
+    assert li.parse_command("設定確認") == {"cmd": "show_settings"}
+
+
+# ---------------------------------------------------------------------------
+# _parse_date_arg
+# ---------------------------------------------------------------------------
+
+def test_parse_date_arg_mm_dd():
+    result = li._parse_date_arg("6/25")
+    assert result is not None
+    assert result.endswith("-06-25") or "-06-25" in result
+
+
+def test_parse_date_arg_full():
+    result = li._parse_date_arg("2026/6/25")
+    assert result == "2026-06-25"
+
+
+def test_parse_date_arg_invalid():
+    assert li._parse_date_arg("abc") is None
+
+
+# ---------------------------------------------------------------------------
+# handle_set_nogo / handle_cancel_nogo
+# ---------------------------------------------------------------------------
+
+def test_handle_set_nogo_tomorrow(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+    result = li.handle_set_nogo("user", "U1", None)
+    assert "沖止め" in result or "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert len(sub.get("nogo_dates", [])) == 1
+
+
+def test_handle_set_nogo_specific_date(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+    result = li.handle_set_nogo("user", "U1", "2026/8/15")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert "2026-08-15" in sub.get("nogo_dates", [])
+
+
+def test_handle_cancel_nogo_removes_nearest(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "nogo_dates": ["2026-08-10", "2026-08-20"],
+    })
+    result = li.handle_cancel_nogo("user", "U1")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert "2026-08-10" not in sub.get("nogo_dates", [])
+
+
+def test_handle_cancel_nogo_none(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_cancel_nogo("user", "U1")
+    assert "ありません" in result
+
+
+# ---------------------------------------------------------------------------
+# handle_set_season_start / handle_set_season_end
+# ---------------------------------------------------------------------------
+
+def test_handle_set_season_start(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_start("user", "U1", "6/15")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert sub.get("season_start") == "06-15"
+
+
+def test_handle_set_season_end(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_end("user", "U1", "9/5")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert sub.get("season_end") == "09-05"
+
+
+def test_handle_set_season_invalid_date(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_start("user", "U1", "abc")
+    assert "正しくありません" in result
+
+
+# ---------------------------------------------------------------------------
+# notify_all — nogo / personal season skip
+# ---------------------------------------------------------------------------
+
+def _in_season_datetime():
+    """Returns a _FakeDatetime class fixed at 2026-07-01 12:00 JST."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+    return _FakeDatetime
+
+
+def test_notify_all_skips_nogo_date(tmp_sub_file, monkeypatch):
+    """Subscriber with nogo_dates matching target day is skipped."""
+    monkeypatch.setattr(li, "datetime", _in_season_datetime())
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "nogo_dates": ["2026-07-02"],  # evening → target is 2026-07-02
+    })
+    result = li.notify_all("evening")
+    assert result["skipped"] >= 1
+    assert result["sent"] == 0
+
+
+def test_notify_all_skips_before_season_start(tmp_sub_file, monkeypatch):
+    """Subscriber with season_start after target date is skipped."""
+    monkeypatch.setattr(li, "datetime", _in_season_datetime())
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "season_start": "07-10",  # starts 7/10, but target is 7/2 (evening)
+    })
+    result = li.notify_all("evening")
+    assert result["skipped"] >= 1
+    assert result["sent"] == 0
+
+
+def test_notify_all_skips_after_season_end(tmp_sub_file, monkeypatch):
+    """Subscriber with season_end before target date is skipped."""
+    monkeypatch.setattr(li, "datetime", _in_season_datetime())
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "season_end": "06-30",  # ended 6/30, but today morning target is 7/1
+    })
+    result = li.notify_all("morning")
+    assert result["skipped"] >= 1
+    assert result["sent"] == 0
+
+
+# ---------------------------------------------------------------------------
+# handle_show_settings
+# ---------------------------------------------------------------------------
+
+def test_handle_show_settings_no_sub(tmp_sub_file):
+    result = li.handle_show_settings("user", "UNKNOWN")
+    assert "見つかりません" in result
+
+
+def test_handle_show_settings_displays_info(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "season_start": "06-15",
+        "season_end": "09-05",
+        "nogo_dates": ["2026-08-10"],
+    })
+    result = li.handle_show_settings("user", "U1")
+    assert "6/15" in result
+    assert "9/5" in result or "09-05" in result.replace('/', '-')
+    assert "8/10" in result
+
+
+# ---------------------------------------------------------------------------
+# Notification footer present in push messages
+# ---------------------------------------------------------------------------
+
+def test_notify_footer_in_push(tmp_sub_file, monkeypatch):
+    """Push notification message contains the settings footer."""
+    monkeypatch.setattr(li, "datetime", _in_season_datetime())
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1631, "lon": 141.1434})
+    monkeypatch.setattr(li, "get_forecast_for_spot", lambda lat, lon: [
+        {"date": "2026-07-01", "day_number": 0, "precipitation": 0.0,
+         "min_humidity": 80.0, "avg_wind": 3.0, "pop": None,
+         "score": 90, "suitability": "excellent"},
+        {"date": "2026-07-02", "day_number": 1, "precipitation": 0.0,
+         "min_humidity": 80.0, "avg_wind": 3.0, "pop": None,
+         "score": 90, "suitability": "excellent"},
+    ])
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+    })
+    li.notify_all("evening")
+    assert pushed, "No push was sent"
+    assert "沖止め" in pushed[0]
+    assert "設定確認" in pushed[0]
