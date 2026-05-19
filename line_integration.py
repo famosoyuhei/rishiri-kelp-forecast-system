@@ -61,6 +61,7 @@ LINE_MESSAGING_API = 'https://api.line.me/v2/bot/message'
 SUBSCRIPTIONS_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'line_subscriptions.json'
 )
+_UPSTASH_REDIS_KEY = 'line_subscriptions'
 SPOTS_CSV = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'hoshiba_spots.csv'
 )
@@ -115,7 +116,60 @@ def _sub_key(source_type: str, source_id: str) -> str:
     return f'{source_type}:{source_id}'
 
 
+def _upstash_url() -> str:
+    return os.environ.get('UPSTASH_REDIS_REST_URL', '').rstrip('/')
+
+
+def _upstash_token() -> str:
+    return os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+
+
+def _upstash_available() -> bool:
+    return bool(_upstash_url() and _upstash_token())
+
+
+def _upstash_get(key: str):
+    """GET a value from Upstash Redis. Returns parsed JSON or None."""
+    try:
+        resp = _requests.get(
+            f'{_upstash_url()}/get/{key}',
+            headers={'Authorization': f'Bearer {_upstash_token()}'},
+            timeout=5,
+        )
+        data = resp.json()
+        raw = data.get('result')
+        if raw is None:
+            return None
+        return json.loads(raw)
+    except Exception as e:
+        logger.error('Upstash GET failed: %s', e)
+        return None
+
+
+def _upstash_set(key: str, value) -> bool:
+    """SET a value in Upstash Redis. Value is JSON-encoded."""
+    try:
+        resp = _requests.post(
+            f'{_upstash_url()}/set/{key}',
+            headers={
+                'Authorization': f'Bearer {_upstash_token()}',
+                'Content-Type': 'application/json',
+            },
+            json=json.dumps(value, ensure_ascii=False),
+            timeout=5,
+        )
+        return resp.json().get('result') == 'OK'
+    except Exception as e:
+        logger.error('Upstash SET failed: %s', e)
+        return False
+
+
 def load_subscriptions() -> dict:
+    if _upstash_available():
+        data = _upstash_get(_UPSTASH_REDIS_KEY)
+        if data is not None:
+            return data
+        # Fall through to local file on cache miss
     if not os.path.exists(SUBSCRIPTIONS_FILE):
         return {}
     try:
@@ -127,6 +181,12 @@ def load_subscriptions() -> dict:
 
 
 def save_subscriptions(subs: dict) -> None:
+    if _upstash_available():
+        ok = _upstash_set(_UPSTASH_REDIS_KEY, subs)
+        if not ok:
+            logger.error('Upstash save failed; falling back to local file')
+        else:
+            return
     try:
         with open(SUBSCRIPTIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(subs, f, ensure_ascii=False, indent=2)
