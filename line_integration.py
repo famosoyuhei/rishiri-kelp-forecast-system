@@ -978,9 +978,13 @@ def _get_sub_spots(source_type: str, source_id: str) -> list:
 
 def _no_registration_hint() -> str:
     return (
-        '干場が登録されていません。\n'
-        '「通知登録 H_1631_1434」のように入力して登録してください。\n'
-        '干場IDはWebアプリで確認できます。'
+        '干場が登録されていません。\n\n'
+        '【登録方法】\n'
+        '① Webアプリで地図から干場を選択\n'
+        '② 「LINEで通知登録」ボタンをタップ\n'
+        'https://rishiri-kelp-forecast-system.onrender.com/\n\n'
+        '干場IDがわかる場合は直接入力:\n'
+        '「通知登録 H_1631_1434」'
     )
 
 
