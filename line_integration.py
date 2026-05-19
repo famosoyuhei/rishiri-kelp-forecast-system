@@ -702,6 +702,18 @@ def handle_register_spot_nickname(source_type: str, source_id: str,
         return f'{spot_id} が見つかりません。IDを確認してください。'
     sub = get_subscription(source_type, source_id)
     nicknames = dict(sub.get('spot_nicknames', {})) if sub else {}
+
+    # Check if this spot_id already has a different nickname for this user
+    old_nick = next((k for k, v in nicknames.items() if v == spot_id and k != nickname), None)
+    if old_nick:
+        # Remove old nickname and replace with new one
+        del nicknames[old_nick]
+        nicknames[nickname] = spot_id
+        upsert_subscription(source_type, source_id, {'spot_nicknames': nicknames})
+        return (
+            f'✓ {spot_id} の名前を「{old_nick}」→「{nickname}」に変更しました。'
+        )
+
     nicknames[nickname] = spot_id
     upsert_subscription(source_type, source_id, {'spot_nicknames': nicknames})
     return f'✓ 「{nickname}」→ {spot_id} を登録しました。\n「記録」コマンドで「{nickname}」と入力できます。'

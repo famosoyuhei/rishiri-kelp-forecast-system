@@ -3044,14 +3044,86 @@
             if (favoriteIndex === -1) {
                 // お気に入りに追加
                 favorites.push(index);
+                localStorage.setItem('hoshibaFavorites', JSON.stringify(favorites));
+                refreshMarkers();
+                updateFavoritesList();
+                // LINEニックネーム登録モーダルを表示
+                const spot = allSpotsArray[index];
+                if (spot && !spot.name.startsWith('A_') && !spot.name.startsWith('R_')) {
+                    showLineNicknameModal(spot.name);
+                }
             } else {
                 // お気に入りから削除
                 favorites.splice(favoriteIndex, 1);
+                localStorage.setItem('hoshibaFavorites', JSON.stringify(favorites));
+                refreshMarkers();
+                updateFavoritesList();
             }
+        }
 
-            localStorage.setItem('hoshibaFavorites', JSON.stringify(favorites));
-            refreshMarkers();
-            updateFavoritesList();
+        function showLineNicknameModal(spotId) {
+            const existing = document.getElementById('lineNicknameModal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'lineNicknameModal';
+            modal.style.cssText = `
+                position:fixed; inset:0; z-index:9999;
+                background:rgba(0,0,0,0.5);
+                display:flex; align-items:center; justify-content:center;
+                padding:16px;
+            `;
+            modal.innerHTML = `
+                <div style="background:white; border-radius:16px; padding:24px; max-width:340px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                    <div style="font-size:1.1rem; font-weight:700; margin-bottom:6px;">⭐ お気に入りに追加しました</div>
+                    <div style="font-size:0.82rem; color:#555; margin-bottom:16px;">
+                        LINEでこの干場を使うには、わかりやすい名前を付けて登録できます。
+                    </div>
+                    <div style="font-size:0.8rem; color:#888; margin-bottom:4px;">干場の呼び名（例：浜の前、山の下）</div>
+                    <input id="lineNicknameInput" type="text" placeholder="例: 浜の前"
+                        style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #ddd; border-radius:8px; font-size:1rem; margin-bottom:14px; outline:none;"
+                        maxlength="20"
+                    />
+                    <a id="lineNicknameRegBtn" href="#" target="_blank" rel="noopener"
+                        style="display:block; text-align:center; background:#06C755; color:white; text-decoration:none; padding:11px; border-radius:24px; font-size:0.95rem; font-weight:700; margin-bottom:10px;">
+                        LINEで干場名を登録
+                    </a>
+                    <button onclick="document.getElementById('lineNicknameModal').remove()"
+                        style="width:100%; padding:9px; background:#f5f5f5; border:none; border-radius:24px; font-size:0.9rem; color:#666; cursor:pointer;">
+                        あとで登録する
+                    </button>
+                    <div style="font-size:0.75rem; color:#aaa; margin-top:10px; text-align:center;">
+                        ${spotId}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const input = document.getElementById('lineNicknameInput');
+            const btn = document.getElementById('lineNicknameRegBtn');
+
+            function updateLink() {
+                const nick = input.value.trim();
+                if (nick) {
+                    const msg = encodeURIComponent(`干場登録 ${nick} ${spotId}`);
+                    btn.href = `https://line.me/R/oaMessage/@766cfpki/?${msg}`;
+                    btn.style.opacity = '1';
+                } else {
+                    btn.href = '#';
+                    btn.style.opacity = '0.5';
+                }
+            }
+            input.addEventListener('input', updateLink);
+            updateLink();
+
+            // 入力フォームにフォーカス
+            setTimeout(() => input.focus(), 100);
+
+            // 背景クリックで閉じる
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
         }
 
         function refreshMarkers() {
