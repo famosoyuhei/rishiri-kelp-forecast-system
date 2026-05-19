@@ -713,6 +713,13 @@ def notify_all(kind: str) -> dict:
     if kind not in ('evening', 'morning'):
         return {'error': 'kind must be evening or morning'}
 
+    # Season check: only notify during kelp drying season (June–September JST)
+    JST = timezone(timedelta(hours=9))
+    now_jst = datetime.now(JST)
+    if not (6 <= now_jst.month <= 9):
+        logger.info('notify_all skipped: out of kelp season (month=%d JST)', now_jst.month)
+        return {'sent': 0, 'failed': 0, 'skipped': 0, 'kind': kind, 'reason': 'out_of_season'}
+
     day_number = 1 if kind == 'evening' else 0
     day_name = '翌日' if kind == 'evening' else '当日'
     kind_label = '夕方（16:00）' if kind == 'evening' else '早朝（01:30）'

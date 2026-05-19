@@ -296,8 +296,44 @@ def test_notify_all_invalid_kind(tmp_sub_file):
 
 
 def test_notify_all_skips_disabled(tmp_sub_file, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
     li.upsert_subscription("user", "U_off", {"notify_enabled": False, "spots": ["H_1631_1434"]})
     monkeypatch.setattr(li, "push_text", lambda to, text: True)
     result = li.notify_all("morning")
     assert result["sent"] == 0
     assert result["skipped"] >= 1
+
+
+def test_notify_all_out_of_season(tmp_sub_file, monkeypatch):
+    """notify_all returns out_of_season when current JST month is outside 6-9."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    # Patch datetime.now to return January (month=1)
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 15, 12, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    result = li.notify_all("evening")
+    assert result.get("reason") == "out_of_season"
+    assert result["sent"] == 0
+
+
+def test_notify_all_in_season(tmp_sub_file, monkeypatch):
+    """notify_all proceeds (no out_of_season) when JST month is in 6-9."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+    result = li.notify_all("evening")
+    assert result.get("reason") != "out_of_season"
