@@ -1492,6 +1492,16 @@
             <div class="forecast-header">
                 <h3 id="selectedSpotName">干場を選択してください</h3>
                 <p id="selectedSpotLocation"></p>
+                <div id="lineRegisterBtnWrap" style="display:none; margin: 6px 0 2px;">
+                    <a id="lineRegisterBtn"
+                       href="#"
+                       target="_blank"
+                       rel="noopener"
+                       style="display:inline-flex; align-items:center; gap:6px; background:#06C755; color:white; text-decoration:none; padding:7px 14px; border-radius:20px; font-size:0.82rem; font-weight:600; box-shadow:0 2px 6px rgba(6,199,85,0.35);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.477 2 2 6.038 2 11.05c0 3.623 2.163 6.784 5.392 8.564L6.5 22l3.26-1.713A10.8 10.8 0 0012 20.1c5.523 0 10-4.038 10-9.05S17.523 2 12 2z"/></svg>
+                        LINEで通知登録
+                    </a>
+                </div>
                 <button class="forecast-close-btn" onclick="closeForecastPanel()">← 地図に戻る</button>
             </div>
 
@@ -2381,6 +2391,18 @@
             // ヘッダー更新
             document.getElementById('selectedSpotName').textContent = getSpotDisplayName(spot.name);
             document.getElementById('selectedSpotLocation').textContent = `${spot.town} ${spot.district} ${spot.buraku}`;
+
+            // LINE通知登録ボタン（特別地点は除外）
+            const lineWrap = document.getElementById('lineRegisterBtnWrap');
+            const lineBtn = document.getElementById('lineRegisterBtn');
+            const isSpecial = spot.name.startsWith('A_') || spot.name.startsWith('R_');
+            if (!isSpecial) {
+                const msg = encodeURIComponent(`通知登録 ${spot.name}`);
+                lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${msg}`;
+                lineWrap.style.display = 'block';
+            } else {
+                lineWrap.style.display = 'none';
+            }
 
             // 予報データ取得
             await loadForecastData(spot);
