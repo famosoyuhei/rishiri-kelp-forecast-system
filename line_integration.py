@@ -1210,11 +1210,26 @@ def handle_set_season_end(source_type: str, source_id: str, date_arg: str) -> st
 def handle_show_settings(source_type: str, source_id: str) -> str:
     sub = get_subscription(source_type, source_id)
     if not sub:
-        return '設定が見つかりません。\n「通知登録 H_1631_1434」で登録を始めてください。'
+        return (
+            '【現在の設定】\n'
+            '通知: 未登録\n'
+            '登録干場: なし\n'
+            '─────────────\n'
+            '干場を登録するには:\n'
+            '① Webアプリで地図から干場を選択\n'
+            '② 「LINEで通知登録」ボタンをタップ\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/'
+        )
     lines = ['【現在の設定】']
     lines.append('通知: ' + ('✅ ON' if sub.get('notify_enabled') else '❌ OFF'))
     spots = sub.get('spots', [])
-    lines.append('登録干場: ' + (', '.join(spots[:5]) if spots else 'なし'))
+    if spots:
+        nicknames = sub.get('spot_nicknames', {})
+        spot_labels = [nicknames.get(s, s) for s in spots[:5]]
+        spot_display = ', '.join(spot_labels)
+    else:
+        spot_display = 'なし（Webアプリから登録できます）'
+    lines.append('登録干場: ' + spot_display)
     s = sub.get('season_start', '').replace('-', '/')
     e = sub.get('season_end', '').replace('-', '/')
     lines.append(f'漁期: {s or "6/1"}〜{e or "9/30"}')
