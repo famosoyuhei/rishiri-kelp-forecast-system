@@ -4992,5 +4992,30 @@ import threading as _threading
 _amedas_thread = _threading.Thread(target=_daily_amedas_collection, daemon=True)
 _amedas_thread.start()
 
+# ============================================================================
+# LINE Messaging API endpoints (line_integration.py)
+# ============================================================================
+
+@app.route('/line/webhook', methods=['POST'])
+def line_webhook():
+    """Receive LINE Platform webhooks. Verifies X-Line-Signature before processing."""
+    from line_integration import handle_webhook  # lazy import avoids circular dep
+    return handle_webhook()
+
+
+@app.route('/api/line/status', methods=['GET'])
+def line_status():
+    """Return LINE integration status. Never exposes secrets."""
+    from line_integration import get_status
+    return get_status()
+
+
+@app.route('/api/line/notify', methods=['POST'])
+def line_notify():
+    """Trigger broadcast push for all LINE subscribers (Render Cron / admin)."""
+    from line_integration import handle_notify
+    return handle_notify()
+
+
 if __name__ == '__main__':
     main()

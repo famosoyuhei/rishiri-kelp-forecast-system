@@ -174,6 +174,91 @@ rishiri-kelp-forecast-system/
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) - アプリ使い方説明書（スマホ初心者向け）
 - [docs/MARKETING.md](docs/MARKETING.md) - 営業・広告素材集（コピー・動画スクリプト・チラシ）
 
+---
+
+## LINE通知連携
+
+### 概要
+
+昆布作業者が普段使いしているLINEで予報確認・通知受信ができます。
+
+| コマンド | 動作 |
+|---------|------|
+| `今日` | 登録済み干場の当日予報 |
+| `明日` | 登録済み干場の翌日予報 |
+| `今週` | 登録済み干場の7日間予報 |
+| `H_1631_1434` | 指定干場の7日間予報 |
+| `沓形` / `仙法志 明日` | 地区・部落の予報 |
+| `通知登録 H_1631_1434` | 毎日16:00/01:30に通知 |
+| `通知解除` | 通知をOFF |
+| `ヘルプ` | コマンド一覧 |
+
+### セットアップ手順
+
+#### 1. LINE Developers Console で設定
+
+1. [LINE Developers Console](https://developers.line.biz/) にログイン
+2. 「プロバイダー作成」→「チャネル作成」→「Messaging API」を選択
+3. チャネル基本設定から **Channel secret** を取得
+4. Messaging API設定タブから **Channel access token（長期）** を発行
+5. Webhook設定：
+   - Webhook URL: `https://<本番ドメイン>/line/webhook`
+   - 「Webhookの利用」をON
+   - 「接続確認」で 200 OK を確認
+
+#### 2. Render 環境変数に設定
+
+| 変数名 | 値 | 説明 |
+|--------|-----|------|
+| `LINE_ENABLED` | `true` | LINE機能を有効化 |
+| `LINE_CHANNEL_SECRET` | （Consoleで取得） | 署名検証用 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | （Consoleで発行） | メッセージ送信用 |
+| `LINE_ADMIN_NOTIFY_SECRET` | （任意の長いランダム文字列） | 通知API認証用 |
+
+#### 3. Render Cron Job 設定（UTC表記）
+
+| JST | UTC | body例 |
+|-----|-----|--------|
+| 毎日 16:00 | 07:00 | `{"kind":"evening","secret":"<シークレット>"}` |
+| 毎日 01:30 | 16:30（前日） | `{"kind":"morning","secret":"<シークレット>"}` |
+
+```
+POST https://<ドメイン>/api/line/notify
+Content-Type: application/json
+```
+
+#### 4. Webアプリに友だち追加バナーを表示（オプション）
+
+Render の環境変数 `LINE_ADD_FRIEND_URL` に LINE 友だち追加URL（例: `https://lin.ee/xxxxxxx`）を
+設定すると、[kelp_drying_map.html](kelp_drying_map.html) が `/api/line/status` から自動取得して
+下部にバナーを表示します。**HTMLへの手動追記は不要です。**
+
+| 環境変数 | 説明 |
+|---------|------|
+| `LINE_ADD_FRIEND_URL` | LINEの友だち追加URL。未設定時はバナー非表示。 |
+
+### エンドポイント
+
+| メソッド | パス | 説明 |
+|---------|------|------|
+| `POST` | `/line/webhook` | LINE Platform からのWebhook受信 |
+| `GET` | `/api/line/status` | LINE連携状態・友だち追加URL（秘密情報なし） |
+| `POST` | `/api/line/notify` | 購読者への一斉Push通知 |
+
+### 予報精度について（LINE簡易予報）
+
+LINEメッセージ内の予報は Open-Meteo 直接呼び出しの**簡易版**です。
+Webアプリの `/api/forecast`（地形補正・onshore判定・霧リスク等を含む）とは
+スコアが ±10〜15点程度ずれる場合があります。
+全メッセージに `※LINE簡易予報（Webアプリと値が異なる場合あり）` を付記しています。
+
+### 購読データ
+
+`line_subscriptions.json` に保存されます（`.gitignore` 登録済み・既存CSVとは分離）。
+保存内容は source_id・source_type・登録干場・通知ON/OFFのみ。ユーザー名等は保存しません。
+
+---
+
 ## バージョン履歴
 
 ### v2.6.0（2026年4月5日）

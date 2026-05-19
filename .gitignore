@@ -99,6 +99,9 @@ dmypy.json
 *.log
 *.pkl
 
+# LINE integration — contains userId/groupId (personal data); never commit
+line_subscriptions.json
+
 # Data files - Keep production CSVs, exclude verification data
 data/user_favorites.json
 data/notification_users.json
