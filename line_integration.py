@@ -401,6 +401,20 @@ def _parse_date_for_record(arg: str) -> 'str | None | str':
     return date_str
 
 
+def read_existing_record(spot_id: str, date_str: str) -> 'dict | None':
+    """Return existing record row for spot+date, or None if not found."""
+    if not os.path.exists(RECORDS_CSV):
+        return None
+    try:
+        with open(RECORDS_CSV, 'r', encoding='utf-8', newline='') as f:
+            for row in csv.DictReader(f):
+                if row.get('date') == date_str and row.get('name') == spot_id:
+                    return dict(row)
+    except Exception as e:
+        logger.error('Failed to read records CSV: %s', e)
+    return None
+
+
 def write_line_record(spot_id: str, date_str: str, result: str,
                       stop_cause: str = '') -> bool:
     """Append or overwrite a record in hoshiba_records.csv."""
@@ -653,8 +667,19 @@ def handle_record_flow(source_type: str, source_id: str, text: str) -> str:
 
 def _format_confirm(pa: dict) -> str:
     dt = datetime.strptime(pa['date'], '%Y-%m-%d')
-    lines = [
-        '📋 以下の内容で記録しますか？',
+    lines = ['📋 以下の内容で記録しますか？']
+
+    # Warn if a record already exists for this spot+date
+    existing = read_existing_record(pa['spot_id'], pa['date'])
+    if existing:
+        lines.append(
+            f'⚠️ この干場・日付には既に記録があります:\n'
+            f'  結果: {existing.get("result", "不明")}'
+            + (f'  原因: {existing["stop_cause"]}' if existing.get('stop_cause') else '')
+            + '\n上書きされます。'
+        )
+
+    lines += [
         f'干場: {pa["nickname"]}（{pa["spot_id"]}）',
         f'日付: {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）',
         f'結果: {pa["result"]}',
