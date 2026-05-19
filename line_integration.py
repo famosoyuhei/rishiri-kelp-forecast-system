@@ -64,6 +64,23 @@ SUBSCRIPTIONS_FILE = os.path.join(
 SPOTS_CSV = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'hoshiba_spots.csv'
 )
+RECORDS_CSV = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'hoshiba_records.csv'
+)
+
+_LINE_RECORD_COLUMNS = [
+    'date', 'name', 'result', 'stop_cause', 'did_dry',
+    'collection_time', 'recorded_at', 'correction_count', 'correction_reason',
+]
+_VALID_RESULTS = ['完全乾燥', '概ね乾燥', '半乾燥', 'ほぼ乾燥なし']
+_VALID_STOP_CAUSES = [
+    '雨が降った',
+    '霧が出た・昆布が湿り戻った',
+    '飛散リスク・強風',
+    '曇り続きで乾かなかった',
+    '天候以外',
+]
+_PENDING_EXPIRY_MINUTES = 30
 
 # ---------------------------------------------------------------------------
 # Signature verification
@@ -332,6 +349,354 @@ def _date_label(date_str: str, day_number: int) -> str:
 
 _LINE_DISCLAIMER = '※LINE簡易予報（Webアプリと値が異なる場合あり）'
 
+_NOTIFY_FOOTER = (
+    '\n─────────────\n'
+    '📅 沖止めは「沖止め」と返信\n'
+    '⚙️「設定確認」で漁期・沖止め確認'
+)
+
+# ---------------------------------------------------------------------------
+# Date parsing helpers
+# ---------------------------------------------------------------------------
+
+def _parse_date_arg(arg: str) -> 'str | None':
+    """Parse '6/25', '06/25', '2026/6/25' → 'YYYY-MM-DD'. None on failure."""
+    arg = arg.strip().replace('－', '/').replace('−', '/').replace('-', '/')
+    now_jst = datetime.now(JST)
+    year = now_jst.year
+    try:
+        parts = [p for p in arg.split('/') if p]
+        if len(parts) == 2:
+            m, d = int(parts[0]), int(parts[1])
+        elif len(parts) == 3:
+            year, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+        else:
+            return None
+        return datetime(year, m, d).strftime('%Y-%m-%d')
+    except (ValueError, IndexError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Record helpers
+# ---------------------------------------------------------------------------
+
+def _parse_date_for_record(arg: str) -> 'str | None | str':
+    """Parse a date for drying records. Returns YYYY-MM-DD, 'future', or None."""
+    now_jst = datetime.now(JST)
+    today = now_jst.date()
+    arg = arg.strip()
+    if arg in ('今日', '本日'):
+        return today.strftime('%Y-%m-%d')
+    if arg in ('昨日', 'きのう'):
+        return (today - timedelta(days=1)).strftime('%Y-%m-%d')
+    if arg in ('一昨日', 'おととい', '一昨日', 'おとつい'):
+        return (today - timedelta(days=2)).strftime('%Y-%m-%d')
+    date_str = _parse_date_arg(arg)
+    if date_str is None:
+        return None
+    parsed = datetime.strptime(date_str, '%Y-%m-%d').date()
+    if parsed > today:
+        return 'future'
+    return date_str
+
+
+def write_line_record(spot_id: str, date_str: str, result: str,
+                      stop_cause: str = '') -> bool:
+    """Append or overwrite a record in hoshiba_records.csv."""
+    now_jst = datetime.now(JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    did_dry = '1' if result in ('完全乾燥', '概ね乾燥') else '0'
+    new_row = {
+        'date': date_str,
+        'name': spot_id,
+        'result': result,
+        'stop_cause': stop_cause,
+        'did_dry': did_dry,
+        'collection_time': '',
+        'recorded_at': now_jst,
+        'correction_count': '0',
+        'correction_reason': '',
+    }
+    try:
+        existing = []
+        if os.path.exists(RECORDS_CSV):
+            with open(RECORDS_CSV, 'r', encoding='utf-8', newline='') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get('date') == date_str and row.get('name') == spot_id:
+                        continue  # overwrite existing same-day record
+                    existing.append({c: row.get(c, '') for c in _LINE_RECORD_COLUMNS})
+        existing.append(new_row)
+        with open(RECORDS_CSV, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=_LINE_RECORD_COLUMNS)
+            writer.writeheader()
+            writer.writerows(existing)
+        return True
+    except Exception as e:
+        logger.error('Failed to write line record: %s', e)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Pending action state machine (persisted in line_subscriptions.json)
+# ---------------------------------------------------------------------------
+
+def get_pending_action(source_type: str, source_id: str) -> 'dict | None':
+    """Return non-expired pending_action for the subscriber, or None."""
+    sub = get_subscription(source_type, source_id)
+    if not sub:
+        return None
+    pa = sub.get('pending_action')
+    if not pa:
+        return None
+    started = pa.get('started_at', '')
+    try:
+        dt = datetime.fromisoformat(started)
+        if (datetime.now(JST) - dt).total_seconds() > _PENDING_EXPIRY_MINUTES * 60:
+            clear_pending_action(source_type, source_id)
+            return None
+    except Exception:
+        return None
+    return pa
+
+
+def set_pending_action(source_type: str, source_id: str, pa: dict) -> None:
+    pa['started_at'] = pa.get('started_at', datetime.now(JST).isoformat())
+    upsert_subscription(source_type, source_id, {'pending_action': pa})
+
+
+def clear_pending_action(source_type: str, source_id: str) -> None:
+    upsert_subscription(source_type, source_id, {'pending_action': None})
+
+
+# ---------------------------------------------------------------------------
+# Spot nickname management
+# ---------------------------------------------------------------------------
+
+def get_spot_nicknames(source_type: str, source_id: str) -> dict:
+    """Return {nickname: spot_id} for subscriber."""
+    sub = get_subscription(source_type, source_id)
+    return sub.get('spot_nicknames', {}) if sub else {}
+
+
+def resolve_spot_nickname(source_type: str, source_id: str, text: str) -> 'dict | None':
+    """Resolve user text to a spot dict via nickname or spot_id. Returns None if not found."""
+    # Direct spot ID
+    if _SPOT_ID_RE.match(text):
+        return find_spot_by_id(text)
+    # Nickname lookup
+    nicknames = get_spot_nicknames(source_type, source_id)
+    spot_id = nicknames.get(text)
+    if spot_id:
+        return find_spot_by_id(spot_id)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Record flow handlers
+# ---------------------------------------------------------------------------
+
+_RESULT_CHOICES = (
+    '1. 完全乾燥\n2. 概ね乾燥\n3. 半乾燥\n4. ほぼ乾燥なし'
+)
+_STOP_CAUSE_CHOICES = (
+    '1. 雨が降った\n2. 霧・湿り戻り\n3. 飛散リスク・強風\n4. 曇り続き\n5. 天候以外'
+)
+_RESULT_MAP = {'1': '完全乾燥', '2': '概ね乾燥', '3': '半乾燥', '4': 'ほぼ乾燥なし'}
+_STOP_CAUSE_MAP = {
+    '1': '雨が降った',
+    '2': '霧が出た・昆布が湿り戻った',
+    '3': '飛散リスク・強風',
+    '4': '曇り続きで乾かなかった',
+    '5': '天候以外',
+}
+
+
+def _needs_stop_cause(result: str) -> bool:
+    return result in ('半乾燥', 'ほぼ乾燥なし')
+
+
+def handle_record_start(source_type: str, source_id: str) -> str:
+    """Initiate record flow: ask which spot."""
+    nicknames = get_spot_nicknames(source_type, source_id)
+    sub = get_subscription(source_type, source_id)
+    registered_spots = sub.get('spots', []) if sub else []
+
+    set_pending_action(source_type, source_id, {
+        'type': 'record', 'step': 'ask_spot',
+        'nickname': None, 'spot_id': None, 'date': None,
+        'result': None, 'stop_cause': None,
+    })
+
+    lines = ['📝 乾燥記録を入力します。\nどの干場の記録ですか？']
+    if nicknames:
+        lines.append('\n登録済み干場:')
+        for nick, sid in list(nicknames.items())[:8]:
+            lines.append(f'  {nick}（{sid}）')
+    elif registered_spots:
+        lines.append('\n通知登録済み干場:')
+        for sid in registered_spots[:5]:
+            lines.append(f'  {sid}')
+    else:
+        lines.append('\n干場IDを直接入力（例: H_1631_1434）または')
+        lines.append('「干場登録 ニックネーム H_ID」で名前を登録できます。')
+    lines.append('\n「キャンセル」で中止')
+    return '\n'.join(lines)
+
+
+def handle_record_flow(source_type: str, source_id: str, text: str) -> str:
+    """Dispatch incoming text through the record state machine."""
+    pa = get_pending_action(source_type, source_id)
+    if not pa:
+        return handle_unknown()
+
+    if text in ('キャンセル', 'cancel', 'Cancel', 'やめる', '中止'):
+        clear_pending_action(source_type, source_id)
+        return '記録をキャンセルしました。'
+
+    step = pa.get('step')
+
+    # --- ask_spot ---
+    if step == 'ask_spot':
+        spot = resolve_spot_nickname(source_type, source_id, text)
+        if not spot:
+            return (
+                f'「{text}」が見つかりませんでした。\n'
+                '干場IDまたは登録済みのニックネームを入力してください。\n'
+                '「キャンセル」で中止'
+            )
+        pa.update({'step': 'ask_date', 'nickname': text, 'spot_id': spot['name']})
+        set_pending_action(source_type, source_id, pa)
+        return (
+            f'✓ 干場: {text}（{spot["name"]}）\n\n'
+            '📅 何日の記録ですか？\n'
+            '例: 今日、昨日、5/18\n（未来の日付は登録できません）\n'
+            '「キャンセル」で中止'
+        )
+
+    # --- ask_date ---
+    if step == 'ask_date':
+        date_str = _parse_date_for_record(text)
+        if date_str == 'future':
+            return '未来の日付は記録できません。\n今日以前の日付を入力してください。\n「キャンセル」で中止'
+        if date_str is None:
+            return '日付が認識できませんでした。\n例: 今日、昨日、5/18\n「キャンセル」で中止'
+        pa.update({'step': 'ask_result', 'date': date_str})
+        set_pending_action(source_type, source_id, pa)
+        dt = datetime.strptime(date_str, '%Y-%m-%d')
+        return (
+            f'✓ 日付: {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）\n\n'
+            '🌿 乾燥結果を選んでください:\n'
+            f'{_RESULT_CHOICES}\n\n'
+            '番号または名前で入力 / 「キャンセル」で中止'
+        )
+
+    # --- ask_result ---
+    if step == 'ask_result':
+        result = _RESULT_MAP.get(text) or (text if text in _VALID_RESULTS else None)
+        if result is None:
+            return (
+                '番号（1〜4）または名前で入力してください:\n'
+                f'{_RESULT_CHOICES}\n「キャンセル」で中止'
+            )
+        pa.update({'result': result})
+        if _needs_stop_cause(result):
+            pa['step'] = 'ask_stop_cause'
+            set_pending_action(source_type, source_id, pa)
+            return (
+                f'✓ 結果: {result}\n\n'
+                '主な原因を選んでください:\n'
+                f'{_STOP_CAUSE_CHOICES}\n\n'
+                '番号または名前で入力 / 「キャンセル」で中止'
+            )
+        pa['step'] = 'confirm'
+        set_pending_action(source_type, source_id, pa)
+        return _format_confirm(pa)
+
+    # --- ask_stop_cause ---
+    if step == 'ask_stop_cause':
+        cause = _STOP_CAUSE_MAP.get(text) or (text if text in _VALID_STOP_CAUSES else None)
+        if cause is None:
+            return (
+                '番号（1〜5）または名前で入力してください:\n'
+                f'{_STOP_CAUSE_CHOICES}\n「キャンセル」で中止'
+            )
+        pa.update({'stop_cause': cause, 'step': 'confirm'})
+        set_pending_action(source_type, source_id, pa)
+        return _format_confirm(pa)
+
+    # --- confirm ---
+    if step == 'confirm':
+        if text in ('確定', 'OK', 'ok', 'はい', '保存'):
+            spot_id = pa['spot_id']
+            date_str = pa['date']
+            result = pa['result']
+            stop_cause = pa.get('stop_cause') or ''
+            clear_pending_action(source_type, source_id)
+            if write_line_record(spot_id, date_str, result, stop_cause):
+                dt = datetime.strptime(date_str, '%Y-%m-%d')
+                return (
+                    f'✅ 記録しました。\n'
+                    f'干場: {pa["nickname"]}\n'
+                    f'日付: {dt.month}/{dt.day}\n'
+                    f'結果: {result}'
+                )
+            return '⚠️ 記録の保存に失敗しました。もう一度お試しください。'
+        if text in ('いいえ', 'キャンセル', 'やり直し', 'no'):
+            clear_pending_action(source_type, source_id)
+            return '記録をキャンセルしました。'
+        return '「確定」で保存、「キャンセル」でやり直しを選んでください。'
+
+    clear_pending_action(source_type, source_id)
+    return handle_unknown()
+
+
+def _format_confirm(pa: dict) -> str:
+    dt = datetime.strptime(pa['date'], '%Y-%m-%d')
+    lines = [
+        '📋 以下の内容で記録しますか？',
+        f'干場: {pa["nickname"]}（{pa["spot_id"]}）',
+        f'日付: {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）',
+        f'結果: {pa["result"]}',
+    ]
+    if pa.get('stop_cause'):
+        lines.append(f'原因: {pa["stop_cause"]}')
+    lines.append('\n「確定」で保存 / 「キャンセル」でやり直し')
+    return '\n'.join(lines)
+
+
+def handle_register_spot_nickname(source_type: str, source_id: str,
+                                  nickname: str, spot_id: str) -> str:
+    """Register a nickname → spot_id mapping for this subscriber."""
+    if not nickname or not spot_id:
+        return '入力形式: 「干場登録 ニックネーム H_XXXX_XXXX」\n例: 干場登録 浜の前 H_1631_1434'
+    if not _SPOT_ID_RE.match(spot_id):
+        return f'干場IDの形式が正しくありません（例: H_1631_1434）\n入力: {spot_id}'
+    spot = find_spot_by_id(spot_id)
+    if not spot:
+        return f'{spot_id} が見つかりません。IDを確認してください。'
+    sub = get_subscription(source_type, source_id)
+    nicknames = dict(sub.get('spot_nicknames', {})) if sub else {}
+    nicknames[nickname] = spot_id
+    upsert_subscription(source_type, source_id, {'spot_nicknames': nicknames})
+    return f'✓ 「{nickname}」→ {spot_id} を登録しました。\n「記録」コマンドで「{nickname}」と入力できます。'
+
+
+def handle_list_spots(source_type: str, source_id: str) -> str:
+    """Show registered spot nicknames."""
+    nicknames = get_spot_nicknames(source_type, source_id)
+    if not nicknames:
+        return (
+            '干場のニックネームが登録されていません。\n'
+            '「干場登録 ニックネーム H_XXXX_XXXX」で登録できます。\n'
+            '例: 干場登録 浜の前 H_1631_1434'
+        )
+    lines = ['【登録済み干場ニックネーム】']
+    for nick, sid in nicknames.items():
+        lines.append(f'{nick} → {sid}')
+    lines.append('\n「記録」で乾燥記録を入力できます。')
+    return '\n'.join(lines)
+
 
 def format_single_day(spot_name: str, fc: dict) -> str:
     """Format one day's forecast as a short LINE text."""
@@ -481,6 +846,41 @@ def parse_command(text: str) -> dict:
         target = parts[1].strip() if len(parts) > 1 else ''
         return {'cmd': 'subscribe', 'target': target}
 
+    # Record flow trigger
+    if text in ('記録', '乾燥記録', '記録する', '干し記録'):
+        return {'cmd': 'record_start'}
+
+    # Spot nickname registration: "干場登録 ニックネーム H_XXXX_XXXX"
+    if text.startswith('干場登録') or text.startswith('干場 登録'):
+        parts = text.split(None, 2)
+        nickname = parts[1].strip() if len(parts) > 1 else ''
+        spot_id = parts[2].strip() if len(parts) > 2 else ''
+        return {'cmd': 'register_spot', 'nickname': nickname, 'spot_id': spot_id}
+
+    # List registered spots
+    if text in ('干場一覧', '登録干場', '干場リスト'):
+        return {'cmd': 'list_spots'}
+
+    # 沖止め解除 — must come before '沖止め' prefix check and area fallback
+    if text in ('沖止め解除', '沖止めを解除'):
+        return {'cmd': 'cancel_nogo'}
+
+    # 沖止め設定: "沖止め" (→翌日) or "沖止め 6/25"
+    if text == '沖止め':
+        return {'cmd': 'set_nogo', 'date': None}
+    if text.startswith('沖止め ') or text.startswith('沖止め　'):
+        return {'cmd': 'set_nogo', 'date': text[3:].strip()}
+
+    # 漁期設定
+    if text.startswith('漁期開始'):
+        return {'cmd': 'set_season_start', 'date': text[4:].strip()}
+    if text.startswith('漁期終了'):
+        return {'cmd': 'set_season_end', 'date': text[4:].strip()}
+
+    # 設定確認
+    if text in ('設定確認', '設定', '漁期確認'):
+        return {'cmd': 'show_settings'}
+
     # Pure day keywords
     if text in _DAY_KEYWORDS:
         day = _DAY_KEYWORDS[text]
@@ -518,6 +918,19 @@ _HELP_TEXT = """\
 「通知登録 H_1631_1434」
 　→ 毎日通知に登録
 「通知解除」→ 通知をOFF
+──────
+「記録」→ 乾燥記録を入力（会話式）
+「干場登録 浜の前 H_1631_1434」
+　→ 干場にニックネームを付ける
+「干場一覧」→ 登録済み干場を確認
+──────
+「沖止め」→ 翌日を沖止め設定
+「沖止め 6/25」→ 指定日を沖止め設定
+「沖止め解除」→ 直近の沖止めを解除
+「漁期開始 6/15」→ 漁業開始日を設定
+「漁期終了 9/5」→ 漁業終了日を設定
+「設定確認」→ 現在の設定を表示
+──────
 「ヘルプ」→ このメッセージ"""
 
 
@@ -690,6 +1103,95 @@ def handle_unsubscribe(source_type: str, source_id: str) -> str:
     return '通知をOFFにしました。再登録は「通知登録 <干場ID>」で行えます。'
 
 
+def handle_set_nogo(source_type: str, source_id: str, date_arg: 'str | None') -> str:
+    now_jst = datetime.now(JST)
+    if date_arg is None:
+        target = (now_jst + timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        target = _parse_date_arg(date_arg)
+        if target is None:
+            return '日付の形式が正しくありません。\n例: 「沖止め 6/25」「沖止め 2026/6/25」'
+    sub = get_subscription(source_type, source_id)
+    today_str = now_jst.strftime('%Y-%m-%d')
+    nogo = [d for d in (sub.get('nogo_dates', []) if sub else []) if d >= today_str]
+    if target not in nogo:
+        nogo.append(target)
+    upsert_subscription(source_type, source_id, {'nogo_dates': sorted(nogo)})
+    dt = datetime.strptime(target, '%Y-%m-%d')
+    return (
+        f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）を沖止め日に設定しました。\n'
+        'この日の通知はスキップします。\n'
+        '「設定確認」で一覧を確認できます。'
+    )
+
+
+def handle_cancel_nogo(source_type: str, source_id: str) -> str:
+    sub = get_subscription(source_type, source_id)
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
+    nogo = sorted(d for d in (sub.get('nogo_dates', []) if sub else []) if d >= today_str)
+    if not nogo:
+        return '有効な沖止め日はありません。'
+    nearest = nogo[0]
+    nogo.remove(nearest)
+    upsert_subscription(source_type, source_id, {'nogo_dates': nogo})
+    dt = datetime.strptime(nearest, '%Y-%m-%d')
+    return f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）の沖止めを解除しました。'
+
+
+def handle_set_season_start(source_type: str, source_id: str, date_arg: str) -> str:
+    if not date_arg:
+        return '開始日を入力してください。\n例: 「漁期開始 6/15」'
+    date_str = _parse_date_arg(date_arg)
+    if date_str is None:
+        return '日付の形式が正しくありません。\n例: 「漁期開始 6/15」'
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    upsert_subscription(source_type, source_id, {'season_start': f'{dt.month:02d}-{dt.day:02d}'})
+    return (
+        f'✓ 漁期開始日を {dt.month}/{dt.day} に設定しました。\n'
+        'この日より前の通知はスキップします。'
+    )
+
+
+def handle_set_season_end(source_type: str, source_id: str, date_arg: str) -> str:
+    if not date_arg:
+        return '終了日を入力してください。\n例: 「漁期終了 9/5」'
+    date_str = _parse_date_arg(date_arg)
+    if date_str is None:
+        return '日付の形式が正しくありません。\n例: 「漁期終了 9/5」'
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    upsert_subscription(source_type, source_id, {'season_end': f'{dt.month:02d}-{dt.day:02d}'})
+    return (
+        f'✓ 漁期終了日を {dt.month}/{dt.day} に設定しました。\n'
+        'この日より後の通知はスキップします。'
+    )
+
+
+def handle_show_settings(source_type: str, source_id: str) -> str:
+    sub = get_subscription(source_type, source_id)
+    if not sub:
+        return '設定が見つかりません。\n「通知登録 H_1631_1434」で登録を始めてください。'
+    lines = ['【現在の設定】']
+    lines.append('通知: ' + ('✅ ON' if sub.get('notify_enabled') else '❌ OFF'))
+    spots = sub.get('spots', [])
+    lines.append('登録干場: ' + (', '.join(spots[:5]) if spots else 'なし'))
+    s = sub.get('season_start', '').replace('-', '/')
+    e = sub.get('season_end', '').replace('-', '/')
+    lines.append(f'漁期: {s or "6/1"}〜{e or "9/30"}')
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
+    nogo = sorted(d for d in sub.get('nogo_dates', []) if d >= today_str)
+    if nogo:
+        nogo_labels = [
+            f'{datetime.strptime(d, "%Y-%m-%d").month}/{datetime.strptime(d, "%Y-%m-%d").day}'
+            for d in nogo[:5]
+        ]
+        lines.append('沖止め: ' + ', '.join(nogo_labels))
+    else:
+        lines.append('沖止め: なし')
+    lines.append('─────────────')
+    lines.append('変更: 「沖止め 6/25」「漁期開始 6/15」等')
+    return '\n'.join(lines)
+
+
 def handle_unknown() -> str:
     return (
         '入力内容が認識できませんでした。\n'
@@ -713,9 +1215,21 @@ def notify_all(kind: str) -> dict:
     if kind not in ('evening', 'morning'):
         return {'error': 'kind must be evening or morning'}
 
+    # Season check: only notify during kelp drying season (June–September JST)
+    JST = timezone(timedelta(hours=9))
+    now_jst = datetime.now(JST)
+    if not (6 <= now_jst.month <= 9):
+        logger.info('notify_all skipped: out of kelp season (month=%d JST)', now_jst.month)
+        return {'sent': 0, 'failed': 0, 'skipped': 0, 'kind': kind, 'reason': 'out_of_season'}
+
     day_number = 1 if kind == 'evening' else 0
     day_name = '翌日' if kind == 'evening' else '当日'
     kind_label = '夕方（16:00）' if kind == 'evening' else '早朝（01:30）'
+
+    # Target date for this notification (the date whose forecast we send)
+    target_date = now_jst.date() + timedelta(days=day_number)
+    target_date_str = target_date.strftime('%Y-%m-%d')
+    target_mm_dd = f'{target_date.month:02d}-{target_date.day:02d}'
 
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
@@ -726,6 +1240,33 @@ def notify_all(kind: str) -> dict:
             continue
         spot_ids = sub.get('spots', [])
         if not spot_ids:
+            skipped += 1
+            continue
+
+        # Per-subscriber personal season check (MM-DD comparison)
+        season_start = sub.get('season_start', '')  # e.g. "06-15"
+        season_end = sub.get('season_end', '')       # e.g. "09-05"
+        if season_start and target_mm_dd < season_start:
+            logger.info(
+                'Notify skipped for %s: before personal season start %s',
+                _mask_id(sub['source_id']), season_start,
+            )
+            skipped += 1
+            continue
+        if season_end and target_mm_dd > season_end:
+            logger.info(
+                'Notify skipped for %s: after personal season end %s',
+                _mask_id(sub['source_id']), season_end,
+            )
+            skipped += 1
+            continue
+
+        # Per-subscriber nogo date check
+        if target_date_str in sub.get('nogo_dates', []):
+            logger.info(
+                'Notify skipped for %s: nogo date %s',
+                _mask_id(sub['source_id']), target_date_str,
+            )
             skipped += 1
             continue
 
@@ -744,13 +1285,11 @@ def notify_all(kind: str) -> dict:
             continue
 
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
-        # TODO: Respect 沖止め日 and season range settings once server-side
-        #       configuration is implemented (currently only in localStorage).
-        full_msg = header + '\n\n'.join(msgs)
+        full_msg = header + '\n\n'.join(msgs) + _NOTIFY_FOOTER
 
         if push_text(source_id, full_msg):
             sent += 1
-            logger.info('Notified %s (%s spots)', source_id[:8] + '...', len(msgs))
+            logger.info('Notified %s (%s spots)', _mask_id(source_id), len(msgs))
         else:
             failed += 1
 
@@ -819,6 +1358,17 @@ def process_event(event: dict) -> None:
     if not text:
         return
 
+    # If there is an active pending action, route all text through the flow.
+    # Exception: 'ヘルプ' still shows help (with cancel hint appended).
+    if get_pending_action(source_type, source_id):
+        if text in ('ヘルプ', 'help', 'HELP', '?', '？', 'コマンド'):
+            response = handle_help() + '\n\n「キャンセル」で現在の操作を中止できます。'
+        else:
+            response = handle_record_flow(source_type, source_id, text)
+        if reply_token and response:
+            reply_text(reply_token, response)
+        return
+
     cmd = parse_command(text)
 
     if cmd['cmd'] == 'help':
@@ -850,6 +1400,23 @@ def process_event(event: dict) -> None:
         response = handle_subscribe(source_type, source_id, cmd['target'])
     elif cmd['cmd'] == 'unsubscribe':
         response = handle_unsubscribe(source_type, source_id)
+    elif cmd['cmd'] == 'record_start':
+        response = handle_record_start(source_type, source_id)
+    elif cmd['cmd'] == 'register_spot':
+        response = handle_register_spot_nickname(
+            source_type, source_id, cmd.get('nickname', ''), cmd.get('spot_id', ''))
+    elif cmd['cmd'] == 'list_spots':
+        response = handle_list_spots(source_type, source_id)
+    elif cmd['cmd'] == 'set_nogo':
+        response = handle_set_nogo(source_type, source_id, cmd.get('date'))
+    elif cmd['cmd'] == 'cancel_nogo':
+        response = handle_cancel_nogo(source_type, source_id)
+    elif cmd['cmd'] == 'set_season_start':
+        response = handle_set_season_start(source_type, source_id, cmd.get('date', ''))
+    elif cmd['cmd'] == 'set_season_end':
+        response = handle_set_season_end(source_type, source_id, cmd.get('date', ''))
+    elif cmd['cmd'] == 'show_settings':
+        response = handle_show_settings(source_type, source_id)
     else:
         response = handle_unknown()
 
