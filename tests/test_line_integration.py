@@ -723,3 +723,43 @@ def test_record_flow_future_date_rejected(tmp_sub_file, monkeypatch):
     li.handle_record_flow("user", "U1", "浜")
     r = li.handle_record_flow("user", "U1", "2099/12/31")
     assert "未来" in r
+
+
+def test_record_confirm_warns_existing_record(tmp_sub_file, tmp_path, monkeypatch):
+    """Confirm message shows warning when a record already exists for the same spot+date."""
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+
+    # Pre-write an existing record
+    li.write_line_record("H_1631_1434", "2026-07-01", "完全乾燥")
+
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {"浜": "H_1631_1434"}})
+    li.handle_record_start("user", "U1")
+    li.handle_record_flow("user", "U1", "浜")
+
+    # Force date to the pre-written date
+    pa = li.get_pending_action("user", "U1")
+    pa["step"] = "ask_result"
+    pa["date"] = "2026-07-01"
+    li.set_pending_action("user", "U1", pa)
+
+    r = li.handle_record_flow("user", "U1", "2")  # 概ね乾燥 → confirm
+    assert "既に記録" in r or "上書き" in r
+
+
+def test_record_confirm_no_warning_without_existing(tmp_sub_file, tmp_path, monkeypatch):
+    """Confirm message has no warning when no prior record exists."""
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {"浜": "H_1631_1434"}})
+    li.handle_record_start("user", "U1")
+    li.handle_record_flow("user", "U1", "浜")
+    pa = li.get_pending_action("user", "U1")
+    pa["step"] = "ask_result"
+    pa["date"] = "2026-07-01"
+    li.set_pending_action("user", "U1", pa)
+    r = li.handle_record_flow("user", "U1", "1")  # 完全乾燥 → confirm
+    assert "既に記録" not in r
+    assert "上書き" not in r
