@@ -613,6 +613,35 @@ def test_list_spots_with_nicknames(tmp_sub_file):
     assert "H_1631_1434" in result
 
 
+def test_register_spot_nickname_replaces_old_name(tmp_sub_file, monkeypatch):
+    """Same user registering a new nickname for an already-named spot replaces the old one."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    li.upsert_subscription("user", "U1", {
+        "spot_nicknames": {"浜の前": "H_1631_1434"},
+    })
+    result = li.handle_register_spot_nickname("user", "U1", "砂浜", "H_1631_1434")
+    assert "浜の前" in result and "砂浜" in result  # shows rename
+    sub = li.get_subscription("user", "U1")
+    nicks = sub["spot_nicknames"]
+    assert "砂浜" in nicks
+    assert "浜の前" not in nicks  # old name removed
+
+
+def test_register_spot_nickname_different_users_independent(tmp_sub_file, monkeypatch):
+    """Two users can have different nicknames for the same spot without interference."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    li.handle_register_spot_nickname("user", "UserA", "浜の前", "H_1631_1434")
+    li.handle_register_spot_nickname("user", "UserB", "山の下", "H_1631_1434")
+    subA = li.get_subscription("user", "UserA")
+    subB = li.get_subscription("user", "UserB")
+    assert subA["spot_nicknames"].get("浜の前") == "H_1631_1434"
+    assert subB["spot_nicknames"].get("山の下") == "H_1631_1434"
+    assert "山の下" not in subA["spot_nicknames"]
+    assert "浜の前" not in subB["spot_nicknames"]
+
+
 # ---------------------------------------------------------------------------
 # _parse_date_for_record
 # ---------------------------------------------------------------------------
