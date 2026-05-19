@@ -563,3 +563,163 @@ def test_notify_footer_in_push(tmp_sub_file, monkeypatch):
     assert pushed, "No push was sent"
     assert "沖止め" in pushed[0]
     assert "設定確認" in pushed[0]
+
+
+# ---------------------------------------------------------------------------
+# parse_command — record commands
+# ---------------------------------------------------------------------------
+
+def test_parse_record_start():
+    assert li.parse_command("記録") == {"cmd": "record_start"}
+
+def test_parse_register_spot():
+    r = li.parse_command("干場登録 浜の前 H_1631_1434")
+    assert r["cmd"] == "register_spot"
+    assert r["nickname"] == "浜の前"
+    assert r["spot_id"] == "H_1631_1434"
+
+def test_parse_list_spots():
+    assert li.parse_command("干場一覧") == {"cmd": "list_spots"}
+
+
+# ---------------------------------------------------------------------------
+# Spot nickname registration
+# ---------------------------------------------------------------------------
+
+def test_register_spot_nickname(tmp_sub_file, monkeypatch):
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1631, "lon": 141.1434})
+    result = li.handle_register_spot_nickname("user", "U1", "浜の前", "H_1631_1434")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert sub["spot_nicknames"]["浜の前"] == "H_1631_1434"
+
+def test_register_spot_invalid_id(tmp_sub_file):
+    result = li.handle_register_spot_nickname("user", "U1", "浜の前", "INVALID")
+    assert "形式" in result
+
+def test_list_spots_none(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_list_spots("user", "U1")
+    assert "ニックネームが登録されていません" in result
+
+def test_list_spots_with_nicknames(tmp_sub_file):
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spot_nicknames": {"浜の前": "H_1631_1434"},
+    })
+    result = li.handle_list_spots("user", "U1")
+    assert "浜の前" in result
+    assert "H_1631_1434" in result
+
+
+# ---------------------------------------------------------------------------
+# _parse_date_for_record
+# ---------------------------------------------------------------------------
+
+def test_parse_date_for_record_today():
+    result = li._parse_date_for_record("今日")
+    from datetime import datetime, timezone, timedelta
+    today = datetime.now(li.JST).strftime("%Y-%m-%d")
+    assert result == today
+
+def test_parse_date_for_record_yesterday():
+    result = li._parse_date_for_record("昨日")
+    from datetime import datetime, timezone, timedelta
+    yesterday = (datetime.now(li.JST) - timedelta(days=1)).strftime("%Y-%m-%d")
+    assert result == yesterday
+
+def test_parse_date_for_record_future():
+    result = li._parse_date_for_record("2099/12/31")
+    assert result == "future"
+
+def test_parse_date_for_record_invalid():
+    assert li._parse_date_for_record("abc") is None
+
+
+# ---------------------------------------------------------------------------
+# Record flow state machine (full happy path)
+# ---------------------------------------------------------------------------
+
+def test_record_flow_happy_path_good_result(tmp_sub_file, tmp_path, monkeypatch):
+    """Full flow: 記録 → spot → date → good result → confirm → done."""
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1631, "lon": 141.1434} if sid == "H_1631_1434" else None)
+    li.upsert_subscription("user", "U1", {
+        "notify_enabled": True,
+        "spot_nicknames": {"浜の前": "H_1631_1434"},
+    })
+
+    # Step 1: start
+    r1 = li.handle_record_start("user", "U1")
+    assert "浜の前" in r1
+    assert li.get_pending_action("user", "U1") is not None
+
+    # Step 2: spot name
+    r2 = li.handle_record_flow("user", "U1", "浜の前")
+    assert "浜の前" in r2
+    assert li.get_pending_action("user", "U1")["step"] == "ask_date"
+
+    # Step 3: date
+    r3 = li.handle_record_flow("user", "U1", "今日")
+    assert "乾燥結果" in r3
+    assert li.get_pending_action("user", "U1")["step"] == "ask_result"
+
+    # Step 4: result (good → skip stop_cause)
+    r4 = li.handle_record_flow("user", "U1", "1")  # 完全乾燥
+    assert "完全乾燥" in r4
+    assert li.get_pending_action("user", "U1")["step"] == "confirm"
+
+    # Step 5: confirm
+    r5 = li.handle_record_flow("user", "U1", "確定")
+    assert "記録しました" in r5
+    assert li.get_pending_action("user", "U1") is None
+
+    # CSV written
+    import csv as _csv
+    with open(str(tmp_path / "records.csv"), encoding="utf-8") as f:
+        rows = list(_csv.DictReader(f))
+    assert len(rows) == 1
+    assert rows[0]["result"] == "完全乾燥"
+    assert rows[0]["name"] == "H_1631_1434"
+
+
+def test_record_flow_poor_result_asks_stop_cause(tmp_sub_file, tmp_path, monkeypatch):
+    """Poor result triggers stop_cause question."""
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    li.upsert_subscription("user", "U1", {
+        "spot_nicknames": {"テスト": "H_1631_1434"},
+    })
+    li.handle_record_start("user", "U1")
+    li.handle_record_flow("user", "U1", "テスト")
+    li.handle_record_flow("user", "U1", "昨日")
+
+    r = li.handle_record_flow("user", "U1", "4")  # ほぼ乾燥なし
+    assert "原因" in r
+    assert li.get_pending_action("user", "U1")["step"] == "ask_stop_cause"
+
+    r2 = li.handle_record_flow("user", "U1", "2")  # 霧
+    assert "霧" in r2 or "確認" in r2 or "記録" in r2
+    assert li.get_pending_action("user", "U1")["step"] == "confirm"
+
+
+def test_record_flow_cancel(tmp_sub_file):
+    """キャンセル clears pending action."""
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {}})
+    li.handle_record_start("user", "U1")
+    r = li.handle_record_flow("user", "U1", "キャンセル")
+    assert "キャンセル" in r
+    assert li.get_pending_action("user", "U1") is None
+
+
+def test_record_flow_future_date_rejected(tmp_sub_file, monkeypatch):
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {"浜": "H_1631_1434"}})
+    li.handle_record_start("user", "U1")
+    li.handle_record_flow("user", "U1", "浜")
+    r = li.handle_record_flow("user", "U1", "2099/12/31")
+    assert "未来" in r
