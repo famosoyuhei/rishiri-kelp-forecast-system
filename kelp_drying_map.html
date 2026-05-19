@@ -3048,7 +3048,7 @@
                 refreshMarkers();
                 updateFavoritesList();
                 // LINEニックネーム登録モーダルを表示
-                const spot = allSpotsArray[index];
+                const spot = hoshibaSpots[index];
                 if (spot && !spot.name.startsWith('A_') && !spot.name.startsWith('R_')) {
                     showLineNicknameModal(spot.name);
                 }
