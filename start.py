@@ -2083,6 +2083,389 @@ def fetch_marine_data(lat, lon, forecast_hours=168):
         print(f"Error fetching marine data: {e}")
         return None
 
+# ---------------------------------------------------------------------------
+# Analysis field API — island-wide distribution maps (replaces matplotlib PNG)
+# ---------------------------------------------------------------------------
+import math as _math
+
+_analysis_field_cache: dict = {}
+_FIELD_CACHE_TTL = 3600  # 60 min TTL
+
+
+def _field_cache_get(key: str):
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone(timedelta(hours=9)))
+    entry = _analysis_field_cache.get(key)
+    if entry and now < entry['expires']:
+        return entry['data']
+    _analysis_field_cache.pop(key, None)
+    return None
+
+
+def _field_cache_set(key: str, data, ttl: int = _FIELD_CACHE_TTL):
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    _analysis_field_cache[key] = {
+        'data': data,
+        'expires': datetime.now(jst) + timedelta(seconds=ttl),
+    }
+
+
+def _load_all_spots_for_field() -> list:
+    """Load all 334 spots from CSV for field analysis."""
+    spots = []
+    try:
+        import csv as _csv
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                try:
+                    spots.append({
+                        'name':     row['name'],
+                        'lat':      float(row['lat']),
+                        'lon':      float(row['lon']),
+                        'town':     row.get('town', ''),
+                        'district': row.get('district', ''),
+                        'buraku':   row.get('buraku', ''),
+                    })
+                except (ValueError, KeyError):
+                    continue
+    except Exception as e:
+        print(f'[field] _load_all_spots error: {e}')
+    return spots
+
+
+def _build_rishiri_grid(rows: int = 5, cols: int = 5) -> list:
+    """Build rows×cols representative grid over Rishiri Island."""
+    lat_min, lat_max = 45.10, 45.27
+    lon_min, lon_max = 141.13, 141.26
+    return [
+        {
+            'lat': lat_min + (lat_max - lat_min) * r / (rows - 1),
+            'lon': lon_min + (lon_max - lon_min) * c / (cols - 1),
+        }
+        for r in range(rows)
+        for c in range(cols)
+    ]
+
+
+def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list,
+                             forecast_days: int = 7) -> list:
+    """
+    Fetch Open-Meteo forecast for multiple coordinates in ONE request.
+    Returns a list of per-point response dicts.
+    """
+    lat_str = ','.join(f'{lat:.4f}' for lat in lats)
+    lon_str = ','.join(f'{lon:.4f}' for lon in lons)
+    hourly_str = ','.join(hourly_vars)
+    url = (
+        f'https://api.open-meteo.com/v1/forecast'
+        f'?latitude={lat_str}&longitude={lon_str}'
+        f'&hourly={hourly_str}'
+        f'&timezone=Asia/Tokyo'
+        f'&forecast_days={forecast_days}'
+    )
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+    return [data] if isinstance(data, dict) else data
+
+
+def _field_target_date(day: int) -> str:
+    """Return YYYY-MM-DD string for JST day offset (0=today)."""
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    return (datetime.now(jst) + timedelta(days=day)).strftime('%Y-%m-%d')
+
+
+def _extract_day_window(hourly: dict, target_date: str,
+                         h_start: int = 4, h_end: int = 16) -> dict:
+    """Extract hourly values for h_start..h_end on target_date (JST)."""
+    times = hourly.get('time', [])
+    prefix_s = f'{target_date}T{h_start:02d}:00'
+    prefix_e = f'{target_date}T{h_end:02d}:00'
+    indices = [i for i, t in enumerate(times) if prefix_s <= t <= prefix_e]
+    result = {}
+    for var, values in hourly.items():
+        if var == 'time':
+            continue
+        result[var] = [values[i] for i in indices if i < len(values)]
+    return result
+
+
+def _safe_avg(lst):
+    vals = [v for v in (lst or []) if v is not None]
+    return sum(vals) / len(vals) if vals else None
+
+def _safe_min(lst):
+    vals = [v for v in (lst or []) if v is not None]
+    return min(vals) if vals else None
+
+def _safe_max(lst):
+    vals = [v for v in (lst or []) if v is not None]
+    return max(vals) if vals else None
+
+def _safe_sum(lst):
+    vals = [v for v in (lst or []) if v is not None]
+    return sum(vals) if vals else None
+
+
+def _score_color(score: int) -> str:
+    if score >= 80: return '#1f9d55'
+    if score >= 50: return '#f2c94c'
+    return '#d64545'
+
+def _score_category(score: int) -> str:
+    if score >= 80: return 'excellent'
+    if score >= 50: return 'fair'
+    return 'poor'
+
+def _wind_color(speed) -> str:
+    if speed is None: return '#adb5bd'
+    if speed >= 3.0:  return '#1f9d55'
+    if speed >= 2.0:  return '#f2c94c'
+    return '#d64545'
+
+
+def _compute_score_field(day: int) -> dict:
+    """Compute drying score for all 334 spots with a single Open-Meteo request."""
+    target_date = _field_target_date(day)
+    spots = _load_all_spots_for_field()
+    if not spots:
+        return {'error': 'spots unavailable'}
+
+    # Deduplicate to unique ~2-decimal grid cells to minimise API payload
+    cell_map: dict = {}
+    for i, s in enumerate(spots):
+        key = (round(s['lat'], 2), round(s['lon'], 2))
+        cell_map.setdefault(key, []).append(i)
+
+    unique_cells = list(cell_map.keys())
+    lats = [c[0] for c in unique_cells]
+    lons = [c[1] for c in unique_cells]
+
+    hourly_vars = [
+        'temperature_2m', 'relative_humidity_2m', 'wind_speed_10m',
+        'precipitation', 'precipitation_probability', 'shortwave_radiation',
+    ]
+
+    try:
+        api_results = _fetch_open_meteo_multi(lats, lons, hourly_vars)
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    # Aggregate day window per cell
+    cell_agg: dict = {}
+    for cell, api_data in zip(unique_cells, api_results):
+        win = _extract_day_window(api_data.get('hourly', {}), target_date)
+        # wind_speed_10m from Open-Meteo is in km/h → convert to m/s
+        wind_kmh = win.get('wind_speed_10m', [])
+        wind_ms_vals = [v / 3.6 for v in wind_kmh if v is not None]
+        cell_agg[cell] = {
+            'temp_max':    _safe_max(win.get('temperature_2m', [])),
+            'humidity_min': _safe_min(win.get('relative_humidity_2m', [])),
+            'wind_avg_ms': (_safe_avg(wind_ms_vals)),
+            'precip_sum':  _safe_sum(win.get('precipitation', [])),
+            'pop_max':     _safe_max(win.get('precipitation_probability', [])),
+            'solar_avg':   _safe_avg(win.get('shortwave_radiation', [])),
+        }
+
+    points = []
+    counts = {'excellent': 0, 'fair': 0, 'poor': 0}
+    best = None
+
+    for s in spots:
+        cell_key = (round(s['lat'], 2), round(s['lon'], 2))
+        agg = cell_agg.get(cell_key, {})
+
+        score = calculate_enhanced_drying_score(
+            temp_max=agg.get('temp_max'),
+            humidity=agg.get('humidity_min'),
+            wind_speed=agg.get('wind_avg_ms'),
+            precipitation=agg.get('precip_sum') or 0,
+            lat=s['lat'],
+            lon=s['lon'],
+            avg_solar_radiation=agg.get('solar_avg'),
+            pop_max=agg.get('pop_max'),
+        )
+        cat = _score_category(score)
+        counts[cat] = counts.get(cat, 0) + 1
+        if best is None or score > best['score']:
+            best = {'name': s['name'], 'score': score}
+
+        wind_ms = agg.get('wind_avg_ms')
+        points.append({
+            'name':     s['name'],
+            'lat':      s['lat'],
+            'lon':      s['lon'],
+            'town':     s['town'],
+            'district': s['district'],
+            'buraku':   s['buraku'],
+            'value':    score,
+            'category': cat,
+            'color':    _score_color(score),
+            'metrics': {
+                'precipitation': round(agg.get('precip_sum') or 0, 2),
+                'min_humidity':  round(agg.get('humidity_min') or 0),
+                'avg_wind_ms':   round(wind_ms, 1) if wind_ms is not None else None,
+                'avg_solar':     round(agg.get('solar_avg') or 0),
+                'pop_max':       round(agg.get('pop_max') or 0),
+            },
+        })
+
+    return {
+        'summary': {
+            'total':     len(points),
+            'excellent': counts.get('excellent', 0),
+            'fair':      counts.get('fair', 0),
+            'poor':      counts.get('poor', 0),
+            'best_spot': best,
+        },
+        'legend': {
+            'unit': 'score (0-100)',
+            'stops': [
+                {'value': 80, 'label': '干せる',  'color': '#1f9d55'},
+                {'value': 50, 'label': '微妙',    'color': '#f2c94c'},
+                {'value': 0,  'label': '厳しい',  'color': '#d64545'},
+            ],
+        },
+        'points': points,
+    }
+
+
+def _compute_wind_field(day: int, hour: int) -> dict:
+    """Compute wind vectors for 5x5 representative grid (single Open-Meteo request)."""
+    target_date = _field_target_date(day)
+    target_time = f'{target_date}T{hour:02d}:00'
+
+    grid = _build_rishiri_grid(5, 5)
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
+
+    try:
+        api_results = _fetch_open_meteo_multi(
+            lats, lons, ['wind_speed_10m', 'wind_direction_10m']
+        )
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    vectors = []
+    for g, api_data in zip(grid, api_results):
+        hourly = api_data.get('hourly', {})
+        times  = hourly.get('time', [])
+        try:
+            idx = times.index(target_time)
+        except ValueError:
+            idx = None
+
+        speed_kmh = hourly.get('wind_speed_10m', [None])[idx] if idx is not None else None
+        direction = hourly.get('wind_direction_10m', [None])[idx] if idx is not None else None
+        speed_ms  = speed_kmh / 3.6 if speed_kmh is not None else None
+
+        if speed_ms is not None and direction is not None:
+            rad = _math.radians(direction)
+            u = round(-speed_ms * _math.sin(rad), 3)
+            v = round(-speed_ms * _math.cos(rad), 3)
+        else:
+            u = v = None
+
+        vectors.append({
+            'lat':       round(g['lat'], 4),
+            'lon':       round(g['lon'], 4),
+            'speed':     round(speed_ms, 1) if speed_ms is not None else None,
+            'direction': direction,
+            'u':         u,
+            'v':         v,
+            'color':     _wind_color(speed_ms),
+            'category':  'good' if (speed_ms or 0) >= 2.0 else 'poor',
+        })
+
+    return {
+        'hour': hour,
+        'thresholds': {'drying_min_wind': 2.0},
+        'legend': {
+            'unit': 'm/s',
+            'stops': [
+                {'value': 3.0, 'label': '3.0+',       'color': '#1f9d55'},
+                {'value': 2.0, 'label': '2.0〜3.0',   'color': '#f2c94c'},
+                {'value': 0,   'label': '2.0未満',     'color': '#d64545'},
+            ],
+        },
+        'vectors': vectors,
+    }
+
+
+@app.route('/api/analysis/field')
+def get_analysis_field():
+    """
+    島内分布図データを返す（新実装）。
+    Leaflet/Canvas でフロント描画するため matplotlib を使わない。
+
+    Parameters:
+        type : score | wind | temperature | solar
+        day  : 0=今日, 1=明日, ..., 6 (default 0)
+        hour : JST 時刻 0-23 (wind で使用, default 10)
+    """
+    from datetime import datetime, timezone, timedelta
+    jst = timezone(timedelta(hours=9))
+    now_jst = datetime.now(jst)
+
+    field_type = request.args.get('type', 'score')
+    try:
+        day = max(0, min(6, int(request.args.get('day', 0))))
+    except ValueError:
+        day = 0
+    try:
+        hour = max(0, min(23, int(request.args.get('hour', 10))))
+    except ValueError:
+        hour = 10
+
+    if field_type not in ('score', 'wind', 'temperature', 'solar'):
+        return jsonify({'status': 'error',
+                        'message': 'type は score|wind|temperature|solar のいずれか'}), 400
+
+    cache_key = f'field:{field_type}:{day}:{hour}'
+    cached = _field_cache_get(cache_key)
+    if cached:
+        result = dict(cached)
+        result['cache'] = {'hit': True}
+        return jsonify(result)
+
+    target_date = _field_target_date(day)
+
+    if field_type == 'score':
+        data = _compute_score_field(day)
+    elif field_type == 'wind':
+        data = _compute_wind_field(day, hour)
+    else:
+        return jsonify({
+            'status':  'not_implemented',
+            'type':    field_type,
+            'message': f'{field_type} は次のリリースで実装予定です',
+        }), 501
+
+    if 'error' in data:
+        return jsonify({'status': 'error', 'message': data['error']}), 503
+
+    response_data = {
+        'status':       'success',
+        'type':         field_type,
+        'day':          day,
+        'target_date':  target_date,
+        'timezone':     'Asia/Tokyo',
+        'generated_at': now_jst.isoformat(),
+        'cache':        {'hit': False},
+        'data_resolution': {
+            'source_model': 'Open-Meteo JMA MSM/GSM',
+            'note': '利尻島内はMSMで概ね5kmメッシュ。干場間の差は地形補正による推定値',
+            'rendering': 'client_leaflet',
+        },
+        **data,
+    }
+    _field_cache_set(cache_key, response_data)
+    return jsonify(response_data)
+
+
 def generate_contour_map(category, time_offset, center_lat=45.1821, center_lon=141.2421):
     """
     等値線図を生成（複数地点データから実空間補間）

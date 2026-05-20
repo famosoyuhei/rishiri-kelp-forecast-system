@@ -1253,7 +1253,7 @@
                 📍 エリア絞込
             </button>
             <button class="sidebar-tab-btn" onclick="switchSidebarTab('contour')" data-tab="contour" style="flex: 1; padding: 12px 6px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s; font-size: 0.82rem;">
-                🌪️ 等値線解析
+                🗺️ 島内分布
             </button>
             <button type="button" class="sidebar-tab-btn" onclick="switchSidebarTab('seasonal')" data-tab="seasonal" style="flex: 1; padding: 12px 6px; background: white; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: 500; color: #6c757d; transition: all 0.3s; font-size: 0.82rem;">
                 📅 昆布季節予報
@@ -1293,57 +1293,70 @@
             </div>
         </div>
 
-        <div class="sidebar-tab-content" id="contourTabContent" style="padding: 20px; display: none;">
-            <h4 style="margin-bottom: 15px; color: #2c3e50;">🌪️ 島内全域気象解析</h4>
-            <p style="font-size: 0.85rem; color: #666; margin-bottom: 20px;">
-                利尻島全体の気象状況を等値線マップで概観できます
+        <div class="sidebar-tab-content" id="contourTabContent" style="padding: 16px; display: none;">
+            <h4 style="margin-bottom: 6px; color: #2c3e50;">🗺️ 島内分布</h4>
+            <p style="font-size: 0.8rem; color: #888; margin-bottom: 14px;">
+                乾燥スコアと風向・風速を地図上に重ね表示します
             </p>
 
-            <div class="filter-section">
-                <h4>解析カテゴリー</h4>
-                <select id="contourCategory" class="filter-select" onchange="updateContourTimeOptions()">
-                    <option value="">-- カテゴリーを選択 --</option>
-                    <optgroup label="地上レベル（1時間刻み）">
-                        <option value="temperature">🌡️ 等温線（気温分布）</option>
-                        <option value="humidity">💧 等湿線（湿度分布）</option>
-                        <option value="pressure">📊 等圧線（気圧分布）</option>
-                        <option value="wind">💨 風向・風速場</option>
-                        <option value="precipitation">🌧️ 降水量分布</option>
-                    </optgroup>
-                    <optgroup label="海域レベル（1時間刻み）">
-                        <option value="wave_height">🌊 有義波高分布</option>
-                        <option value="wave_direction_period">🌊 波向・波周期場</option>
-                    </optgroup>
-                    <optgroup label="高層レベル（3時間刻み）">
-                        <option value="vorticity_500hpa">🌀 渦度場（500hPa）</option>
-                        <option value="omega_700hpa">⬇️ 鉛直流（700hPa）</option>
-                        <option value="theta_e_850hpa">🌡️ 相当温位（850hPa）</option>
-                    </optgroup>
-                    <optgroup label="超高層レベル（長期予測・3時間刻み）">
-                        <option value="jet_stream_300hpa">✈️ ジェット気流（300hPa）</option>
-                        <option value="height_anomaly_200hpa">📈 高度偏差（200hPa）</option>
-                    </optgroup>
-                </select>
+            <!-- 日付チップ -->
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.78rem; color: #555; font-weight: 600; margin-bottom: 6px;">表示日</div>
+                <div id="fieldDayChips" style="display: flex; gap: 5px; flex-wrap: wrap;"></div>
             </div>
 
-            <div class="filter-section">
-                <h4>解析時刻（JST）</h4>
-                <select id="contourTime" class="filter-select" onchange="updateContourDisplay()">
-                    <!-- 動的に生成される -->
-                </select>
+            <!-- レイヤー切替 -->
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
+                <div style="font-size: 0.78rem; color: #555; font-weight: 600; margin-bottom: 8px;">表示レイヤー</div>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer; margin-bottom: 6px;">
+                    <input type="checkbox" id="fieldLayerScore" checked onchange="toggleFieldLayer()">
+                    🟢 乾燥スコア（334地点）
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
+                    <input type="checkbox" id="fieldLayerWind" checked onchange="toggleFieldLayer()">
+                    💨 風向・風速ベクトル
+                </label>
             </div>
 
-            <button onclick="loadContourAnalysis()" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: all 0.3s;">
-                🔍 解析図を表示
-            </button>
+            <!-- 風の表示時刻 -->
+            <div style="margin-bottom: 12px;">
+                <label style="font-size: 0.78rem; color: #555; font-weight: 600;">
+                    風の表示時刻（JST）:
+                    <select id="fieldWindHour" onchange="reloadFieldWind()" style="margin-left: 6px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82rem;">
+                        <option value="6">06:00</option>
+                        <option value="8">08:00</option>
+                        <option value="10" selected>10:00</option>
+                        <option value="12">12:00</option>
+                        <option value="14">14:00</option>
+                        <option value="16">16:00</option>
+                    </select>
+                </label>
+            </div>
 
-            <div id="contourMapDisplay" style="margin-top: 20px; background: #f8f9fa; border-radius: 8px; padding: 15px; min-height: 200px; display: none;">
-                <h5 style="margin-bottom: 10px; color: #667eea;">解析結果</h5>
-                <div id="contourMapImage" style="text-align: center;">
-                    <p style="color: #999;">解析図を読み込み中...</p>
+            <!-- ステータス -->
+            <div id="fieldStatus" style="font-size: 0.8rem; color: #666; min-height: 20px; margin-bottom: 10px;"></div>
+
+            <!-- 凡例: スコア -->
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 0.78rem; font-weight: 600; color: #555; margin-bottom: 4px;">乾燥スコア</div>
+                <div style="display: flex; gap: 10px; font-size: 0.75rem;">
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1f9d55;"></span> 80+ 干せる</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f2c94c;"></span> 50〜79 微妙</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d64545;"></span> 〜49 厳しい</span>
                 </div>
-                <div id="contourMetadata" style="margin-top: 15px; font-size: 0.8rem; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
+            </div>
+            <!-- 凡例: 風 -->
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 0.78rem; font-weight: 600; color: #555; margin-bottom: 4px;">風速 (m/s)</div>
+                <div style="display: flex; gap: 10px; font-size: 0.75rem;">
+                    <span><span style="display:inline-block;width:18px;height:2px;background:#1f9d55;vertical-align:middle;"></span> 3.0+</span>
+                    <span><span style="display:inline-block;width:18px;height:2px;background:#f2c94c;vertical-align:middle;"></span> 2.0〜3.0</span>
+                    <span><span style="display:inline-block;width:18px;height:2px;background:#d64545;vertical-align:middle;"></span> 〜2.0</span>
                 </div>
+            </div>
+
+            <!-- サマリー -->
+            <div id="fieldSummary" style="font-size: 0.78rem; color: #666; background: #f8f9fa; border-radius: 6px; padding: 8px; display: none;">
             </div>
         </div>
 
@@ -5660,9 +5673,9 @@
                 activeContent.style.display = 'block';
             }
 
-            // 等値線タブに切り替えた時、時刻オプションを初期化
+            // 島内分布タブに切り替えた時、自動読み込み
             if (tabName === 'contour') {
-                updateContourTimeOptions();
+                initFieldTab();
             }
             // 季節予報タブに切り替えた時、最新データを取得
             if (tabName === 'seasonal') {
@@ -5670,9 +5683,179 @@
             }
         }
 
-        // カテゴリーに応じて時刻オプションを動的生成
+        // =========================================================
+        // 島内分布タブ — field analysis (score / wind)
+        // =========================================================
+        const _fieldLayers = { score: null, wind: null };
+        let _fieldDay = 0;
+        let _fieldLoaded = false;
+
+        function initFieldTab() {
+            _buildDayChips();
+            if (!_fieldLoaded) {
+                _fieldLoaded = true;
+                loadFieldScore(_fieldDay);
+                loadFieldWind(_fieldDay, parseInt(document.getElementById('fieldWindHour').value));
+            }
+        }
+
+        function _buildDayChips() {
+            const container = document.getElementById('fieldDayChips');
+            if (!container || container.children.length) return;
+            const labels = ['今日', '明日', '明後日', '3日後', '4日後', '5日後', '6日後'];
+            labels.forEach((label, i) => {
+                const btn = document.createElement('button');
+                btn.textContent = label;
+                btn.dataset.day = i;
+                btn.style.cssText = `padding:4px 10px;border-radius:14px;border:1px solid #ccc;
+                    background:${i===0?'#667eea':'white'};color:${i===0?'white':'#555'};
+                    font-size:0.75rem;cursor:pointer;transition:all 0.2s;`;
+                btn.onclick = () => selectFieldDay(i);
+                container.appendChild(btn);
+            });
+        }
+
+        function selectFieldDay(day) {
+            _fieldDay = day;
+            document.querySelectorAll('#fieldDayChips button').forEach(b => {
+                const active = parseInt(b.dataset.day) === day;
+                b.style.background = active ? '#667eea' : 'white';
+                b.style.color      = active ? 'white'   : '#555';
+            });
+            _clearFieldLayers();
+            _fieldLoaded = true;
+            loadFieldScore(day);
+            loadFieldWind(day, parseInt(document.getElementById('fieldWindHour').value));
+        }
+
+        function toggleFieldLayer() { /* layers are rebuilt on next reload */ }
+
+        function reloadFieldWind() {
+            _removeLayer('wind');
+            loadFieldWind(_fieldDay, parseInt(document.getElementById('fieldWindHour').value));
+        }
+
+        function _setStatus(msg) {
+            const el = document.getElementById('fieldStatus');
+            if (el) el.textContent = msg;
+        }
+
+        function _clearFieldLayers() {
+            _removeLayer('score');
+            _removeLayer('wind');
+        }
+
+        function _removeLayer(type) {
+            if (_fieldLayers[type] && map) {
+                map.removeLayer(_fieldLayers[type]);
+                _fieldLayers[type] = null;
+            }
+        }
+
+        function _scoreRadius(score) {
+            if (score >= 80) return 7;
+            if (score >= 50) return 6;
+            return 5;
+        }
+
+        async function loadFieldScore(day) {
+            if (!document.getElementById('fieldLayerScore').checked) return;
+            _setStatus('乾燥スコアを読み込み中...');
+            try {
+                const res = await fetch(`/api/analysis/field?type=score&day=${day}`);
+                const data = await res.json();
+                if (data.status !== 'success') { _setStatus('スコア取得失敗'); return; }
+
+                _removeLayer('score');
+                const group = L.layerGroup();
+                (data.points || []).forEach(p => {
+                    const marker = L.circleMarker([p.lat, p.lon], {
+                        radius:      _scoreRadius(p.value),
+                        fillColor:   p.color,
+                        color:       'rgba(0,0,0,0.3)',
+                        weight:      1,
+                        fillOpacity: 0.82,
+                    });
+                    const nick = p.buraku || p.district || p.town || p.name;
+                    marker.bindTooltip(
+                        `<b>${nick}</b><br>スコア: ${p.value}<br>` +
+                        `降水: ${p.metrics.precipitation}mm / ` +
+                        `湿度: ${p.metrics.min_humidity}% / ` +
+                        `風: ${p.metrics.avg_wind_ms ?? '--'}m/s`,
+                        { sticky: true, className: 'field-tooltip' }
+                    );
+                    group.addLayer(marker);
+                });
+                _fieldLayers.score = group;
+                group.addTo(map);
+
+                // summary
+                const s = data.summary;
+                const sumEl = document.getElementById('fieldSummary');
+                if (sumEl && s) {
+                    sumEl.style.display = 'block';
+                    sumEl.innerHTML =
+                        `${data.target_date} の分布 — ` +
+                        `<span style="color:#1f9d55">干せる ${s.excellent}</span> / ` +
+                        `<span style="color:#c9a500">微妙 ${s.fair}</span> / ` +
+                        `<span style="color:#d64545">厳しい ${s.poor}</span> 地点` +
+                        (s.best_spot ? `<br>最高スコア: ${s.best_spot.name} (${s.best_spot.score}点)` : '');
+                }
+                _setStatus(data.cache?.hit ? 'スコア表示中（キャッシュ）' : 'スコア表示中');
+            } catch (e) {
+                _setStatus('スコア読み込みエラー: ' + e.message);
+            }
+        }
+
+        async function loadFieldWind(day, hour) {
+            if (!document.getElementById('fieldLayerWind').checked) return;
+            _setStatus((_fieldLayers.score ? 'スコア表示中 / ' : '') + '風データ読み込み中...');
+            try {
+                const res = await fetch(`/api/analysis/field?type=wind&day=${day}&hour=${hour}`);
+                const data = await res.json();
+                if (data.status !== 'success') { _setStatus('風データ取得失敗'); return; }
+
+                _removeLayer('wind');
+                const group = L.layerGroup();
+                const scale = 0.006; // degrees per m/s
+                (data.vectors || []).forEach(v => {
+                    if (v.speed === null) return;
+                    const lat = v.lat, lon = v.lon;
+                    const cosLat = Math.cos(lat * Math.PI / 180);
+                    const endLat = lat + v.v * scale;
+                    const endLon = lon + v.u * scale / cosLat;
+
+                    // shaft
+                    L.polyline([[lat, lon], [endLat, endLon]], {
+                        color:  v.color, weight: 2.5, opacity: 0.85,
+                    }).addTo(group);
+
+                    // arrowhead (small triangle via circle marker at tip)
+                    L.circleMarker([endLat, endLon], {
+                        radius: 3, fillColor: v.color, color: v.color,
+                        weight: 1, fillOpacity: 1,
+                    }).bindTooltip(
+                        `${v.speed} m/s / ${v.direction ?? '--'}°`,
+                        { sticky: true }
+                    ).addTo(group);
+                });
+                _fieldLayers.wind = group;
+                group.addTo(map);
+                _setStatus(
+                    (data.cache?.hit ? '（キャッシュ）' : '') +
+                    `スコア・風 表示中 — ${hour}:00 JST`
+                );
+            } catch (e) {
+                _setStatus('風読み込みエラー: ' + e.message);
+            }
+        }
+
+        // =========================================================
+        // 旧等値線関数（互換用・新UIからは呼ばない）
+        // =========================================================
         function updateContourTimeOptions() {
-            const category = document.getElementById('contourCategory').value;
+            const category = document.getElementById('contourCategory') &&
+                             document.getElementById('contourCategory').value;
             const timeSelect = document.getElementById('contourTime');
 
             if (!category) {
@@ -5897,6 +6080,12 @@
         window.switchSidebarTab = switchSidebarTab;
         window.loadContourAnalysis = loadContourAnalysis;
         window.updateContourDisplay = updateContourDisplay;
+        window.initFieldTab = initFieldTab;
+        window.selectFieldDay = selectFieldDay;
+        window.toggleFieldLayer = toggleFieldLayer;
+        window.reloadFieldWind = reloadFieldWind;
+        window.loadFieldScore = loadFieldScore;
+        window.loadFieldWind = loadFieldWind;
     </script>
 
     <!-- PWA Service Worker Registration -->
