@@ -518,8 +518,10 @@ def test_notify_all_skips_after_season_end(tmp_sub_file, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_handle_show_settings_no_sub(tmp_sub_file):
+    # e533006: no-subscription returns a friendly onboarding message, NOT an error.
     result = li.handle_show_settings("user", "UNKNOWN")
-    assert "見つかりません" in result
+    assert "未登録" in result or "登録" in result  # onboarding hint
+    assert "見つかりません" not in result
 
 
 def test_handle_show_settings_displays_info(tmp_sub_file):
@@ -569,8 +571,10 @@ def test_notify_footer_in_push(tmp_sub_file, monkeypatch):
 # parse_command — record commands
 # ---------------------------------------------------------------------------
 
-def test_parse_record_start():
-    assert li.parse_command("記録") == {"cmd": "record_start"}
+@pytest.mark.parametrize("text", ["記録", "乾燥記録", "記録する", "干し記録"])
+def test_parse_record_start_all_aliases(text):
+    """All rich-menu / natural-language variants must map to record_start."""
+    assert li.parse_command(text) == {"cmd": "record_start"}
 
 def test_parse_register_spot():
     r = li.parse_command("干場登録 浜の前 H_1631_1434")
@@ -792,3 +796,74 @@ def test_record_confirm_no_warning_without_existing(tmp_sub_file, tmp_path, monk
     r = li.handle_record_flow("user", "U1", "1")  # 完全乾燥 → confirm
     assert "既に記録" not in r
     assert "上書き" not in r
+
+
+# ---------------------------------------------------------------------------
+# handle_record_start — robustness: always replies even if storage fails
+# ---------------------------------------------------------------------------
+
+def test_record_start_replies_even_if_storage_fails(tmp_sub_file, monkeypatch):
+    """If set_pending_action raises (e.g. Upstash down), reply is still returned.
+
+    This is the root cause of the rich-menu '干し記録' button silence bug:
+    set_pending_action was called before the reply string was built, so any
+    storage error caused handle_record_start to raise before returning a value.
+    """
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {"浜の前": "H_1631_1434"}})
+
+    # Simulate Upstash / file-write failure
+    def _boom(*args, **kwargs):
+        raise OSError("simulated storage failure")
+
+    monkeypatch.setattr(li, "set_pending_action", _boom)
+
+    result = li.handle_record_start("user", "U1")
+
+    # Must return a non-empty reply string despite the storage error
+    assert result, "handle_record_start must always return a non-empty string"
+    assert "乾燥記録" in result or "干場" in result
+    assert "キャンセル" in result
+
+
+def test_record_start_generates_reply_via_process_event(tmp_sub_file, monkeypatch):
+    """Simulate process_event dispatching '記録': a reply must be queued."""
+    li.upsert_subscription("user", "U_rec", {"spot_nicknames": {"テスト浜": "H_1631_1434"}})
+
+    sent_replies = []
+
+    def _fake_reply(token, text):
+        sent_replies.append({'token': token, 'text': text})
+
+    monkeypatch.setattr(li, "reply_text", _fake_reply)
+
+    event = {
+        "type": "message",
+        "replyToken": "dummy_token_abc",
+        "source": {"type": "user", "userId": "U_rec"},
+        "message": {"type": "text", "text": "記録"},
+    }
+    li.process_event(event)
+
+    assert len(sent_replies) == 1, "process_event must call reply_text exactly once"
+    reply = sent_replies[0]
+    assert reply["token"] == "dummy_token_abc"
+    assert "乾燥記録" in reply["text"] or "干場" in reply["text"]
+    assert "キャンセル" in reply["text"]
+
+
+def test_record_start_generates_reply_for_kanji_alias(tmp_sub_file, monkeypatch):
+    """'乾燥記録' alias also produces a reply (covers parse_command path)."""
+    li.upsert_subscription("user", "U_rec2", {})
+    sent_replies = []
+    monkeypatch.setattr(li, "reply_text", lambda t, txt: sent_replies.append(txt))
+
+    event = {
+        "type": "message",
+        "replyToken": "tok2",
+        "source": {"type": "user", "userId": "U_rec2"},
+        "message": {"type": "text", "text": "乾燥記録"},
+    }
+    li.process_event(event)
+
+    assert sent_replies, "'乾燥記録' must produce a LINE reply"
+    assert "キャンセル" in sent_replies[0]
