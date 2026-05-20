@@ -591,17 +591,19 @@ def _needs_stop_cause(result: str) -> bool:
 
 
 def handle_record_start(source_type: str, source_id: str) -> str:
-    """Initiate record flow: ask which spot."""
+    """Initiate record flow: ask which spot.
+
+    Reply is built before state is persisted so that a storage error
+    (Upstash down, Render ephemeral write failure) never causes a silent
+    no-reply.  If set_pending_action fails the user still sees the prompt;
+    the next message they send will re-trigger parse_command instead of
+    entering the flow, which is the safe degraded behaviour.
+    """
     nicknames = get_spot_nicknames(source_type, source_id)
     sub = get_subscription(source_type, source_id)
     registered_spots = sub.get('spots', []) if sub else []
 
-    set_pending_action(source_type, source_id, {
-        'type': 'record', 'step': 'ask_spot',
-        'nickname': None, 'spot_id': None, 'date': None,
-        'result': None, 'stop_cause': None,
-    })
-
+    # Build reply first — always returned regardless of storage outcome
     lines = ['📝 乾燥記録を入力します。\nどの干場の記録ですか？']
     if nicknames:
         lines.append('\n登録済み干場:')
@@ -615,6 +617,20 @@ def handle_record_start(source_type: str, source_id: str) -> str:
         lines.append('\n干場IDを直接入力（例: H_1631_1434）または')
         lines.append('「干場登録 ニックネーム H_ID」で名前を登録できます。')
     lines.append('\n「キャンセル」で中止')
+
+    try:
+        set_pending_action(source_type, source_id, {
+            'type': 'record', 'step': 'ask_spot',
+            'nickname': None, 'spot_id': None, 'date': None,
+            'result': None, 'stop_cause': None,
+        })
+    except Exception:
+        logger.exception(
+            'handle_record_start: set_pending_action failed for %s:%s '
+            '— reply sent but flow state not saved',
+            source_type, source_id,
+        )
+
     return '\n'.join(lines)
 
 
