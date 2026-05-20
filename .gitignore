@@ -138,6 +138,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Claude Code local settings (machine-specific, not for sharing)
+.claude/settings.local.json
 *.swp
 *.swo
 *~

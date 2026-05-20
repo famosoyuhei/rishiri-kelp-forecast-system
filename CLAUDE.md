@@ -131,7 +131,7 @@ kelp_drying_map.html (6,235行)
 | 記録 | `GET /record/<name>/<date>` | 記録取得 |
 | 地形 | `GET /api/terrain/<spot_name>` | 地形情報・補正値 |
 | 分析 | `GET /api/analysis/contours` | 等値線解析（旧・非推奨。新UIからは呼ばない） |
-| 分析 | `GET /api/analysis/field` | 島内分布図（新・計画中: score/wind/temperature/solar） |
+| 分析 | `GET /api/analysis/field` | 島内分布図（新・計画中: score/wind/humidity/temperature/solar） |
 | 分析 | `GET /api/analysis/spot-differences` | 干場間気象差異 |
 | 検証 | `GET /api/validation/accuracy` | 予報精度検証 |
 
@@ -209,7 +209,7 @@ if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
 **等値線解析タブ刷新（[CONTOUR_REDESIGN_PROPOSAL.md](CONTOUR_REDESIGN_PROPOSAL.md) より）**
 
 - `shortwave_radiation` を `/api/forecast` に追加（`direct_radiation` の上位互換）
-- 新API `GET /api/analysis/field?type=score|wind|temperature|solar&day=0&hour=10` を実装
+- 新API `GET /api/analysis/field?type=score|wind|humidity|temperature|solar&day=0&hour=10` を実装
 - フロントは Leaflet CircleMarker / Polyline矢印 / 半透明円で描画（matplotlibを廃止）
 - タブ名「等値線解析」→「島内分布」に変更
 - 旧 `/api/analysis/contours` は互換用に残すがUIからは外す

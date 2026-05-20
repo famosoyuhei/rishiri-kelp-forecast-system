@@ -1145,15 +1145,18 @@ def is_coastal_area(lat, lon):
     # Most spots are coastal in Rishiri
     return True
 
+_elevation_cache: dict = {}  # key=(round(lat,2), round(lon,2)) → metres
+
 def get_elevation(lat, lon):
     """
-    Get elevation from Open-Meteo Elevation API (Copernicus GLO-90 DEM)
-
-    Uses Open-Meteo's Elevation API which provides 90m resolution elevation data
-    from the Copernicus GLO-90 DEM with ±4m accuracy.
-
-    Falls back to simplified calculation if API fails.
+    Get elevation from Open-Meteo Elevation API (Copernicus GLO-90 DEM).
+    Results are cached in-process at 0.01° resolution (~1 km) to avoid
+    repeated API calls when scoring 334 spots sharing the same grid cell.
     """
+    cache_key = (round(lat, 2), round(lon, 2))
+    if cache_key in _elevation_cache:
+        return _elevation_cache[cache_key]
+
     try:
         url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
         response = requests.get(url, timeout=5)
@@ -1162,15 +1165,18 @@ def get_elevation(lat, lon):
 
         if 'elevation' in data:
             elevation = data['elevation'][0] if isinstance(data['elevation'], list) else data['elevation']
-            return max(0, elevation)
+            result = max(0, elevation)
+            _elevation_cache[cache_key] = result
+            return result
     except Exception:
-        # Fallback to simplified calculation if API fails
         pass
 
     # Fallback: simplified calculation
     mountain_lat, mountain_lon = 45.1821, 141.2421
     distance = ((lat - mountain_lat) ** 2 + (lon - mountain_lon) ** 2) ** 0.5
-    return max(0, 200 - distance * 10000)
+    result = max(0, 200 - distance * 10000)
+    _elevation_cache[cache_key] = result
+    return result
 
 def get_onshore_wind_factor(lat, lon, wind_direction):
     """
@@ -2090,6 +2096,7 @@ import math as _math
 
 _analysis_field_cache: dict = {}
 _FIELD_CACHE_TTL = 3600  # 60 min TTL
+_ALLOWED_HOURS = [4, 7, 10, 13, 16]  # JST hours allowed for non-score field types
 
 
 def _field_cache_get(key: str):
@@ -2225,6 +2232,18 @@ def _wind_color(speed) -> str:
     if speed >= 3.0:  return '#1f9d55'
     if speed >= 2.0:  return '#f2c94c'
     return '#d64545'
+
+def _hum_color(hum) -> str:
+    if hum is None: return '#adb5bd'
+    if hum > 94:  return '#d64545'   # 乾きにくい
+    if hum >= 85: return '#f2c94c'   # 注意
+    return '#1f9d55'                  # 良好
+
+def _hum_category(hum) -> str:
+    if hum is None: return 'unknown'
+    if hum > 94:  return 'poor'
+    if hum >= 85: return 'fair'
+    return 'good'
 
 
 def _compute_score_field(day: int) -> dict:
@@ -2395,6 +2414,84 @@ def _compute_wind_field(day: int, hour: int) -> dict:
     }
 
 
+def _compute_humidity_field(day: int, hour: int) -> dict:
+    """Compute humidity for 5x5 grid with terrain correction.
+
+    Coastal +5% humidity is applied only when wind is onshore (factor > 0),
+    using the same mountain-bearing model as get_onshore_wind_factor().
+    wind_direction_10m is fetched alongside relative_humidity_2m so no
+    extra API round-trip is needed.
+    """
+    target_date = _field_target_date(day)
+    target_time = f'{target_date}T{hour:02d}:00'
+
+    grid = _build_rishiri_grid(5, 5)
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
+
+    try:
+        api_results = _fetch_open_meteo_multi(
+            lats, lons, ['relative_humidity_2m', 'wind_direction_10m']
+        )
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    points = []
+    for i, (g, api_data) in enumerate(zip(grid, api_results)):
+        hourly = api_data.get('hourly', {})
+        times  = hourly.get('time', [])
+        try:
+            idx = times.index(target_time)
+        except ValueError:
+            idx = None
+
+        raw      = hourly.get('relative_humidity_2m', [None])[idx] if idx is not None else None
+        wind_dir = hourly.get('wind_direction_10m',   [None])[idx] if idx is not None else None
+
+        hum = raw
+        correction_parts = []
+        if hum is not None:
+            if is_forest_area(g['lat'], g['lon']):
+                hum = min(100.0, hum + 10.0)
+                correction_parts.append('森林+10%')
+            if is_coastal_area(g['lat'], g['lon']) and wind_dir is not None:
+                onshore_factor = get_onshore_wind_factor(g['lat'], g['lon'], wind_dir)
+                coastal_adj = 5.0 * onshore_factor  # 0–5% depending on onshore degree
+                if coastal_adj > 0.1:
+                    hum = min(100.0, hum + coastal_adj)
+                    correction_parts.append(f'海岸+{coastal_adj:.1f}%')
+            hum = round(hum)
+
+        display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+
+        points.append({
+            'name':       display_name,
+            'lat':        round(g['lat'], 4),
+            'lon':        round(g['lon'], 4),
+            'value':      hum,
+            'raw_value':  round(raw) if raw is not None else None,
+            'wind_dir':   round(wind_dir) if wind_dir is not None else None,
+            'color':      _hum_color(hum),
+            'category':   _hum_category(hum),
+            'correction': ', '.join(correction_parts) if correction_parts else 'なし',
+        })
+
+    return {
+        'hour': hour,
+        'thresholds': {'drying_critical': 94, 'drying_caution': 85},
+        'legend': {
+            'unit': '%',
+            'stops': [
+                {'value': 95, 'label': '95%超 乾きにくい', 'color': '#d64545'},
+                {'value': 85, 'label': '85〜94% 注意',    'color': '#f2c94c'},
+                {'value': 0,  'label': '84%以下 良好',    'color': '#1f9d55'},
+            ],
+        },
+        'correction_note': '森林+10% / 海岸+5%×onshore係数の地形補正を適用（標高補正は省略）',
+        'points': points,
+    }
+
+
 @app.route('/api/analysis/field')
 def get_analysis_field():
     """
@@ -2402,9 +2499,10 @@ def get_analysis_field():
     Leaflet/Canvas でフロント描画するため matplotlib を使わない。
 
     Parameters:
-        type : score | wind | temperature | solar
+        type : score | wind | humidity | temperature | solar
         day  : 0=今日, 1=明日, ..., 6 (default 0)
-        hour : JST 時刻 0-23 (wind で使用, default 10)
+        hour : 4|7|10|13|16 (JST) — score以外で必須。未指定時は10。
+               score は 04:00〜16:00 JST の集計値なので hour パラメータ不要。
     """
     from datetime import datetime, timezone, timedelta
     jst = timezone(timedelta(hours=9))
@@ -2416,13 +2514,23 @@ def get_analysis_field():
     except ValueError:
         day = 0
     try:
-        hour = max(0, min(23, int(request.args.get('hour', 10))))
+        hour = int(request.args.get('hour', 10))
     except ValueError:
         hour = 10
 
-    if field_type not in ('score', 'wind', 'temperature', 'solar'):
+    valid_types = ('score', 'wind', 'humidity', 'temperature', 'solar')
+    if field_type not in valid_types:
         return jsonify({'status': 'error',
-                        'message': 'type は score|wind|temperature|solar のいずれか'}), 400
+                        'message': f'type は {"|".join(valid_types)} のいずれか'}), 400
+
+    # hour validation: only for non-score types
+    if field_type != 'score':
+        if hour not in _ALLOWED_HOURS:
+            return jsonify({
+                'status':  'error',
+                'message': f'hour は {_ALLOWED_HOURS} のいずれかを指定してください',
+                'allowed_hours': _ALLOWED_HOURS,
+            }), 400
 
     cache_key = f'field:{field_type}:{day}:{hour}'
     cached = _field_cache_get(cache_key)
@@ -2437,6 +2545,8 @@ def get_analysis_field():
         data = _compute_score_field(day)
     elif field_type == 'wind':
         data = _compute_wind_field(day, hour)
+    elif field_type == 'humidity':
+        data = _compute_humidity_field(day, hour)
     else:
         return jsonify({
             'status':  'not_implemented',
