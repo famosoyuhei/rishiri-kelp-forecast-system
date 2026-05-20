@@ -1293,71 +1293,78 @@
             </div>
         </div>
 
-        <div class="sidebar-tab-content" id="contourTabContent" style="padding: 16px; display: none;">
-            <h4 style="margin-bottom: 6px; color: #2c3e50;">🗺️ 島内分布</h4>
-            <p style="font-size: 0.8rem; color: #888; margin-bottom: 14px;">
-                乾燥スコアと風向・風速を地図上に重ね表示します
+        <div class="sidebar-tab-content" id="contourTabContent" style="padding: 14px; display: none;">
+            <h4 style="margin-bottom: 5px; color: #2c3e50;">🗺️ 島内分布</h4>
+            <p style="font-size: 0.78rem; color: #888; margin-bottom: 12px;">
+                乾燥スコア・風・湿度を地図上に重ね表示します
             </p>
 
             <!-- 日付チップ -->
-            <div style="margin-bottom: 12px;">
-                <div style="font-size: 0.78rem; color: #555; font-weight: 600; margin-bottom: 6px;">表示日</div>
-                <div id="fieldDayChips" style="display: flex; gap: 5px; flex-wrap: wrap;"></div>
+            <div style="margin-bottom: 10px;">
+                <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 5px;">表示日</div>
+                <div id="fieldDayChips" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
             </div>
 
-            <!-- レイヤー切替 -->
-            <div style="background: #f8f9fa; border-radius: 8px; padding: 10px; margin-bottom: 12px;">
-                <div style="font-size: 0.78rem; color: #555; font-weight: 600; margin-bottom: 8px;">表示レイヤー</div>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer; margin-bottom: 6px;">
-                    <input type="checkbox" id="fieldLayerScore" checked onchange="toggleFieldLayer()">
-                    🟢 乾燥スコア（334地点）
+            <!-- 時刻チップ (score以外) -->
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 5px;">
+                    時刻（JST）— 風・湿度
+                </div>
+                <div id="fieldHourChips" style="display: flex; gap: 4px; flex-wrap: wrap;"></div>
+                <div style="font-size: 0.69rem; color: #aaa; margin-top: 3px;">※乾燥スコアは04〜16時の集計値</div>
+            </div>
+
+            <!-- 5図レイヤー -->
+            <div style="background: #f8f9fa; border-radius: 7px; padding: 9px; margin-bottom: 10px;">
+                <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 7px;">表示レイヤー</div>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
+                    <input type="checkbox" id="fieldLayerScore" checked onchange="toggleFieldLayer('score')">
+                    🟢 乾燥スコア分布（334地点）
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
-                    <input type="checkbox" id="fieldLayerWind" checked onchange="toggleFieldLayer()">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
+                    <input type="checkbox" id="fieldLayerWind" checked onchange="toggleFieldLayer('wind')">
                     💨 風向・風速ベクトル
                 </label>
-            </div>
-
-            <!-- 風の表示時刻 -->
-            <div style="margin-bottom: 12px;">
-                <label style="font-size: 0.78rem; color: #555; font-weight: 600;">
-                    風の表示時刻（JST）:
-                    <select id="fieldWindHour" onchange="reloadFieldWind()" style="margin-left: 6px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.82rem;">
-                        <option value="6">06:00</option>
-                        <option value="8">08:00</option>
-                        <option value="10" selected>10:00</option>
-                        <option value="12">12:00</option>
-                        <option value="14">14:00</option>
-                        <option value="16">16:00</option>
-                    </select>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
+                    <input type="checkbox" id="fieldLayerHumidity" checked onchange="toggleFieldLayer('humidity')">
+                    💧 湿度
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #bbb; margin-bottom: 5px;">
+                    <input type="checkbox" disabled> ☀️ 日射量（実装予定）
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #bbb;">
+                    <input type="checkbox" disabled> 🌡️ 気温（実装予定）
                 </label>
             </div>
 
             <!-- ステータス -->
-            <div id="fieldStatus" style="font-size: 0.8rem; color: #666; min-height: 20px; margin-bottom: 10px;"></div>
+            <div id="fieldStatus" style="font-size: 0.78rem; color: #666; min-height: 18px; margin-bottom: 8px;"></div>
 
-            <!-- 凡例: スコア -->
-            <div style="margin-bottom: 10px;">
-                <div style="font-size: 0.78rem; font-weight: 600; color: #555; margin-bottom: 4px;">乾燥スコア</div>
-                <div style="display: flex; gap: 10px; font-size: 0.75rem;">
-                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1f9d55;"></span> 80+ 干せる</span>
-                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f2c94c;"></span> 50〜79 微妙</span>
-                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d64545;"></span> 〜49 厳しい</span>
+            <!-- 凡例（3行まとめ） -->
+            <div style="background: #f8f9fa; border-radius: 6px; padding: 8px; font-size: 0.72rem; margin-bottom: 8px;">
+                <div style="font-weight: 600; color: #444; margin-bottom: 5px;">凡例</div>
+                <div style="margin-bottom: 4px; line-height: 1.7;">
+                    <b>スコア</b>:
+                    <span style="color:#1f9d55">● 80+</span> 干せる &nbsp;
+                    <span style="color:#c9a500">● 50〜79</span> 微妙 &nbsp;
+                    <span style="color:#d64545">● 〜49</span> 厳しい
                 </div>
-            </div>
-            <!-- 凡例: 風 -->
-            <div style="margin-bottom: 10px;">
-                <div style="font-size: 0.78rem; font-weight: 600; color: #555; margin-bottom: 4px;">風速 (m/s)</div>
-                <div style="display: flex; gap: 10px; font-size: 0.75rem;">
-                    <span><span style="display:inline-block;width:18px;height:2px;background:#1f9d55;vertical-align:middle;"></span> 3.0+</span>
-                    <span><span style="display:inline-block;width:18px;height:2px;background:#f2c94c;vertical-align:middle;"></span> 2.0〜3.0</span>
-                    <span><span style="display:inline-block;width:18px;height:2px;background:#d64545;vertical-align:middle;"></span> 〜2.0</span>
+                <div style="margin-bottom: 4px; line-height: 1.7;">
+                    <b>風速</b>:
+                    <span style="color:#1f9d55">— 3.0+ m/s</span> &nbsp;
+                    <span style="color:#c9a500">— 2.0〜</span> &nbsp;
+                    <span style="color:#d64545">— 〜2.0</span>
+                </div>
+                <div style="line-height: 1.7;">
+                    <b>湿度</b>:
+                    <span style="color:#1f9d55">● 〜84%</span> 良好 &nbsp;
+                    <span style="color:#c9a500">● 85〜94%</span> 注意 &nbsp;
+                    <span style="color:#d64545">● 95%+</span> 乾きにくい
                 </div>
             </div>
 
             <!-- サマリー -->
-            <div id="fieldSummary" style="font-size: 0.78rem; color: #666; background: #f8f9fa; border-radius: 6px; padding: 8px; display: none;">
-            </div>
+            <div id="fieldSummary" style="font-size: 0.74rem; color: #555; background: #eef4ff; border-radius: 6px; padding: 8px; display: none;"></div>
         </div>
 
         <!-- ========== 昆布シーズン長期予報タブ ========== -->
@@ -5684,18 +5691,22 @@
         }
 
         // =========================================================
-        // 島内分布タブ — field analysis (score / wind)
+        // 島内分布タブ — field analysis (score / wind / humidity)
         // =========================================================
-        const _fieldLayers = { score: null, wind: null };
-        let _fieldDay = 0;
+        const _fieldLayers = { score: null, wind: null, humidity: null };
+        let _fieldDay  = 0;
+        let _fieldHour = 10;   // default 10:00 JST
         let _fieldLoaded = false;
+        const _ALLOWED_HOURS = [4, 7, 10, 13, 16];
 
         function initFieldTab() {
             _buildDayChips();
+            _buildHourChips();
             if (!_fieldLoaded) {
                 _fieldLoaded = true;
                 loadFieldScore(_fieldDay);
-                loadFieldWind(_fieldDay, parseInt(document.getElementById('fieldWindHour').value));
+                loadFieldWind(_fieldDay, _fieldHour);
+                loadFieldHumidity(_fieldDay, _fieldHour);
             }
         }
 
@@ -5715,6 +5726,22 @@
             });
         }
 
+        function _buildHourChips() {
+            const container = document.getElementById('fieldHourChips');
+            if (!container || container.children.length) return;
+            _ALLOWED_HOURS.forEach(h => {
+                const btn = document.createElement('button');
+                btn.textContent = `${String(h).padStart(2,'0')}:00`;
+                btn.dataset.hour = h;
+                const active = h === _fieldHour;
+                btn.style.cssText = `padding:3px 9px;border-radius:14px;border:1px solid #ccc;
+                    background:${active?'#667eea':'white'};color:${active?'white':'#555'};
+                    font-size:0.75rem;cursor:pointer;transition:all 0.2s;`;
+                btn.onclick = () => selectFieldHour(h);
+                container.appendChild(btn);
+            });
+        }
+
         function selectFieldDay(day) {
             _fieldDay = day;
             document.querySelectorAll('#fieldDayChips button').forEach(b => {
@@ -5725,14 +5752,33 @@
             _clearFieldLayers();
             _fieldLoaded = true;
             loadFieldScore(day);
-            loadFieldWind(day, parseInt(document.getElementById('fieldWindHour').value));
+            loadFieldWind(day, _fieldHour);
+            loadFieldHumidity(day, _fieldHour);
         }
 
-        function toggleFieldLayer() { /* layers are rebuilt on next reload */ }
-
-        function reloadFieldWind() {
+        function selectFieldHour(hour) {
+            _fieldHour = hour;
+            document.querySelectorAll('#fieldHourChips button').forEach(b => {
+                const active = parseInt(b.dataset.hour) === hour;
+                b.style.background = active ? '#667eea' : 'white';
+                b.style.color      = active ? 'white'   : '#555';
+            });
             _removeLayer('wind');
-            loadFieldWind(_fieldDay, parseInt(document.getElementById('fieldWindHour').value));
+            _removeLayer('humidity');
+            loadFieldWind(_fieldDay, hour);
+            loadFieldHumidity(_fieldDay, hour);
+        }
+
+        function toggleFieldLayer(type) {
+            const el = document.getElementById(`fieldLayer${type.charAt(0).toUpperCase()+type.slice(1)}`);
+            if (!el) return;
+            if (!el.checked) {
+                _removeLayer(type);
+            } else {
+                if (type === 'score')    loadFieldScore(_fieldDay);
+                if (type === 'wind')     loadFieldWind(_fieldDay, _fieldHour);
+                if (type === 'humidity') loadFieldHumidity(_fieldDay, _fieldHour);
+            }
         }
 
         function _setStatus(msg) {
@@ -5743,6 +5789,7 @@
         function _clearFieldLayers() {
             _removeLayer('score');
             _removeLayer('wind');
+            _removeLayer('humidity');
         }
 
         function _removeLayer(type) {
@@ -5943,20 +5990,74 @@
                 group.addTo(map);
 
                 const cached = data.cache?.hit ? '（キャッシュ）' : '';
-                _setStatus(`${cached}スコア・風 表示中 — ${hour}:00 JST`);
+                _setStatus(_buildStatusLine(cached, `風 — ${String(hour).padStart(2,'0')}:00 JST`));
             } catch (e) {
                 _setStatus('風読み込みエラー: ' + e.message);
             }
         }
+
+        function _humRadius(hum) {
+            if (hum > 94) return 7;
+            if (hum >= 85) return 6;
+            return 5;
+        }
+
+        async function loadFieldHumidity(day, hour) {
+            if (!document.getElementById('fieldLayerHumidity').checked) return;
+            _setStatus(_buildStatusLine('', `湿度データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
+            try {
+                const res = await fetch(`/api/analysis/field?type=humidity&day=${day}&hour=${hour}`);
+                const data = await res.json();
+                if (data.status !== 'success') { _setStatus('湿度データ取得失敗'); return; }
+
+                _removeLayer('humidity');
+                const group = L.layerGroup();
+                (data.points || []).forEach(p => {
+                    const marker = L.circleMarker([p.lat, p.lon], {
+                        radius:      _humRadius(p.value),
+                        fillColor:   p.color,
+                        color:       'rgba(0,0,0,0.3)',
+                        weight:      1,
+                        fillOpacity: 0.75,
+                    });
+                    marker.bindTooltip(
+                        `<b>${p.name ?? '格子点'}</b><br>湿度: ${p.value ?? '--'}%<br>` +
+                        `${p.category ?? ''}` +
+                        (p.wind_dir != null ? `<br>風向: ${p.wind_dir}°` : '') +
+                        (p.correction ? `<br>補正: ${p.correction}` : ''),
+                        { sticky: true, className: 'field-tooltip' }
+                    );
+                    group.addLayer(marker);
+                });
+                _fieldLayers.humidity = group;
+                group.addTo(map);
+
+                const cached = data.cache?.hit ? '（キャッシュ）' : '';
+                _setStatus(_buildStatusLine(cached, `湿度 — ${String(hour).padStart(2,'0')}:00 JST`));
+            } catch (e) {
+                _setStatus('湿度読み込みエラー: ' + e.message);
+            }
+        }
+
+        function _buildStatusLine(prefix, suffix) {
+            const parts = [];
+            if (_fieldLayers.score)    parts.push('スコア');
+            if (_fieldLayers.wind)     parts.push('風');
+            if (_fieldLayers.humidity) parts.push('湿度');
+            const active = parts.length ? `[${parts.join('+')}] ` : '';
+            return `${prefix}${active}${suffix}`;
+        }
+
         // TODO: 将来拡張 — Windy風粒子アニメーション（Canvas/WebGL）
 
         // =========================================================
         // 旧等値線関数（互換用・新UIからは呼ばない）
         // =========================================================
         function updateContourTimeOptions() {
-            const category = document.getElementById('contourCategory') &&
-                             document.getElementById('contourCategory').value;
-            const timeSelect = document.getElementById('contourTime');
+            const categoryEl = document.getElementById('contourCategory');
+            const timeSelect  = document.getElementById('contourTime');
+            if (!categoryEl || !timeSelect) return;  // DOM removed in new UI
+            const category = categoryEl.value;
 
             if (!category) {
                 timeSelect.innerHTML = '<option value="">-- カテゴリーを先に選択 --</option>';
@@ -6014,10 +6115,13 @@
             timeSelect.innerHTML = options;
         }
 
-        // 等値線解析マップを読み込み
+        // 等値線解析マップを読み込み（互換用 — 新UIからは呼ばない）
         async function loadContourAnalysis() {
-            const category = document.getElementById('contourCategory').value;
-            const timeOffset = document.getElementById('contourTime').value;
+            const categoryEl = document.getElementById('contourCategory');
+            const timeEl = document.getElementById('contourTime');
+            if (!categoryEl || !timeEl) return;  // DOM removed in new UI
+            const category = categoryEl.value;
+            const timeOffset = timeEl.value;
 
             if (!category) {
                 alert('解析カテゴリーを選択してください');
@@ -6182,10 +6286,11 @@
         window.updateContourDisplay = updateContourDisplay;
         window.initFieldTab = initFieldTab;
         window.selectFieldDay = selectFieldDay;
+        window.selectFieldHour = selectFieldHour;
         window.toggleFieldLayer = toggleFieldLayer;
-        window.reloadFieldWind = reloadFieldWind;
         window.loadFieldScore = loadFieldScore;
         window.loadFieldWind = loadFieldWind;
+        window.loadFieldHumidity = loadFieldHumidity;
     </script>
 
     <!-- PWA Service Worker Registration -->
