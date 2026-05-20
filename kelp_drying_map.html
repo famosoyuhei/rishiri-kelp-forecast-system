@@ -5807,6 +5807,110 @@
             }
         }
 
+        // Wind arrow rendering constants
+        const _WIND_SCALE    = 0.006;   // °/m/s (proportional shaft length)
+        const _WIND_CAP_MS   = 8;       // cap visual length at this speed (m/s)
+        const _WIND_CALM_MS  = 0.3;     // below this, show calm dot
+        const _BARB_FRAC     = 0.35;    // barb length as fraction of shaft
+        const _BARB_ANGLE    = 38;      // barb open angle (degrees)
+
+        /** Draw one wind arrow. Returns an L.layerGroup of polylines. */
+        function _drawWindArrow(v, highlighted) {
+            const lat = v.lat, lon = v.lon;
+            const speed = v.speed ?? 0;
+            const cosLat = Math.cos(lat * Math.PI / 180);
+            const color  = v.color;
+            const weight = highlighted ? 3.5 : 2;
+            const opacity = highlighted ? 1.0 : 0.82;
+            const group = L.layerGroup();
+
+            // Calm wind: circle with X
+            if (speed < _WIND_CALM_MS) {
+                L.circleMarker([lat, lon], {
+                    radius: highlighted ? 5 : 3,
+                    color: '#888', fillColor: '#888',
+                    weight: 1, fillOpacity: 0.5,
+                }).bindTooltip(`静穏 (${speed} m/s)`, { sticky: true }).addTo(group);
+                return group;
+            }
+
+            // Effective scale: proportional but capped
+            const effSpeed = Math.min(speed, _WIND_CAP_MS);
+            // Direction vectors normalized to effSpeed
+            const ux = v.u / (speed || 1);  // eastward unit
+            const uy = v.v / (speed || 1);  // northward unit
+            const dLatDeg = uy * effSpeed * _WIND_SCALE;
+            const dLonDeg = ux * effSpeed * _WIND_SCALE / cosLat;
+
+            const endLat = lat + dLatDeg;
+            const endLon = lon + dLonDeg;
+
+            // Halo for highlighted arrow
+            if (highlighted) {
+                L.polyline([[lat, lon], [endLat, endLon]], {
+                    color: 'white', weight: weight + 3, opacity: 0.6,
+                }).addTo(group);
+            }
+
+            // Shaft
+            L.polyline([[lat, lon], [endLat, endLon]], {
+                color, weight, opacity,
+            }).addTo(group);
+
+            // Arrowhead barbs
+            // Work in "visual-equal" space: stretch lon by cosLat so angles are correct
+            const shLen = effSpeed * _WIND_SCALE;   // shaft length in visual° (lat-equivalent)
+            const barbLen = shLen * _BARB_FRAC;
+            const angRad  = _BARB_ANGLE * Math.PI / 180;
+
+            // Reversed unit vector (pointing from head back to tail)
+            const rx = -ux, ry = -uy;   // visual-space reversed unit
+
+            function rotVis(nx, ny, a) {
+                return [nx * Math.cos(a) - ny * Math.sin(a),
+                        nx * Math.sin(a) + ny * Math.cos(a)];
+            }
+
+            const [b1x, b1y] = rotVis(rx, ry, -angRad);
+            const [b2x, b2y] = rotVis(rx, ry, +angRad);
+
+            L.polyline(
+                [[endLat, endLon],
+                 [endLat + b1y * barbLen, endLon + b1x * barbLen / cosLat]],
+                { color, weight, opacity }
+            ).addTo(group);
+
+            L.polyline(
+                [[endLat, endLon],
+                 [endLat + b2y * barbLen, endLon + b2x * barbLen / cosLat]],
+                { color, weight, opacity }
+            ).addTo(group);
+
+            // Invisible interactive circle for tooltip
+            L.circleMarker([endLat, endLon], {
+                radius: highlighted ? 6 : 4,
+                fillColor: color, color: 'white',
+                weight: highlighted ? 2 : 1,
+                fillOpacity: highlighted ? 1 : 0.9,
+            }).bindTooltip(
+                `<b>${speed} m/s</b> / ${v.direction ?? '--'}°` +
+                (highlighted ? '<br>★ 最寄り観測点' : ''),
+                { sticky: true, permanent: highlighted }
+            ).addTo(group);
+
+            return group;
+        }
+
+        /** Find index of grid vector nearest to a lat/lon point. */
+        function _nearestVectorIdx(vectors, lat, lon) {
+            let best = -1, bestDist = Infinity;
+            vectors.forEach((v, i) => {
+                const d = Math.hypot(v.lat - lat, (v.lon - lon) * Math.cos(lat * Math.PI / 180));
+                if (d < bestDist) { bestDist = d; best = i; }
+            });
+            return best;
+        }
+
         async function loadFieldWind(day, hour) {
             if (!document.getElementById('fieldLayerWind').checked) return;
             _setStatus((_fieldLayers.score ? 'スコア表示中 / ' : '') + '風データ読み込み中...');
@@ -5816,39 +5920,35 @@
                 if (data.status !== 'success') { _setStatus('風データ取得失敗'); return; }
 
                 _removeLayer('wind');
+                const vectors = data.vectors || [];
                 const group = L.layerGroup();
-                const scale = 0.006; // degrees per m/s
-                (data.vectors || []).forEach(v => {
-                    if (v.speed === null) return;
-                    const lat = v.lat, lon = v.lon;
-                    const cosLat = Math.cos(lat * Math.PI / 180);
-                    const endLat = lat + v.v * scale;
-                    const endLon = lon + v.u * scale / cosLat;
 
-                    // shaft
-                    L.polyline([[lat, lon], [endLat, endLon]], {
-                        color:  v.color, weight: 2.5, opacity: 0.85,
-                    }).addTo(group);
+                // Find nearest vector to selected spot
+                let nearestIdx = -1;
+                if (selectedSpot) {
+                    nearestIdx = _nearestVectorIdx(vectors, selectedSpot.lat, selectedSpot.lon);
+                }
 
-                    // arrowhead (small triangle via circle marker at tip)
-                    L.circleMarker([endLat, endLon], {
-                        radius: 3, fillColor: v.color, color: v.color,
-                        weight: 1, fillOpacity: 1,
-                    }).bindTooltip(
-                        `${v.speed} m/s / ${v.direction ?? '--'}°`,
-                        { sticky: true }
-                    ).addTo(group);
+                // Draw non-highlighted arrows first, then highlighted on top
+                vectors.forEach((v, i) => {
+                    if (i !== nearestIdx) {
+                        _drawWindArrow(v, false).addTo(group);
+                    }
                 });
+                if (nearestIdx >= 0) {
+                    _drawWindArrow(vectors[nearestIdx], true).addTo(group);
+                }
+
                 _fieldLayers.wind = group;
                 group.addTo(map);
-                _setStatus(
-                    (data.cache?.hit ? '（キャッシュ）' : '') +
-                    `スコア・風 表示中 — ${hour}:00 JST`
-                );
+
+                const cached = data.cache?.hit ? '（キャッシュ）' : '';
+                _setStatus(`${cached}スコア・風 表示中 — ${hour}:00 JST`);
             } catch (e) {
                 _setStatus('風読み込みエラー: ' + e.message);
             }
         }
+        // TODO: 将来拡張 — Windy風粒子アニメーション（Canvas/WebGL）
 
         // =========================================================
         // 旧等値線関数（互換用・新UIからは呼ばない）
