@@ -605,7 +605,8 @@ def test_register_spot_invalid_id(tmp_sub_file):
 def test_list_spots_none(tmp_sub_file):
     li.upsert_subscription("user", "U1", {"notify_enabled": True})
     result = li.handle_list_spots("user", "U1")
-    assert "ニックネームが登録されていません" in result
+    assert "登録されていません" in result
+
 
 def test_list_spots_with_nicknames(tmp_sub_file):
     li.upsert_subscription("user", "U1", {
@@ -614,7 +615,7 @@ def test_list_spots_with_nicknames(tmp_sub_file):
     })
     result = li.handle_list_spots("user", "U1")
     assert "浜の前" in result
-    assert "H_1631_1434" in result
+    assert "H_1631_1434" not in result  # spot_id は通常表示に出ない
 
 
 def test_register_spot_nickname_replaces_old_name(tmp_sub_file, monkeypatch):
@@ -1040,3 +1041,148 @@ def test_select_spot_quick_reply_returned_even_if_storage_fails(tmp_sub_file, mo
 
     assert len(qr_calls) == 1, "reply_with_quick_reply must be called despite storage failure"
     assert qr_calls[0][0] == "tok_fail"
+
+
+# ---------------------------------------------------------------------------
+# Display name UX: H_XXXX_XXXX hidden from users
+# ---------------------------------------------------------------------------
+
+def test_auto_display_name_uses_buraku_first(monkeypatch):
+    """_auto_display_name prefers buraku over district/town."""
+    spot = {"name": "H_1631_1434", "lat": 0, "lon": 0,
+            "buraku": "神居", "district": "沓形", "town": "利尻町"}
+    assert li._auto_display_name(spot) == "神居の干場"
+
+
+def test_auto_display_name_falls_back_to_district(monkeypatch):
+    """_auto_display_name falls back to district when buraku is empty."""
+    spot = {"name": "H_1631_1434", "lat": 0, "lon": 0,
+            "buraku": "", "district": "沓形", "town": "利尻町"}
+    assert li._auto_display_name(spot) == "沓形の干場"
+
+
+def test_auto_display_name_falls_back_to_spot_id(monkeypatch):
+    """_auto_display_name returns spot_id when all location fields are blank."""
+    spot = {"name": "H_1631_1434", "lat": 0, "lon": 0,
+            "buraku": "―", "district": "", "town": ""}
+    assert li._auto_display_name(spot) == "H_1631_1434"
+
+
+def test_collect_user_spots_no_nickname_uses_auto_display(tmp_sub_file, monkeypatch):
+    """Spot without nickname shows auto display name, not H_XXXX_XXXX."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 0, "lon": 0,
+                                     "buraku": "神居", "district": "", "town": ""})
+    li.upsert_subscription("user", "U_dn", {"spots": ["H_1631_1434"]})
+    choices = li._collect_user_spots("user", "U_dn")
+    assert len(choices) == 1
+    assert choices[0]["label"] == "神居の干場"
+    assert choices[0]["spot_id"] == "H_1631_1434"
+    assert "H_1631_1434" not in choices[0]["label"]
+
+
+def test_execute_intent_uses_label_not_spot_id(tmp_sub_file, monkeypatch):
+    """_execute_intent passes the label (not spot['name']) to format_single_day."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "", "district": "", "town": ""})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [{"date": "2026-07-01", "day_number": 0,
+                                           "suitability": "good", "score": 80,
+                                           "precipitation": 0, "min_humidity": 70,
+                                           "avg_wind": 3.5, "pop": None}])
+    li.upsert_subscription("user", "U_ei", {})
+    result = li._execute_intent("user", "U_ei", "H_1631_1434", "浜の前", "today")
+    assert "浜の前" in result
+    assert "H_1631_1434" not in result
+
+
+def test_parse_command_subscribe_with_nickname():
+    """'通知登録 H_XXXX_XXXX 呼び名' extracts both target and nickname."""
+    cmd = li.parse_command("通知登録 H_1631_1434 浜の前")
+    assert cmd["cmd"] == "subscribe"
+    assert cmd["target"] == "H_1631_1434"
+    assert cmd["nickname"] == "浜の前"
+
+
+def test_handle_subscribe_saves_nickname(tmp_sub_file, monkeypatch):
+    """handle_subscribe with nickname saves it to spot_nicknames."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "", "district": "", "town": ""})
+    result = li.handle_subscribe("user", "U_sub", "H_1631_1434", nickname="浜の前")
+    assert "浜の前" in result
+    assert "H_1631_1434" not in result  # 成功メッセージにIDが出ない
+    sub = li.get_subscription("user", "U_sub")
+    assert sub["spot_nicknames"]["浜の前"] == "H_1631_1434"
+
+
+def test_handle_subscribe_overwrites_nickname(tmp_sub_file, monkeypatch):
+    """Second subscribe call with a new nickname overwrites the old one (Web is source of truth)."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "", "district": "", "town": ""})
+    li.handle_subscribe("user", "U_ow", "H_1631_1434", nickname="旧ニックネーム")
+    # Re-subscribe (spot already registered) with a different nickname — should still update
+    li.upsert_subscription("user", "U_ow", {"spots": ["H_1631_1434"], "notify_enabled": True})
+    # Simulate re-registration with new nickname by calling handle_subscribe on fresh sub
+    li.upsert_subscription("user", "U_ow", {"spots": [], "notify_enabled": True})
+    li.handle_subscribe("user", "U_ow", "H_1631_1434", nickname="新ニックネーム")
+    sub = li.get_subscription("user", "U_ow")
+    assert sub["spot_nicknames"].get("新ニックネーム") == "H_1631_1434"
+    assert "旧ニックネーム" not in sub["spot_nicknames"]
+
+
+def test_handle_subscribe_no_nickname_uses_auto_display(tmp_sub_file, monkeypatch):
+    """handle_subscribe without nickname still uses auto display name in success message."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "神居", "district": "", "town": ""})
+    result = li.handle_subscribe("user", "U_sub2", "H_1631_1434")
+    assert "神居の干場" in result
+    assert "H_1631_1434" not in result
+
+
+def test_list_spots_shows_unnamed_spots_with_auto_name(tmp_sub_file, monkeypatch):
+    """handle_list_spots shows unnamed subscribed spots with auto display name, not ID."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 0, "lon": 0,
+                                     "buraku": "神居", "district": "", "town": ""})
+    li.upsert_subscription("user", "U_ls", {"spots": ["H_1631_1434"]})
+    result = li.handle_list_spots("user", "U_ls")
+    assert "神居の干場" in result
+    assert "呼び名未設定" in result
+    assert "H_1631_1434" not in result
+
+
+def test_notify_all_uses_display_name(tmp_sub_file, monkeypatch):
+    """notify_all push message uses user's nickname, not spot_id."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "", "district": "", "town": ""})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [{"date": "2026-07-01", "day_number": 0,
+                                           "suitability": "good", "score": 80,
+                                           "precipitation": 0, "min_humidity": 70,
+                                           "avg_wind": 3.5, "pop": None}])
+    li.upsert_subscription("user", "U_notify", {
+        "notify_enabled": True,
+        "spots": ["H_1631_1434"],
+        "spot_nicknames": {"浜の前": "H_1631_1434"},
+    })
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+
+    import datetime
+    from zoneinfo import ZoneInfo
+    JST = ZoneInfo("Asia/Tokyo")
+    fake_now = datetime.datetime(2026, 7, 1, 7, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", type("FakeDatetime", (), {
+        "now": staticmethod(lambda tz=None: fake_now),
+        "strptime": datetime.datetime.strptime,
+    })())
+
+    li.notify_all("morning")
+    assert pushed, "push_text must have been called"
+    assert "浜の前" in pushed[0]
+    assert "H_1631_1434" not in pushed[0]
