@@ -5482,8 +5482,14 @@ def calculate_solunar_score(target_date):
 
 
 import threading as _threading
-_amedas_thread = _threading.Thread(target=_daily_amedas_collection, daemon=True)
-_amedas_thread.start()
+
+def _start_background_threads():
+    """Start long-running background threads.  Called once from wsgi.py so the
+    thread is NOT started when the module is merely imported (e.g. in tests or
+    gunicorn worker forks before application code runs)."""
+    t = _threading.Thread(target=_daily_amedas_collection, daemon=True)
+    t.daemon = True
+    t.start()
 
 # ============================================================================
 # LINE Messaging API endpoints (line_integration.py)
