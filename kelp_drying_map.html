@@ -1093,8 +1093,11 @@
         <div style="margin: 15px 0;">
             <label style="display: flex; align-items: center; cursor: pointer;">
                 <input type="checkbox" id="notificationEnabled" onchange="toggleNotifications()" style="margin-right: 10px; width: 20px; height: 20px;">
-                <span style="font-weight: 600;">通知を受け取る</span>
+                <span style="font-weight: 600;">このデバイスでWeb通知を受け取る</span>
             </label>
+            <div style="font-size: 0.78rem; color: #888; margin-top: 4px; padding-left: 30px;">
+                ※ LINE通知は「通知登録」コマンドで別途設定してください
+            </div>
         </div>
 
         <div id="notificationSettings" style="display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
@@ -1329,11 +1332,13 @@
                     <input type="checkbox" id="fieldLayerHumidity" checked onchange="toggleFieldLayer('humidity')">
                     💧 湿度
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #bbb; margin-bottom: 5px;">
-                    <input type="checkbox" disabled> ☀️ 日射量（実装予定）
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
+                    <input type="checkbox" id="fieldLayerSolar" checked onchange="toggleFieldLayer('solar')">
+                    ☀️ 日射量（W/m²）
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #bbb;">
-                    <input type="checkbox" disabled> 🌡️ 気温（実装予定）
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;">
+                    <input type="checkbox" id="fieldLayerTemperature" checked onchange="toggleFieldLayer('temperature')">
+                    🌡️ 気温（°C）
                 </label>
             </div>
 
@@ -2417,8 +2422,11 @@
             const lineBtn = document.getElementById('lineRegisterBtn');
             const isSpecial = spot.name.startsWith('A_') || spot.name.startsWith('R_');
             if (!isSpecial) {
-                const msg = encodeURIComponent(`通知登録 ${spot.name}`);
-                lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${msg}`;
+                const displayName = getSpotDisplayName(spot.name);
+                const lineText = (displayName && displayName !== spot.name)
+                    ? `通知登録 ${spot.name} ${displayName}`
+                    : `通知登録 ${spot.name}`;
+                lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(lineText)}`;
                 lineWrap.style.display = 'block';
             } else {
                 lineWrap.style.display = 'none';
@@ -4736,6 +4744,43 @@
             }
         }
 
+        function _showNicknameModal(spotName) {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:14px;padding:24px 20px;max-width:320px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.18);';
+            box.innerHTML = `
+                <h3 style="margin:0 0 6px;font-size:15px;color:#1e293b;">干場を追加しました</h3>
+                <p style="margin:0 0 14px;font-size:13px;color:#64748b;">この干場の呼び名を入力してください。<br>LINEやチャットで使う表示名になります。</p>
+                <input id="_nicknameInput" type="text" maxlength="20"
+                       placeholder="例: 浜の前、沓形の干場"
+                       style="width:100%;box-sizing:border-box;padding:9px 10px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:14px;outline:none;">
+                <div style="display:flex;gap:8px;">
+                    <button id="_nicknameSave" style="flex:1;background:#2563eb;color:#fff;border:none;border-radius:8px;padding:9px 0;cursor:pointer;font-size:14px;font-weight:600;">保存してリロード</button>
+                    <button id="_nicknameSkip" style="flex:1;background:#f1f5f9;color:#475569;border:none;border-radius:8px;padding:9px 0;cursor:pointer;font-size:14px;">スキップ</button>
+                </div>`;
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+
+            const input = box.querySelector('#_nicknameInput');
+            input.focus();
+
+            const save = () => {
+                const nick = input.value.trim();
+                if (nick) setSpotNickname(spotName, nick);
+                document.body.removeChild(overlay);
+                location.reload();
+            };
+            box.querySelector('#_nicknameSave').onclick = save;
+            box.querySelector('#_nicknameSkip').onclick = () => {
+                document.body.removeChild(overlay);
+                location.reload();
+            };
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+        }
+
         async function addSpotAtLocation(lat, lon) {
             try {
                 const response = await fetch('/add', {
@@ -4755,9 +4800,7 @@
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    alert(`新しい干場が追加されました: ${result.spot.name}`);
-                    // ページをリロードして新しい干場を表示
-                    location.reload();
+                    _showNicknameModal(result.spot.name);
                 } else {
                     alert(`エラー: ${result.message}`);
                 }
@@ -5651,7 +5694,21 @@
         };
 
         // サイドバータブ切り替え機能
+        function cleanupFieldLayers() {
+            // 島内分布タブを離れるときに地図上のレイヤーと状態表示を確実に片付ける
+            _clearFieldLayers();
+            _fieldLoaded = false;   // 次回タブ復帰時に再ロードさせる
+            _setStatus('');
+            const sumEl = document.getElementById('fieldSummary');
+            if (sumEl) sumEl.style.display = 'none';
+        }
+
         function switchSidebarTab(tabName) {
+            // 島内分布タブから離れるとき: Leafletレイヤーを地図から除去する
+            if (tabName !== 'contour') {
+                cleanupFieldLayers();
+            }
+
             // すべてのタブボタンとコンテンツを非アクティブ化
             document.querySelectorAll('.sidebar-tab-btn').forEach(btn => {
                 btn.classList.remove('active');
@@ -5693,7 +5750,7 @@
         // =========================================================
         // 島内分布タブ — field analysis (score / wind / humidity)
         // =========================================================
-        const _fieldLayers = { score: null, wind: null, humidity: null };
+        const _fieldLayers = { score: null, wind: null, humidity: null, solar: null, temperature: null };
         let _fieldDay  = 0;
         let _fieldHour = 10;   // default 10:00 JST
         let _fieldLoaded = false;
@@ -5707,6 +5764,8 @@
                 loadFieldScore(_fieldDay);
                 loadFieldWind(_fieldDay, _fieldHour);
                 loadFieldHumidity(_fieldDay, _fieldHour);
+                loadFieldSolar(_fieldDay, _fieldHour);
+                loadFieldTemperature(_fieldDay, _fieldHour);
             }
         }
 
@@ -5754,6 +5813,8 @@
             loadFieldScore(day);
             loadFieldWind(day, _fieldHour);
             loadFieldHumidity(day, _fieldHour);
+            loadFieldSolar(day, _fieldHour);
+            loadFieldTemperature(day, _fieldHour);
         }
 
         function selectFieldHour(hour) {
@@ -5765,8 +5826,12 @@
             });
             _removeLayer('wind');
             _removeLayer('humidity');
+            _removeLayer('solar');
+            _removeLayer('temperature');
             loadFieldWind(_fieldDay, hour);
             loadFieldHumidity(_fieldDay, hour);
+            loadFieldSolar(_fieldDay, hour);
+            loadFieldTemperature(_fieldDay, hour);
         }
 
         function toggleFieldLayer(type) {
@@ -5775,9 +5840,11 @@
             if (!el.checked) {
                 _removeLayer(type);
             } else {
-                if (type === 'score')    loadFieldScore(_fieldDay);
-                if (type === 'wind')     loadFieldWind(_fieldDay, _fieldHour);
-                if (type === 'humidity') loadFieldHumidity(_fieldDay, _fieldHour);
+                if (type === 'score')       loadFieldScore(_fieldDay);
+                if (type === 'wind')        loadFieldWind(_fieldDay, _fieldHour);
+                if (type === 'humidity')    loadFieldHumidity(_fieldDay, _fieldHour);
+                if (type === 'solar')       loadFieldSolar(_fieldDay, _fieldHour);
+                if (type === 'temperature') loadFieldTemperature(_fieldDay, _fieldHour);
             }
         }
 
@@ -5790,6 +5857,8 @@
             _removeLayer('score');
             _removeLayer('wind');
             _removeLayer('humidity');
+            _removeLayer('solar');
+            _removeLayer('temperature');
         }
 
         function _removeLayer(type) {
@@ -6039,11 +6108,93 @@
             }
         }
 
+        function _solarRadius(solar) {
+            if (solar >= 400) return 7;
+            if (solar >= 50)  return 6;
+            return 5;
+        }
+
+        async function loadFieldSolar(day, hour) {
+            if (!document.getElementById('fieldLayerSolar').checked) return;
+            _setStatus(_buildStatusLine('', `日射量データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
+            try {
+                const res = await fetch(`/api/analysis/field?type=solar&day=${day}&hour=${hour}`);
+                const data = await res.json();
+                if (data.status !== 'success') { _setStatus('日射量データ取得失敗'); return; }
+
+                _removeLayer('solar');
+                const group = L.layerGroup();
+                (data.points || []).forEach(p => {
+                    const marker = L.circleMarker([p.lat, p.lon], {
+                        radius:      _solarRadius(p.value),
+                        fillColor:   p.color,
+                        color:       'rgba(0,0,0,0.3)',
+                        weight:      1,
+                        fillOpacity: 0.75,
+                    });
+                    marker.bindTooltip(
+                        `<b>${p.name ?? '格子点'}</b><br>日射量: ${p.value ?? '--'} W/m²<br>${p.category ?? ''}`,
+                        { sticky: true, className: 'field-tooltip' }
+                    );
+                    group.addLayer(marker);
+                });
+                _fieldLayers.solar = group;
+                group.addTo(map);
+
+                const cached = data.cache?.hit ? '（キャッシュ）' : '';
+                _setStatus(_buildStatusLine(cached, `日射量 — ${String(hour).padStart(2,'0')}:00 JST`));
+            } catch (e) {
+                _setStatus('日射量読み込みエラー: ' + e.message);
+            }
+        }
+
+        function _tempRadius(temp) {
+            if (temp >= 20) return 7;
+            if (temp >= 10) return 6;
+            return 5;
+        }
+
+        async function loadFieldTemperature(day, hour) {
+            if (!document.getElementById('fieldLayerTemperature').checked) return;
+            _setStatus(_buildStatusLine('', `気温データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
+            try {
+                const res = await fetch(`/api/analysis/field?type=temperature&day=${day}&hour=${hour}`);
+                const data = await res.json();
+                if (data.status !== 'success') { _setStatus('気温データ取得失敗'); return; }
+
+                _removeLayer('temperature');
+                const group = L.layerGroup();
+                (data.points || []).forEach(p => {
+                    const marker = L.circleMarker([p.lat, p.lon], {
+                        radius:      _tempRadius(p.value),
+                        fillColor:   p.color,
+                        color:       'rgba(0,0,0,0.3)',
+                        weight:      1,
+                        fillOpacity: 0.75,
+                    });
+                    marker.bindTooltip(
+                        `<b>${p.name ?? '格子点'}</b><br>気温: ${p.value ?? '--'}°C<br>${p.category ?? ''}`,
+                        { sticky: true, className: 'field-tooltip' }
+                    );
+                    group.addLayer(marker);
+                });
+                _fieldLayers.temperature = group;
+                group.addTo(map);
+
+                const cached = data.cache?.hit ? '（キャッシュ）' : '';
+                _setStatus(_buildStatusLine(cached, `気温 — ${String(hour).padStart(2,'0')}:00 JST`));
+            } catch (e) {
+                _setStatus('気温読み込みエラー: ' + e.message);
+            }
+        }
+
         function _buildStatusLine(prefix, suffix) {
             const parts = [];
-            if (_fieldLayers.score)    parts.push('スコア');
-            if (_fieldLayers.wind)     parts.push('風');
-            if (_fieldLayers.humidity) parts.push('湿度');
+            if (_fieldLayers.score)       parts.push('スコア');
+            if (_fieldLayers.wind)        parts.push('風');
+            if (_fieldLayers.humidity)    parts.push('湿度');
+            if (_fieldLayers.solar)       parts.push('日射');
+            if (_fieldLayers.temperature) parts.push('気温');
             const active = parts.length ? `[${parts.join('+')}] ` : '';
             return `${prefix}${active}${suffix}`;
         }

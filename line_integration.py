@@ -796,18 +796,36 @@ def handle_register_spot_nickname(source_type: str, source_id: str,
 
 
 def handle_list_spots(source_type: str, source_id: str) -> str:
-    """Show registered spot nicknames."""
-    nicknames = get_spot_nicknames(source_type, source_id)
-    if not nicknames:
+    """Show all registered spots with display names. H_XXXX_XXXX is not shown."""
+    sub = get_subscription(source_type, source_id)
+    nicknames = sub.get('spot_nicknames', {}) if sub else {}  # {nickname: spot_id}
+    registered = sub.get('spots', []) if sub else []
+
+    if not nicknames and not registered:
         return (
-            '干場のニックネームが登録されていません。\n'
-            '「干場登録 ニックネーム H_XXXX_XXXX」で登録できます。\n'
-            '例: 干場登録 浜の前 H_1631_1434'
+            '干場が登録されていません。\n'
+            'Webアプリの「LINEで通知登録」ボタンから登録できます。\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/'
         )
-    lines = ['【登録済み干場ニックネーム】']
+
+    id_to_nick = {v: k for k, v in nicknames.items()}  # {spot_id: nickname}
+    lines = ['【登録済み干場】']
+    seen = set()
+    for sid in registered:
+        nick = id_to_nick.get(sid)
+        if nick:
+            lines.append(f'・{nick}')
+        else:
+            spot = find_spot_by_id(sid)
+            auto = _auto_display_name(spot) if spot else sid
+            lines.append(f'・{auto}（呼び名未設定）')
+        seen.add(sid)
+    # Nicknames for spots not in registered list (edge case)
     for nick, sid in nicknames.items():
-        lines.append(f'{nick} → {sid}')
+        if sid not in seen:
+            lines.append(f'・{nick}')
     lines.append('\n「記録」で乾燥記録を入力できます。')
+    lines.append('呼び名設定: Webアプリから「LINEで通知登録」で自動設定')
     return '\n'.join(lines)
 
 
@@ -916,6 +934,46 @@ def push_text(to: str, text: str) -> bool:
         logger.error('LINE push exception to %s: %s', masked, e)
         return False
 
+
+def reply_with_quick_reply(reply_token: str, text: str, items: list) -> bool:
+    """Send reply with Quick Reply buttons. items: [{label, text}, ...]."""
+    if not _cfg()['token']:
+        logger.warning('LINE_CHANNEL_ACCESS_TOKEN not set; quick reply skipped')
+        return False
+    quick_reply_items = [
+        {
+            'type': 'action',
+            'action': {
+                'type': 'message',
+                'label': item['label'][:20],
+                'text': item['text'],
+            },
+        }
+        for item in items[:13]  # LINE max 13 Quick Reply items
+    ]
+    payload = {
+        'replyToken': reply_token,
+        'messages': [{
+            'type': 'text',
+            'text': text[:5000],
+            'quickReply': {'items': quick_reply_items},
+        }],
+    }
+    try:
+        resp = _requests.post(
+            f'{LINE_MESSAGING_API}/reply',
+            headers=_line_headers(),
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.error('LINE quick reply failed %s: %s', resp.status_code, resp.text)
+            return False
+        return True
+    except Exception as e:
+        logger.error('LINE quick reply exception: %s', e)
+        return False
+
 # ---------------------------------------------------------------------------
 # Command parser (public for unit testing)
 # ---------------------------------------------------------------------------
@@ -953,11 +1011,12 @@ def parse_command(text: str) -> dict:
     if text in ('通知解除', '通知OFF', '通知off', '解除'):
         return {'cmd': 'unsubscribe'}
 
-    # Subscribe: "通知登録 <target>"
+    # Subscribe: "通知登録 <target> [nickname]"
     if text.startswith('通知登録') or text.startswith('通知 登録'):
-        parts = text.split(None, 1)
+        parts = text.split(None, 2)
         target = parts[1].strip() if len(parts) > 1 else ''
-        return {'cmd': 'subscribe', 'target': target}
+        nickname = parts[2].strip() if len(parts) > 2 else ''
+        return {'cmd': 'subscribe', 'target': target, 'nickname': nickname}
 
     # Record flow trigger
     if text in ('記録', '乾燥記録', '記録する', '干し記録'):
@@ -1076,17 +1135,173 @@ def _no_registration_hint() -> str:
     )
 
 
+def _auto_display_name(spot: dict) -> str:
+    """Generate human-readable display name from buraku→district→town, then spot_id."""
+    for field in ('buraku', 'district', 'town'):
+        val = (spot.get(field) or '').strip()
+        if val and val != '―':
+            return f'{val}の干場'
+    return spot['name']
+
+
+def _get_spot_label(source_type: str, source_id: str, spot_id: str) -> str:
+    """Return user's nickname for a spot, or auto display name, or spot_id as last resort."""
+    nicknames = get_spot_nicknames(source_type, source_id)  # {nickname: spot_id}
+    for nick, sid in nicknames.items():
+        if sid == spot_id:
+            return nick
+    spot = find_spot_by_id(spot_id)
+    return _auto_display_name(spot) if spot else spot_id
+
+
+def _collect_user_spots(source_type: str, source_id: str) -> list:
+    """Return [{label, spot_id}] combining nicknames (preferred) and subscribed spots."""
+    sub = get_subscription(source_type, source_id)
+    if not sub:
+        return []
+    nicknames = sub.get('spot_nicknames', {})  # {nickname: spot_id}
+    registered = sub.get('spots', [])
+    result = []
+    seen = set()
+    for nick, sid in list(nicknames.items())[:10]:
+        if sid not in seen:
+            result.append({'label': nick, 'spot_id': sid})
+            seen.add(sid)
+    for sid in registered:
+        if sid not in seen and len(result) < 10:
+            spot = find_spot_by_id(sid)
+            display = _auto_display_name(spot) if spot else sid
+            result.append({'label': display, 'spot_id': sid})
+            seen.add(sid)
+    return result
+
+
+def _execute_intent(source_type: str, source_id: str,
+                    spot_id: str, label: str, intent: str) -> str:
+    """Execute a forecast or record action for a specific spot."""
+    if intent == 'record':
+        pa = {
+            'type': 'record', 'step': 'ask_date',
+            'nickname': label, 'spot_id': spot_id,
+            'date': None, 'result': None, 'stop_cause': None,
+        }
+        try:
+            set_pending_action(source_type, source_id, pa)
+        except Exception:
+            logger.exception('_execute_intent: set_pending_action failed for record')
+        return (
+            f'✓ 干場: {label}（{spot_id}）\n\n'
+            '📅 何日の記録ですか？\n'
+            '例: 今日、昨日、5/18\n（未来の日付は登録できません）\n'
+            '「キャンセル」で中止'
+        )
+    spot = find_spot_by_id(spot_id)
+    if not spot:
+        return f'{label}: 見つかりませんでした。'
+    forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
+    if intent == 'today':
+        return format_single_day(label, forecasts[0]) if forecasts else f'{label}: 予報取得失敗'
+    if intent == 'tomorrow':
+        return format_single_day(label, forecasts[1]) if len(forecasts) > 1 else f'{label}: 予報取得失敗'
+    if intent == 'weekly':
+        return format_weekly_summary(label, forecasts) if forecasts else f'{label}: 予報取得失敗'
+    return handle_unknown()
+
+
+def handle_select_spot(source_type: str, source_id: str, intent: str):
+    """Route based on registered spot count.
+
+    Returns str for 0/1 spots, dict {text, quick_reply} for 2+ spots.
+    """
+    choices = _collect_user_spots(source_type, source_id)
+    if not choices:
+        return _no_registration_hint()
+    if len(choices) == 1:
+        return _execute_intent(source_type, source_id,
+                               choices[0]['spot_id'], choices[0]['label'], intent)
+
+    intent_label = {
+        'today': '今日の予報',
+        'tomorrow': '明日の予報',
+        'weekly': '今週の予報',
+        'record': '乾燥記録',
+    }.get(intent, intent)
+
+    lines = [f'📍 {intent_label}の干場を選んでください：']
+    for i, c in enumerate(choices, 1):
+        lines.append(f'{i}. {c["label"]}')
+    lines.append('\n番号またはボタンで選択 / 「キャンセル」で中止')
+
+    quick_items = [{'label': c['label'][:20], 'text': c['label']} for c in choices]
+    quick_items.append({'label': '新たな干場を登録', 'text': '新たな干場を登録'})
+
+    try:
+        set_pending_action(source_type, source_id, {
+            'type': 'select_spot',
+            'intent': intent,
+            'choices': choices,
+        })
+    except Exception:
+        logger.exception('handle_select_spot: set_pending_action failed')
+
+    return {'text': '\n'.join(lines), 'quick_reply': quick_items}
+
+
+def handle_select_spot_flow(source_type: str, source_id: str, text: str):
+    """Handle user reply during spot selection (select_spot pending action)."""
+    pa = get_pending_action(source_type, source_id)
+    if not pa or pa.get('type') != 'select_spot':
+        return handle_unknown()
+
+    if text in ('キャンセル', 'cancel', 'Cancel', 'やめる', '中止'):
+        clear_pending_action(source_type, source_id)
+        return '操作をキャンセルしました。'
+
+    if text == '新たな干場を登録':
+        clear_pending_action(source_type, source_id)
+        return (
+            '干場を登録するには:\n\n'
+            '① Webアプリで地図から干場を選択\n'
+            '② 「LINEで通知登録」ボタンをタップ\n'
+            '呼び名も自動で登録されます。\n\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/'
+        )
+
+    choices = pa.get('choices', [])
+    intent = pa.get('intent', 'today')
+
+    if text.isdigit():
+        idx = int(text) - 1
+        if 0 <= idx < len(choices):
+            c = choices[idx]
+            clear_pending_action(source_type, source_id)
+            return _execute_intent(source_type, source_id, c['spot_id'], c['label'], intent)
+        return f'1〜{len(choices)}の番号で入力してください。\n「キャンセル」で中止'
+
+    for c in choices:
+        if text in (c['label'], c['spot_id']):
+            clear_pending_action(source_type, source_id)
+            return _execute_intent(source_type, source_id, c['spot_id'], c['label'], intent)
+
+    return (
+        f'「{text}」が見つかりませんでした。\n'
+        f'番号（1〜{len(choices)}）またはボタンで選択してください。\n'
+        '「キャンセル」で中止'
+    )
+
+
 def handle_today(source_type: str, source_id: str) -> str:
     spots = _get_sub_spots(source_type, source_id)
     if not spots:
         return _no_registration_hint()
     msgs = []
     for spot in spots[:3]:  # limit to 3 spots per message
+        display = _get_spot_label(source_type, source_id, spot['name'])
         forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
         if forecasts:
-            msgs.append(format_single_day(spot['name'], forecasts[0]))
+            msgs.append(format_single_day(display, forecasts[0]))
         else:
-            msgs.append(f"{spot['name']}: 予報取得失敗")
+            msgs.append(f'{display}: 予報取得失敗')
     return '\n\n'.join(msgs)
 
 
@@ -1096,11 +1311,12 @@ def handle_tomorrow(source_type: str, source_id: str) -> str:
         return _no_registration_hint()
     msgs = []
     for spot in spots[:3]:
+        display = _get_spot_label(source_type, source_id, spot['name'])
         forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
         if len(forecasts) > 1:
-            msgs.append(format_single_day(spot['name'], forecasts[1]))
+            msgs.append(format_single_day(display, forecasts[1]))
         else:
-            msgs.append(f"{spot['name']}: 予報取得失敗")
+            msgs.append(f'{display}: 予報取得失敗')
     return '\n\n'.join(msgs)
 
 
@@ -1110,11 +1326,12 @@ def handle_weekly(source_type: str, source_id: str) -> str:
         return _no_registration_hint()
     msgs = []
     for spot in spots[:2]:  # weekly is longer, limit to 2
+        display = _get_spot_label(source_type, source_id, spot['name'])
         forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
         if forecasts:
-            msgs.append(format_weekly_summary(spot['name'], forecasts))
+            msgs.append(format_weekly_summary(display, forecasts))
         else:
-            msgs.append(f"{spot['name']}: 予報取得失敗")
+            msgs.append(f'{display}: 予報取得失敗')
     return '\n\n'.join(msgs)
 
 
@@ -1123,9 +1340,10 @@ def handle_spot_query(spot_id: str) -> str:
     if not spot:
         return f'干場 {spot_id} が見つかりません。IDを確認してください。'
     forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
+    display = _auto_display_name(spot)
     if not forecasts:
-        return f'{spot_id}: 予報データを取得できませんでした。'
-    return format_weekly_summary(spot['name'], forecasts)
+        return f'{display}: 予報データを取得できませんでした。'
+    return format_weekly_summary(display, forecasts)
 
 
 def handle_area_query(area: str, day: int | None) -> str:
@@ -1166,7 +1384,8 @@ def handle_area_query(area: str, day: int | None) -> str:
     return format_area_summary(area, target_day, spots_forecasts)
 
 
-def handle_subscribe(source_type: str, source_id: str, target: str) -> str:
+def handle_subscribe(source_type: str, source_id: str, target: str,
+                     nickname: str = '') -> str:
     if not target:
         return '登録する干場IDまたは地区名を入力してください。\n例: 通知登録 H_1631_1434'
 
@@ -1178,13 +1397,24 @@ def handle_subscribe(source_type: str, source_id: str, target: str) -> str:
         sub = get_subscription(source_type, source_id)
         existing = sub['spots'] if sub else []
         if target in existing:
-            return f'{target} はすでに登録済みです。'
+            display = _get_spot_label(source_type, source_id, target)
+            return f'「{display}」はすでに登録済みです。'
         upsert_subscription(source_type, source_id, {
             'spots': existing + [target],
             'notify_enabled': True,
         })
+        # Always save/overwrite nickname when provided (Web app is source of truth)
+        if nickname:
+            sub_after = get_subscription(source_type, source_id)
+            existing_nicks = sub_after.get('spot_nicknames', {}) if sub_after else {}
+            # Remove any old entry mapping a different key to this spot_id first
+            cleaned = {k: v for k, v in existing_nicks.items() if v != target}
+            upsert_subscription(source_type, source_id, {
+                'spot_nicknames': {**cleaned, nickname: target}
+            })
+        display = nickname or _auto_display_name(spot)
         return (
-            f'✓ {target} を通知登録しました。\n'
+            f'✓ 「{display}」を通知登録しました。\n'
             '毎日16:00と01:30に予報をお届けします。\n'
             '「通知解除」で解除できます。'
         )
@@ -1403,14 +1633,16 @@ def notify_all(kind: str) -> dict:
             continue
 
         source_id = sub['source_id']
+        source_type_sub = sub.get('source_type', 'user')
         msgs = []
         for sid in spot_ids[:3]:  # max 3 spots per push to keep message short
             spot = find_spot_by_id(sid)
             if not spot:
                 continue
+            display = _get_spot_label(source_type_sub, source_id, sid)
             fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
             if len(fcs) > day_number:
-                msgs.append(format_single_day(spot['name'], fcs[day_number]))
+                msgs.append(format_single_day(display, fcs[day_number]))
 
         if not msgs:
             skipped += 1
@@ -1492,13 +1724,19 @@ def process_event(event: dict) -> None:
 
     # If there is an active pending action, route all text through the flow.
     # Exception: 'ヘルプ' still shows help (with cancel hint appended).
-    if get_pending_action(source_type, source_id):
+    pa = get_pending_action(source_type, source_id)
+    if pa:
         if text in ('ヘルプ', 'help', 'HELP', '?', '？', 'コマンド'):
             response = handle_help() + '\n\n「キャンセル」で現在の操作を中止できます。'
+        elif pa.get('type') == 'select_spot':
+            response = handle_select_spot_flow(source_type, source_id, text)
         else:
             response = handle_record_flow(source_type, source_id, text)
         if reply_token and response:
-            reply_text(reply_token, response)
+            if isinstance(response, dict):
+                reply_with_quick_reply(reply_token, response['text'], response['quick_reply'])
+            else:
+                reply_text(reply_token, response)
         return
 
     cmd = parse_command(text)
@@ -1506,11 +1744,11 @@ def process_event(event: dict) -> None:
     if cmd['cmd'] == 'help':
         response = handle_help()
     elif cmd['cmd'] == 'today':
-        response = handle_today(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'today')
     elif cmd['cmd'] == 'tomorrow':
-        response = handle_tomorrow(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'tomorrow')
     elif cmd['cmd'] in ('weekly', 'day') and cmd.get('day') is None:
-        response = handle_weekly(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'weekly')
     elif cmd['cmd'] == 'day':
         # "明後日" etc. — treat as area-less day query
         spots = _get_sub_spots(source_type, source_id)
@@ -1519,21 +1757,23 @@ def process_event(event: dict) -> None:
         else:
             msgs = []
             for spot in spots[:3]:
+                display = _get_spot_label(source_type, source_id, spot['name'])
                 fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
                 d = cmd.get('day', 0)
                 if len(fcs) > d:
-                    msgs.append(format_single_day(spot['name'], fcs[d]))
+                    msgs.append(format_single_day(display, fcs[d]))
             response = '\n\n'.join(msgs) if msgs else '予報取得失敗'
     elif cmd['cmd'] == 'spot':
         response = handle_spot_query(cmd['spot_id'])
     elif cmd['cmd'] == 'area':
         response = handle_area_query(cmd['area'], cmd.get('day'))
     elif cmd['cmd'] == 'subscribe':
-        response = handle_subscribe(source_type, source_id, cmd['target'])
+        response = handle_subscribe(source_type, source_id, cmd['target'],
+                                    cmd.get('nickname', ''))
     elif cmd['cmd'] == 'unsubscribe':
         response = handle_unsubscribe(source_type, source_id)
     elif cmd['cmd'] == 'record_start':
-        response = handle_record_start(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'record')
     elif cmd['cmd'] == 'register_spot':
         response = handle_register_spot_nickname(
             source_type, source_id, cmd.get('nickname', ''), cmd.get('spot_id', ''))
@@ -1553,7 +1793,10 @@ def process_event(event: dict) -> None:
         response = handle_unknown()
 
     if reply_token and response:
-        reply_text(reply_token, response)
+        if isinstance(response, dict):
+            reply_with_quick_reply(reply_token, response['text'], response['quick_reply'])
+        else:
+            reply_text(reply_token, response)
 
 # ---------------------------------------------------------------------------
 # Flask endpoint helpers (called from start.py routes)

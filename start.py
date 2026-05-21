@@ -2245,6 +2245,31 @@ def _hum_category(hum) -> str:
     if hum >= 85: return 'fair'
     return 'good'
 
+def _solar_color(solar) -> str:
+    if solar is None: return '#adb5bd'
+    if solar >= 400: return '#1f9d55'
+    if solar >= 50:  return '#f2c94c'
+    return '#d64545'
+
+def _solar_category(solar) -> str:
+    if solar is None: return 'unknown'
+    if solar >= 400: return 'excellent'
+    if solar >= 50:  return 'fair'
+    return 'poor'
+
+def _temp_color(temp) -> str:
+    """Color by temperature (°C): ≥20 warm/orange, 10-19 moderate/green, <10 cool/blue."""
+    if temp is None: return '#adb5bd'
+    if temp >= 20: return '#e07b39'
+    if temp >= 10: return '#1f9d55'
+    return '#4a90d9'
+
+def _temp_category(temp) -> str:
+    if temp is None: return 'unknown'
+    if temp >= 20: return 'warm'
+    if temp >= 10: return 'moderate'
+    return 'cool'
+
 
 def _compute_score_field(day: int) -> dict:
     """Compute drying score for all 334 spots with a single Open-Meteo request."""
@@ -2492,6 +2517,110 @@ def _compute_humidity_field(day: int, hour: int) -> dict:
     }
 
 
+def _compute_solar_field(day: int, hour: int) -> dict:
+    """Compute shortwave radiation (W/m²) for 5x5 grid. No terrain correction applied."""
+    target_date = _field_target_date(day)
+    target_time = f'{target_date}T{hour:02d}:00'
+
+    grid = _build_rishiri_grid(5, 5)
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
+
+    try:
+        api_results = _fetch_open_meteo_multi(lats, lons, ['shortwave_radiation'])
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    points = []
+    for i, (g, api_data) in enumerate(zip(grid, api_results)):
+        hourly = api_data.get('hourly', {})
+        times  = hourly.get('time', [])
+        try:
+            idx = times.index(target_time)
+        except ValueError:
+            idx = None
+
+        raw = hourly.get('shortwave_radiation', [None])[idx] if idx is not None else None
+        solar = round(raw) if raw is not None else None
+
+        display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+        points.append({
+            'name':     display_name,
+            'lat':      round(g['lat'], 4),
+            'lon':      round(g['lon'], 4),
+            'value':    solar,
+            'color':    _solar_color(solar),
+            'category': _solar_category(solar),
+        })
+
+    return {
+        'hour': hour,
+        'thresholds': {'excellent': 400, 'poor': 50},
+        'legend': {
+            'unit': 'W/m²',
+            'stops': [
+                {'value': 400, 'label': '400+ W/m² 乾燥促進', 'color': '#1f9d55'},
+                {'value': 50,  'label': '50〜399 W/m² 曇天',  'color': '#f2c94c'},
+                {'value': 0,   'label': '50未満 W/m² 乾燥困難', 'color': '#d64545'},
+            ],
+        },
+        'correction_note': '地形補正なし（Open-Meteo MSM/GSM の日射量をそのまま表示）',
+        'points': points,
+    }
+
+
+def _compute_temperature_field(day: int, hour: int) -> dict:
+    """Compute temperature (°C) for 5x5 grid. Open-Meteo already applies elevation correction."""
+    target_date = _field_target_date(day)
+    target_time = f'{target_date}T{hour:02d}:00'
+
+    grid = _build_rishiri_grid(5, 5)
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
+
+    try:
+        api_results = _fetch_open_meteo_multi(lats, lons, ['temperature_2m'])
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    points = []
+    for i, (g, api_data) in enumerate(zip(grid, api_results)):
+        hourly = api_data.get('hourly', {})
+        times  = hourly.get('time', [])
+        try:
+            idx = times.index(target_time)
+        except ValueError:
+            idx = None
+
+        raw  = hourly.get('temperature_2m', [None])[idx] if idx is not None else None
+        temp = round(raw, 1) if raw is not None else None
+
+        display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+        points.append({
+            'name':     display_name,
+            'lat':      round(g['lat'], 4),
+            'lon':      round(g['lon'], 4),
+            'value':    temp,
+            'color':    _temp_color(temp),
+            'category': _temp_category(temp),
+        })
+
+    return {
+        'hour': hour,
+        'thresholds': {'warm': 20, 'cool': 10},
+        'legend': {
+            'unit': '°C',
+            'stops': [
+                {'value': 20, 'label': '20°C以上 温暖',    'color': '#e07b39'},
+                {'value': 10, 'label': '10〜19°C 適温',    'color': '#1f9d55'},
+                {'value': 0,  'label': '10°C未満 低温',    'color': '#4a90d9'},
+            ],
+        },
+        'correction_note': 'Open-Meteoが標高補正済み（0.7°C/100m）のため独自補正なし',
+        'points': points,
+    }
+
+
 @app.route('/api/analysis/field')
 def get_analysis_field():
     """
@@ -2547,12 +2676,10 @@ def get_analysis_field():
         data = _compute_wind_field(day, hour)
     elif field_type == 'humidity':
         data = _compute_humidity_field(day, hour)
-    else:
-        return jsonify({
-            'status':  'not_implemented',
-            'type':    field_type,
-            'message': f'{field_type} は次のリリースで実装予定です',
-        }), 501
+    elif field_type == 'solar':
+        data = _compute_solar_field(day, hour)
+    elif field_type == 'temperature':
+        data = _compute_temperature_field(day, hour)
 
     if 'error' in data:
         return jsonify({'status': 'error', 'message': data['error']}), 503
