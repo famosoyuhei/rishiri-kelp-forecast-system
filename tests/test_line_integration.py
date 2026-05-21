@@ -852,7 +852,7 @@ def test_record_start_generates_reply_via_process_event(tmp_sub_file, monkeypatc
 
 
 def test_record_start_generates_reply_for_kanji_alias(tmp_sub_file, monkeypatch):
-    """'乾燥記録' alias also produces a reply (covers parse_command path)."""
+    """'乾燥記録' with 0 spots returns registration hint (not the record prompt)."""
     li.upsert_subscription("user", "U_rec2", {})
     sent_replies = []
     monkeypatch.setattr(li, "reply_text", lambda t, txt: sent_replies.append(txt))
@@ -866,4 +866,177 @@ def test_record_start_generates_reply_for_kanji_alias(tmp_sub_file, monkeypatch)
     li.process_event(event)
 
     assert sent_replies, "'乾燥記録' must produce a LINE reply"
-    assert "キャンセル" in sent_replies[0]
+    assert "登録" in sent_replies[0]  # 0 spots → registration hint
+
+
+# ---------------------------------------------------------------------------
+# handle_select_spot / handle_select_spot_flow — Quick Reply UX
+# ---------------------------------------------------------------------------
+
+def test_select_spot_zero_spots_returns_hint(tmp_sub_file):
+    """0 registered spots → registration hint string."""
+    li.upsert_subscription("user", "U_qs0", {})
+    result = li.handle_select_spot("user", "U_qs0", "today")
+    assert isinstance(result, str)
+    assert "登録" in result
+
+
+def test_select_spot_one_spot_executes_directly(tmp_sub_file, monkeypatch):
+    """1 registered spot → execute intent immediately (no Quick Reply)."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [{"date": "2026-07-01", "day_number": 0,
+                                           "suitability": "good", "score": 80,
+                                           "precipitation": 0, "min_humidity": 70,
+                                           "avg_wind": 3.5, "pop": None}])
+    li.upsert_subscription("user", "U_qs1", {"spots": ["H_1631_1434"]})
+    result = li.handle_select_spot("user", "U_qs1", "today")
+    assert isinstance(result, str)
+    assert "H_1631_1434" in result or "予報" in result
+
+
+def test_select_spot_two_spots_returns_quick_reply_dict(tmp_sub_file):
+    """2 registered spots → dict with text + quick_reply list."""
+    li.upsert_subscription("user", "U_qs2", {
+        "spot_nicknames": {"浜の前": "H_1631_1434", "岬": "H_2000_1500"},
+    })
+    result = li.handle_select_spot("user", "U_qs2", "today")
+    assert isinstance(result, dict), "2 spots must return a dict (Quick Reply)"
+    assert "text" in result and "quick_reply" in result
+    labels = [item["label"] for item in result["quick_reply"]]
+    assert "浜の前" in labels
+    assert "岬" in labels
+    assert "新たな干場を登録" in labels
+    # pending action must be set
+    pa = li.get_pending_action("user", "U_qs2")
+    assert pa is not None
+    assert pa["type"] == "select_spot"
+    assert pa["intent"] == "today"
+
+
+def test_select_spot_flow_number_selects_choice(tmp_sub_file, monkeypatch):
+    """Typing '1' during spot selection picks the first choice."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [{"date": "2026-07-01", "day_number": 0,
+                                           "suitability": "good", "score": 80,
+                                           "precipitation": 0, "min_humidity": 70,
+                                           "avg_wind": 3.5, "pop": None}])
+    li.upsert_subscription("user", "U_qsf", {
+        "spot_nicknames": {"浜の前": "H_1631_1434", "岬": "H_2000_1500"},
+    })
+    li.set_pending_action("user", "U_qsf", {
+        "type": "select_spot",
+        "intent": "today",
+        "choices": [
+            {"label": "浜の前", "spot_id": "H_1631_1434"},
+            {"label": "岬", "spot_id": "H_2000_1500"},
+        ],
+    })
+    result = li.handle_select_spot_flow("user", "U_qsf", "1")
+    assert isinstance(result, str)
+    # pending action cleared
+    assert li.get_pending_action("user", "U_qsf") is None
+
+
+def test_select_spot_flow_new_spot_registration(tmp_sub_file):
+    """'新たな干場を登録' returns URL and clears pending action."""
+    li.upsert_subscription("user", "U_qsr", {})
+    li.set_pending_action("user", "U_qsr", {
+        "type": "select_spot", "intent": "today",
+        "choices": [{"label": "浜", "spot_id": "H_1631_1434"}],
+    })
+    result = li.handle_select_spot_flow("user", "U_qsr", "新たな干場を登録")
+    assert isinstance(result, str)
+    assert "onrender.com" in result
+    assert li.get_pending_action("user", "U_qsr") is None
+
+
+def test_select_spot_record_intent_leads_to_ask_date(tmp_sub_file):
+    """Selecting a spot for 'record' intent jumps to ask_date step."""
+    li.upsert_subscription("user", "U_qsrec", {
+        "spot_nicknames": {"浜の前": "H_1631_1434", "岬": "H_2000_1500"},
+    })
+    li.set_pending_action("user", "U_qsrec", {
+        "type": "select_spot", "intent": "record",
+        "choices": [
+            {"label": "浜の前", "spot_id": "H_1631_1434"},
+            {"label": "岬", "spot_id": "H_2000_1500"},
+        ],
+    })
+    result = li.handle_select_spot_flow("user", "U_qsrec", "浜の前")
+    assert isinstance(result, str)
+    assert "日付" in result or "記録" in result
+    pa = li.get_pending_action("user", "U_qsrec")
+    assert pa is not None
+    assert pa["type"] == "record"
+    assert pa["step"] == "ask_date"
+    assert pa["spot_id"] == "H_1631_1434"
+
+
+def test_process_event_today_two_spots_calls_quick_reply(tmp_sub_file, monkeypatch):
+    """process_event '今日' with 2 spots calls reply_with_quick_reply (not reply_text)."""
+    li.upsert_subscription("user", "U_qse", {
+        "spot_nicknames": {"浜の前": "H_1631_1434", "岬": "H_2000_1500"},
+    })
+    qr_calls = []
+    monkeypatch.setattr(li, "reply_with_quick_reply",
+                        lambda token, text, items: qr_calls.append((token, text, items)))
+    monkeypatch.setattr(li, "reply_text", lambda *a: None)
+
+    event = {
+        "type": "message",
+        "replyToken": "tok_qr",
+        "source": {"type": "user", "userId": "U_qse"},
+        "message": {"type": "text", "text": "今日"},
+    }
+    li.process_event(event)
+
+    assert len(qr_calls) == 1, "reply_with_quick_reply must be called once"
+    token, text, items = qr_calls[0]
+    assert token == "tok_qr"
+    assert "干場" in text or "予報" in text
+    labels = [i["label"] for i in items]
+    assert "浜の前" in labels
+    assert "新たな干場を登録" in labels
+
+
+def test_select_spot_quick_reply_returned_even_if_storage_fails(tmp_sub_file, monkeypatch):
+    """If set_pending_action raises during select_spot, the Quick Reply dict is
+    still returned and reply_with_quick_reply is still called via process_event.
+
+    This guards the same class of silent-no-reply bug that hit handle_record_start:
+    a storage error must never swallow the outbound LINE reply.
+    """
+    li.upsert_subscription("user", "U_qsfail", {
+        "spot_nicknames": {"浜の前": "H_1631_1434", "岬": "H_2000_1500"},
+    })
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated Upstash failure")
+
+    monkeypatch.setattr(li, "set_pending_action", _boom)
+
+    # Direct call: dict must still be returned
+    result = li.handle_select_spot("user", "U_qsfail", "today")
+    assert isinstance(result, dict), "Quick Reply dict must be returned even on storage failure"
+    assert "text" in result and "quick_reply" in result
+
+    # End-to-end via process_event: reply_with_quick_reply must still be called
+    qr_calls = []
+    monkeypatch.setattr(li, "reply_with_quick_reply",
+                        lambda token, text, items: qr_calls.append((token, text, items)))
+    monkeypatch.setattr(li, "reply_text", lambda *a: None)
+
+    event = {
+        "type": "message",
+        "replyToken": "tok_fail",
+        "source": {"type": "user", "userId": "U_qsfail"},
+        "message": {"type": "text", "text": "今日"},
+    }
+    li.process_event(event)
+
+    assert len(qr_calls) == 1, "reply_with_quick_reply must be called despite storage failure"
+    assert qr_calls[0][0] == "tok_fail"

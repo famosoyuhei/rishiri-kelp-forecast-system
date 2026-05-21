@@ -916,6 +916,46 @@ def push_text(to: str, text: str) -> bool:
         logger.error('LINE push exception to %s: %s', masked, e)
         return False
 
+
+def reply_with_quick_reply(reply_token: str, text: str, items: list) -> bool:
+    """Send reply with Quick Reply buttons. items: [{label, text}, ...]."""
+    if not _cfg()['token']:
+        logger.warning('LINE_CHANNEL_ACCESS_TOKEN not set; quick reply skipped')
+        return False
+    quick_reply_items = [
+        {
+            'type': 'action',
+            'action': {
+                'type': 'message',
+                'label': item['label'][:20],
+                'text': item['text'],
+            },
+        }
+        for item in items[:13]  # LINE max 13 Quick Reply items
+    ]
+    payload = {
+        'replyToken': reply_token,
+        'messages': [{
+            'type': 'text',
+            'text': text[:5000],
+            'quickReply': {'items': quick_reply_items},
+        }],
+    }
+    try:
+        resp = _requests.post(
+            f'{LINE_MESSAGING_API}/reply',
+            headers=_line_headers(),
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.error('LINE quick reply failed %s: %s', resp.status_code, resp.text)
+            return False
+        return True
+    except Exception as e:
+        logger.error('LINE quick reply exception: %s', e)
+        return False
+
 # ---------------------------------------------------------------------------
 # Command parser (public for unit testing)
 # ---------------------------------------------------------------------------
@@ -1073,6 +1113,144 @@ def _no_registration_hint() -> str:
         'https://rishiri-kelp-forecast-system.onrender.com/\n\n'
         '干場IDがわかる場合は直接入力:\n'
         '「通知登録 H_1631_1434」'
+    )
+
+
+def _collect_user_spots(source_type: str, source_id: str) -> list:
+    """Return [{label, spot_id}] combining nicknames (preferred) and subscribed spots."""
+    sub = get_subscription(source_type, source_id)
+    if not sub:
+        return []
+    nicknames = sub.get('spot_nicknames', {})  # {nickname: spot_id}
+    registered = sub.get('spots', [])
+    result = []
+    seen = set()
+    for nick, sid in list(nicknames.items())[:10]:
+        if sid not in seen:
+            result.append({'label': nick, 'spot_id': sid})
+            seen.add(sid)
+    for sid in registered:
+        if sid not in seen and len(result) < 10:
+            result.append({'label': sid, 'spot_id': sid})
+            seen.add(sid)
+    return result
+
+
+def _execute_intent(source_type: str, source_id: str,
+                    spot_id: str, label: str, intent: str) -> str:
+    """Execute a forecast or record action for a specific spot."""
+    if intent == 'record':
+        pa = {
+            'type': 'record', 'step': 'ask_date',
+            'nickname': label, 'spot_id': spot_id,
+            'date': None, 'result': None, 'stop_cause': None,
+        }
+        try:
+            set_pending_action(source_type, source_id, pa)
+        except Exception:
+            logger.exception('_execute_intent: set_pending_action failed for record')
+        return (
+            f'✓ 干場: {label}（{spot_id}）\n\n'
+            '📅 何日の記録ですか？\n'
+            '例: 今日、昨日、5/18\n（未来の日付は登録できません）\n'
+            '「キャンセル」で中止'
+        )
+    spot = find_spot_by_id(spot_id)
+    if not spot:
+        return f'{spot_id} が見つかりませんでした。'
+    forecasts = get_forecast_for_spot(spot['lat'], spot['lon'])
+    if intent == 'today':
+        return format_single_day(spot['name'], forecasts[0]) if forecasts else f'{label}: 予報取得失敗'
+    if intent == 'tomorrow':
+        return format_single_day(spot['name'], forecasts[1]) if len(forecasts) > 1 else f'{label}: 予報取得失敗'
+    if intent == 'weekly':
+        return format_weekly_summary(spot['name'], forecasts) if forecasts else f'{label}: 予報取得失敗'
+    return handle_unknown()
+
+
+def handle_select_spot(source_type: str, source_id: str, intent: str):
+    """Route based on registered spot count.
+
+    Returns str for 0/1 spots, dict {text, quick_reply} for 2+ spots.
+    """
+    choices = _collect_user_spots(source_type, source_id)
+    if not choices:
+        return _no_registration_hint()
+    if len(choices) == 1:
+        return _execute_intent(source_type, source_id,
+                               choices[0]['spot_id'], choices[0]['label'], intent)
+
+    intent_label = {
+        'today': '今日の予報',
+        'tomorrow': '明日の予報',
+        'weekly': '今週の予報',
+        'record': '乾燥記録',
+    }.get(intent, intent)
+
+    lines = [f'📍 {intent_label}の干場を選んでください：']
+    for i, c in enumerate(choices, 1):
+        if c['label'] == c['spot_id']:
+            lines.append(f'{i}. {c["spot_id"]}')
+        else:
+            lines.append(f'{i}. {c["label"]}（{c["spot_id"]}）')
+    lines.append('\n番号またはボタンで選択 / 「キャンセル」で中止')
+
+    quick_items = [{'label': c['label'][:20], 'text': c['label']} for c in choices]
+    quick_items.append({'label': '新たな干場を登録', 'text': '新たな干場を登録'})
+
+    try:
+        set_pending_action(source_type, source_id, {
+            'type': 'select_spot',
+            'intent': intent,
+            'choices': choices,
+        })
+    except Exception:
+        logger.exception('handle_select_spot: set_pending_action failed')
+
+    return {'text': '\n'.join(lines), 'quick_reply': quick_items}
+
+
+def handle_select_spot_flow(source_type: str, source_id: str, text: str):
+    """Handle user reply during spot selection (select_spot pending action)."""
+    pa = get_pending_action(source_type, source_id)
+    if not pa or pa.get('type') != 'select_spot':
+        return handle_unknown()
+
+    if text in ('キャンセル', 'cancel', 'Cancel', 'やめる', '中止'):
+        clear_pending_action(source_type, source_id)
+        return '操作をキャンセルしました。'
+
+    if text == '新たな干場を登録':
+        clear_pending_action(source_type, source_id)
+        return (
+            '干場を登録するには:\n\n'
+            '① Webアプリで地図から干場を選択\n'
+            '② 「LINEで通知登録」ボタンをタップ\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/\n\n'
+            '干場IDがわかる場合:\n'
+            '「通知登録 H_1631_1434」'
+        )
+
+    choices = pa.get('choices', [])
+    intent = pa.get('intent', 'today')
+
+    if text.isdigit():
+        idx = int(text) - 1
+        if 0 <= idx < len(choices):
+            c = choices[idx]
+            clear_pending_action(source_type, source_id)
+            return _execute_intent(source_type, source_id, c['spot_id'], c['label'], intent)
+        return f'1〜{len(choices)}の番号で入力してください。\n「キャンセル」で中止'
+
+    for c in choices:
+        if text in (c['label'], c['spot_id']):
+            clear_pending_action(source_type, source_id)
+            return _execute_intent(source_type, source_id, c['spot_id'], c['label'], intent)
+
+    return (
+        f'「{text}」が見つかりませんでした。\n'
+        f'番号（1〜{len(choices)}）またはボタンで選択してください。\n'
+        '「キャンセル」で中止'
     )
 
 
@@ -1492,13 +1670,19 @@ def process_event(event: dict) -> None:
 
     # If there is an active pending action, route all text through the flow.
     # Exception: 'ヘルプ' still shows help (with cancel hint appended).
-    if get_pending_action(source_type, source_id):
+    pa = get_pending_action(source_type, source_id)
+    if pa:
         if text in ('ヘルプ', 'help', 'HELP', '?', '？', 'コマンド'):
             response = handle_help() + '\n\n「キャンセル」で現在の操作を中止できます。'
+        elif pa.get('type') == 'select_spot':
+            response = handle_select_spot_flow(source_type, source_id, text)
         else:
             response = handle_record_flow(source_type, source_id, text)
         if reply_token and response:
-            reply_text(reply_token, response)
+            if isinstance(response, dict):
+                reply_with_quick_reply(reply_token, response['text'], response['quick_reply'])
+            else:
+                reply_text(reply_token, response)
         return
 
     cmd = parse_command(text)
@@ -1506,11 +1690,11 @@ def process_event(event: dict) -> None:
     if cmd['cmd'] == 'help':
         response = handle_help()
     elif cmd['cmd'] == 'today':
-        response = handle_today(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'today')
     elif cmd['cmd'] == 'tomorrow':
-        response = handle_tomorrow(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'tomorrow')
     elif cmd['cmd'] in ('weekly', 'day') and cmd.get('day') is None:
-        response = handle_weekly(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'weekly')
     elif cmd['cmd'] == 'day':
         # "明後日" etc. — treat as area-less day query
         spots = _get_sub_spots(source_type, source_id)
@@ -1533,7 +1717,7 @@ def process_event(event: dict) -> None:
     elif cmd['cmd'] == 'unsubscribe':
         response = handle_unsubscribe(source_type, source_id)
     elif cmd['cmd'] == 'record_start':
-        response = handle_record_start(source_type, source_id)
+        response = handle_select_spot(source_type, source_id, 'record')
     elif cmd['cmd'] == 'register_spot':
         response = handle_register_spot_nickname(
             source_type, source_id, cmd.get('nickname', ''), cmd.get('spot_id', ''))
@@ -1553,7 +1737,10 @@ def process_event(event: dict) -> None:
         response = handle_unknown()
 
     if reply_token and response:
-        reply_text(reply_token, response)
+        if isinstance(response, dict):
+            reply_with_quick_reply(reply_token, response['text'], response['quick_reply'])
+        else:
+            reply_text(reply_token, response)
 
 # ---------------------------------------------------------------------------
 # Flask endpoint helpers (called from start.py routes)
