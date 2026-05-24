@@ -38,6 +38,7 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.matplotlib-cache/
 nosetests.xml
 coverage.xml
 *.cover
@@ -156,3 +157,7 @@ Thumbs.db
 
 # Optional eslint cache
 .eslintcache
+
+# Claude Code internal files (session permissions, worktrees)
+.claude/settings.local.json
+.claude/worktrees/

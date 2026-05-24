@@ -11,9 +11,15 @@ import requests
 import pandas as pd
 import json
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from scipy.optimize import fsolve
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MPL_CONFIG_DIR = os.path.join(BASE_DIR, ".matplotlib-cache")
+os.environ.setdefault("MPLCONFIGDIR", MPL_CONFIG_DIR)
+os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
+
 import matplotlib
 matplotlib.use('Agg')  # バックエンド設定（GUI不要）
 import matplotlib.pyplot as plt
@@ -25,11 +31,17 @@ import base64
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
-CSV_FILE = "hoshiba_spots.csv"
-RECORD_FILE = "hoshiba_records.csv"
-KML_FILE = "hoshiba_spots_named.kml"
-JS_ARRAY_FILE = "all_spots_array.js"
+# Configuration — all paths are BASE_DIR-relative so the app works regardless of cwd
+CSV_FILE             = os.path.join(BASE_DIR, "hoshiba_spots.csv")
+RECORD_FILE          = os.path.join(BASE_DIR, "hoshiba_records.csv")
+KML_FILE             = os.path.join(BASE_DIR, "hoshiba_spots_named.kml")
+JS_ARRAY_FILE        = os.path.join(BASE_DIR, "all_spots_array.js")
+USER_FAVORITES_FILE  = os.path.join(BASE_DIR, "user_favorites.json")
+NOTIFICATION_FILE    = os.path.join(BASE_DIR, "notification_users.json")
+FORECAST_HISTORY_DIR = os.path.join(BASE_DIR, "forecast_history")
+AMEDAS_DATA_DIR      = os.path.join(BASE_DIR, "amedas_data")
+LOCK_DIR             = os.path.join(BASE_DIR, "edit_locks")
+os.makedirs(LOCK_DIR, exist_ok=True)
 
 # ============================================================================
 # Theta-e Correction System (相当温位保存による気象補正)
@@ -454,19 +466,19 @@ def sync_all_files_from_csv():
 @app.route('/dashboard')
 def dashboard():
     """Serve the dashboard"""
-    return send_file('dashboard.html')
+    return send_file(os.path.join(BASE_DIR, 'dashboard.html'))
 
 @app.route('/mobile')
 def mobile():
     """Serve mobile interface"""
-    return send_file('mobile_forecast_interface.html')
+    return send_file(os.path.join(BASE_DIR, 'mobile_forecast_interface.html'))
 
 @app.route("/drying-map")
 @app.route("/map")
 @app.route("/")
 def drying_map():
     """Serve the unified kelp drying map (production version with all features)"""
-    response = send_file("kelp_drying_map.html")
+    response = send_file(os.path.join(BASE_DIR, "kelp_drying_map.html"))
     # Prevent caching to ensure users always get the latest version
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
@@ -477,39 +489,39 @@ def drying_map():
 @app.route('/all_spots_array.js')
 def serve_all_spots_js():
     """Serve the all_spots_array.js file"""
-    return send_file('all_spots_array.js', mimetype='application/javascript')
+    return send_file(os.path.join(BASE_DIR, 'all_spots_array.js'), mimetype='application/javascript')
 
 @app.route('/rishiri_wind_names.js')
 def serve_wind_names_js():
     """Serve the rishiri_wind_names.js file"""
-    return send_file('rishiri_wind_names.js', mimetype='application/javascript')
+    return send_file(os.path.join(BASE_DIR, 'rishiri_wind_names.js'), mimetype='application/javascript')
 
 @app.route('/manifest.json')
 def serve_manifest():
     """Serve the PWA manifest file"""
-    response = send_file('manifest.json', mimetype='application/manifest+json')
+    response = send_file(os.path.join(BASE_DIR, 'manifest.json'), mimetype='application/manifest+json')
     response.headers['Cache-Control'] = 'no-cache'
     return response
 
 @app.route('/service-worker.js')
 def serve_service_worker():
     """Serve the service worker for PWA and offline functionality"""
-    return send_file('service-worker.js', mimetype='application/javascript')
+    return send_file(os.path.join(BASE_DIR, 'service-worker.js'), mimetype='application/javascript')
 
 @app.route('/offline.html')
 def serve_offline():
     """Serve the offline fallback page"""
-    return send_file('offline.html')
+    return send_file(os.path.join(BASE_DIR, 'offline.html'))
 
 @app.route('/static/icons/<path:filename>')
 def serve_icon(filename):
     """Serve PWA icon files"""
-    return send_file(f'static/icons/{filename}')
+    return send_from_directory(os.path.join(BASE_DIR, 'static', 'icons'), filename)
 
 @app.route('/favicon.svg')
 def serve_favicon():
     """Serve the favicon"""
-    return send_file('favicon.svg', mimetype='image/svg+xml')
+    return send_file(os.path.join(BASE_DIR, 'favicon.svg'), mimetype='image/svg+xml')
 
 @app.route('/api/info')
 def api_info():
@@ -640,7 +652,7 @@ def get_jma_warnings():
         }, 503
 
 
-SEASONAL_OUTLOOK_FILE = os.path.join(os.path.dirname(__file__), 'seasonal_outlook.json')
+SEASONAL_OUTLOOK_FILE = os.path.join(BASE_DIR, 'seasonal_outlook.json')
 
 @app.route('/api/seasonal_outlook', methods=['GET'])
 def get_seasonal_outlook():
@@ -686,7 +698,7 @@ def update_seasonal_outlook():
 def _save_forecast_history(spot_name, forecasts):
     """Save each day's forecast to forecast_history/ for later accuracy comparison."""
     today_str = datetime.now().strftime('%Y%m%d')
-    spot_dir = os.path.join('forecast_history', spot_name)
+    spot_dir = os.path.join(FORECAST_HISTORY_DIR, spot_name)
     os.makedirs(spot_dir, exist_ok=True)
     for fc in forecasts:
         target_date_str = fc['date'].replace('-', '')
@@ -994,6 +1006,45 @@ def get_forecast():
                     0, stage_analysis['overall_score'] - 10
                 )
 
+            # ─── local_risk_adjustments: drying_score への追加補正 ───
+            # CAPE は L976 で score に適用済み。残り3要素（霧・フェーン・SST）を
+            # drying_score にも反映し、stage_analysis.overall_score との整合を高める。
+            # 係数は stage_analysis より控えめ（実測根拠が薄いため）。
+            #
+            # 現行 stage_analysis への適用済み係数（参考）:
+            #   fog:  medium -7 / high -15
+            #   foehn: +3/h max+15
+            #   SST:  high/very_high -10
+            #
+            # drying_score への新規適用係数（控えめ版）:
+            #   fog:  medium -5 / high -10
+            #   foehn: +2/h max+8
+            #   SST:  high/very_high -5
+            _fog_pen   = {'low': 0, 'medium': -5, 'high': -10}.get(fog_summary, 0)
+            _foehn_adj = min(8, foehn_hours * 2)
+            _sst_adj   = -5 if sst_fog_risk in ('very_high', 'high') else 0
+            _local_total = _fog_pen + _foehn_adj + _sst_adj
+            score = max(0, min(100, score + _local_total))
+
+            _risk_notes = []
+            if _fog_pen < 0:
+                _risk_notes.append(f'霧リスク({fog_summary}): {_fog_pen:+d}点')
+            if cape_risk['score_penalty'] < 0:
+                _risk_notes.append(f'CAPE対流リスク({cape_risk["risk"]}): {cape_risk["score_penalty"]:+d}点')
+            if _foehn_adj > 0:
+                _risk_notes.append(f'山背風フェーン({foehn_hours}時間): {_foehn_adj:+d}点')
+            if _sst_adj < 0:
+                _risk_notes.append(f'SST霧リスク({sst_fog_risk}): {_sst_adj:+d}点')
+
+            local_risk_adjustments = {
+                'fog_penalty':      _fog_pen,
+                'cape_penalty':     cape_risk['score_penalty'],
+                'foehn_adjustment': _foehn_adj,
+                'sst_fog_penalty':  _sst_adj,
+                'total_adjustment': _local_total + cape_risk['score_penalty'],
+                'notes':            _risk_notes,
+            }
+
             # --- ソルナー指数 (W9) ---
             try:
                 target_dt = datetime.strptime(date_str, '%Y-%m-%d')
@@ -1004,19 +1055,29 @@ def get_forecast():
             # --- 予報信頼度（日数ベース簡易版、W14）---
             reliability_stars = max(1, 5 - i)  # Day0=5, Day6=1 (概算)
 
-            # Determine suitability based on both traditional score and stage analysis
-            if stage_analysis['overall_score'] >= 80:
+            # Determine suitability based on corrected drying_score (= score).
+            # 旧実装: stage_analysis['overall_score'] を使用 → drying_score と乖離しUIに矛盾が生じた
+            #   例: drying_score=72 なのに suitability='poor'（stage_overall≈0）
+            # 新実装: score（補正済み drying_score）を基準にする → UI整合性を確保。
+            # stage_analysis は 'stage_analysis' フィールドとして内部診断値として保持（変更なし）。
+            # estimated_drying_time は score>=40 の場合に限り stage_analysis の予測値を流用する。
+            if score >= 80:
                 suitability = 'excellent'
                 drying_time = stage_analysis['predicted_completion_time']
-            elif stage_analysis['overall_score'] >= 60:
+            elif score >= 60:
                 suitability = 'good'
                 drying_time = stage_analysis['predicted_completion_time']
-            elif stage_analysis['overall_score'] >= 40:
+            elif score >= 40:
                 suitability = 'fair'
                 drying_time = stage_analysis['predicted_completion_time']
             else:
                 suitability = 'poor'
                 drying_time = '乾燥困難、延期推奨'
+
+            # --- 風速警告 (表示レイヤー _wind_color と整合した4バンド) ---
+            # 平均(wind_speed)ではなく日内最大(max_wind)を使用してピーク強風を捉える
+            _max_wind = stage_analysis.get('conditions_summary', {}).get('max_wind') or wind_speed or 0
+            wind_warning = _make_wind_warning(_max_wind)   # 共通ヘルパーで生成
 
             forecast_day = {
                 'date': date_str,
@@ -1037,12 +1098,14 @@ def get_forecast():
                     'estimated_drying_time': drying_time,
                     'stage_analysis': stage_analysis,
                     # --- 新規リスク評価 ---
-                    'remoistening_risk': remoistening_risk,    # K6: 再吸湿リスク
-                    'cape_risk': cape_risk,                    # W10: 対流不安定リスク
-                    'fog_risk_summary': fog_summary,           # G4: 霧リスク（露点）
-                    'foehn_bonus': foehn_bonus,                # G6: フェーンボーナス点数
-                    'sea_surface_temperature': sst_today,      # W6: 海面水温
-                    'sst_fog_risk': sst_fog_risk,              # W6: SST由来霧リスク
+                    'remoistening_risk': remoistening_risk,        # K6: 再吸湿リスク
+                    'cape_risk': cape_risk,                        # W10: 対流不安定リスク
+                    'wind_warning': wind_warning,                  # 風速警告 (None / caution / danger)
+                    'fog_risk_summary': fog_summary,               # G4: 霧リスク（露点）
+                    'foehn_bonus': foehn_bonus,                    # G6: フェーンボーナス点数
+                    'sea_surface_temperature': sst_today,          # W6: 海面水温
+                    'sst_fog_risk': sst_fog_risk,                  # W6: SST由来霧リスク
+                    'local_risk_adjustments': local_risk_adjustments,  # 霧/CAPE/フェーン/SST補正の集計
                     'solunar': {                               # W9: ソルナー指数
                         'score': solunar_score,
                         'moon_phase': moon_phase_name,
@@ -1074,9 +1137,14 @@ def get_forecast():
         }, 503
 
 def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation, lat, lon,
-                                    avg_solar_radiation=None, pop_max=None):
+                                    avg_solar_radiation=None, pop_max=None, elevation=None):
     """Enhanced drying score with terrain corrections.
     Improved per KOMBU_DRYING_RESEARCH.md §10 (K1/K2/K8) and WINDY_RESEARCH.md §6 (W11).
+
+    Parameters:
+        elevation : 事前取得した標高(m)。None の場合は get_elevation() でAPI取得。
+                    _compute_score_field() はバッチ取得して渡すことで高速化する。
+                    /api/forecast などの個別呼び出しは従来どおり None のままでよい。
     """
     score = 0
 
@@ -1099,10 +1167,20 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
         if humidity < 70: score += 20
         if humidity < 60: score += 10
 
-    # --- 風速: 2.0 m/s 境界層閾値を明示 ---
+    # --- 風速: 4バンド評価（表示レイヤー _wind_color と完全整合） ---
+    # 「強ければ強いほど良い」ではなく「適風域が最大加点」の逆U字型特性。
+    # 2.0 m/s: 境界層が十分に薄化する物理的下限（KOMBU_DRYING_RESEARCH §3）
+    # 6.0 m/s: 作業注意域（干場作業の実態に基づく）
+    # 9.0 m/s: 飛散危険域（昆布・作業道具の飛散リスク）
     if wind_speed is not None:
-        if wind_speed >= 2.0: score += 15  # 境界層十分薄化の下限（物理的根拠）
-        if wind_speed > 3.0:  score += 10
+        if wind_speed < 2.0:
+            pass                 # 弱風: 境界層厚い・乾きにくい → 加点なし
+        elif wind_speed < 6.0:
+            score += 25          # 適風 (2.0〜5.9 m/s): 最大加点
+        elif wind_speed < 9.0:
+            score += 10          # 強め (6.0〜8.9 m/s): 乾燥は進むが作業注意
+        else:
+            score -= 15          # 強風 (≥9.0 m/s): 飛散注意・作業危険 → 減点
 
     # --- 日射量: Deff 7倍効果を反映 (K1) ---
     # 日射400 W/m²以上でDeffが最大7倍向上（KOMBU_DRYING_RESEARCH §3-2）
@@ -1127,7 +1205,10 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
         score += 5  # 海岸：通風増加
         score -= 3  # 海岸：湿度増加
 
-    elevation = get_elevation(lat, lon)
+    if elevation is None:
+        # 個別呼び出し（/api/forecast 等）: Open-Meteo Elevation API で取得
+        elevation = get_elevation(lat, lon)
+    # フィールド分析では _fetch_elevations_batch() で一括取得済みの値が渡される
     if elevation > 100:
         score += int(elevation / 100) * 2
 
@@ -1433,7 +1514,7 @@ def get_spots():
     try:
         import csv
         spots = []
-        with open('hoshiba_spots.csv', 'r', encoding='utf-8') as f:
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 spots.append({
@@ -1587,7 +1668,7 @@ def delete_spot():
         # 制限2: お気に入り登録チェック
         try:
             import json
-            with open('user_favorites.json', 'r', encoding='utf-8') as f:
+            with open(USER_FAVORITES_FILE, 'r', encoding='utf-8') as f:
                 favorites_data = json.load(f)
                 # 全ユーザーのお気に入りをチェック
                 for user_id, user_favorites in favorites_data.items():
@@ -1607,7 +1688,7 @@ def delete_spot():
         # 制限3: 通知設定使用チェック
         try:
             import json
-            with open('notification_users.json', 'r', encoding='utf-8') as f:
+            with open(NOTIFICATION_FILE, 'r', encoding='utf-8') as f:
                 notification_data = json.load(f)
                 # 全ユーザーの通知設定をチェック
                 for user_id, user_config in notification_data.items():
@@ -1627,7 +1708,7 @@ def delete_spot():
         # 制限4: 同時編集ロックチェック（簡易版）
         import os
         from datetime import datetime, timedelta
-        lock_file = f"edit_lock_{name}.tmp"
+        lock_file = os.path.join(LOCK_DIR, f"edit_lock_{name}.tmp")
 
         if os.path.exists(lock_file):
             # ロックファイルの更新時刻を確認
@@ -1698,7 +1779,7 @@ def merge_records_with_spots(records_df, spots_df):
     return merged, orphans
 
 # ── 予報精度フィードバック ──────────────────────────────────────────────────────
-FEEDBACK_FILE = "feedback_log.csv"
+FEEDBACK_FILE = os.path.join(BASE_DIR, "feedback_log.csv")
 FEEDBACK_COLUMNS = [
     "date", "spot_name",
     "actual_result", "actual_label",          # 実記録
@@ -1728,7 +1809,7 @@ def _record_forecast_feedback(name, date_str, result):
         from datetime import datetime as _dt, timezone as _tz2, timedelta as _td2
 
         target_date_str = date_str.replace('-', '')
-        spot_dir = os.path.join('forecast_history', name)
+        spot_dir = os.path.join(FORECAST_HISTORY_DIR, name)
         fc_files = _glob.glob(os.path.join(spot_dir, f'forecast_*_for_{target_date_str}.json'))
 
         if not fc_files:
@@ -2142,10 +2223,82 @@ def _load_all_spots_for_field() -> list:
     return spots
 
 
-def _build_rishiri_grid(rows: int = 5, cols: int = 5) -> list:
-    """Build rows×cols representative grid over Rishiri Island."""
-    lat_min, lat_max = 45.10, 45.27
-    lon_min, lon_max = 141.13, 141.26
+_grid_bounds_cache: dict = {}   # process-lifetime cache; cleared on first call
+
+
+def _compute_grid_bounds() -> dict:
+    """Return lat/lon bounds for the representative grid.
+
+    Algorithm:
+        1. Read hoshiba_spots.csv (CSV_FILE) and compute min/max of all spots.
+        2. Add MARGIN_LAT / MARGIN_LON on each edge.
+        3. Clamp to SAFETY_* limits (generous Rishiri Island outer envelope).
+        4. Cache the result for the process lifetime.
+           – If spots are added well outside the current extent, a server restart
+             will pick up the new bounds automatically.
+        5. Fall back to known Rishiri Island bounds if CSV is unavailable.
+    """
+    global _grid_bounds_cache
+    if _grid_bounds_cache:
+        return _grid_bounds_cache
+
+    MARGIN_LAT   = 0.03   # ≈ 3.3 km north/south buffer
+    MARGIN_LON   = 0.02   # ≈ 1.6 km east/west buffer
+    # Safety limits: outer envelope of Rishiri Island (never go beyond here)
+    SAFETY_LAT_MIN, SAFETY_LAT_MAX = 44.95, 45.40
+    SAFETY_LON_MIN, SAFETY_LON_MAX = 141.05, 141.50
+
+    try:
+        import csv as _csv
+        lats, lons = [], []
+        with open(CSV_FILE, newline='', encoding='utf-8') as f:
+            for row in _csv.DictReader(f):
+                try:
+                    lats.append(float(row['lat']))
+                    lons.append(float(row['lon']))
+                except (KeyError, ValueError):
+                    continue
+
+        if lats and lons:
+            lat_min = max(SAFETY_LAT_MIN, min(lats) - MARGIN_LAT)
+            lat_max = min(SAFETY_LAT_MAX, max(lats) + MARGIN_LAT)
+            lon_min = max(SAFETY_LON_MIN, min(lons) - MARGIN_LON)
+            lon_max = min(SAFETY_LON_MAX, max(lons) + MARGIN_LON)
+            _grid_bounds_cache = {
+                'lat_min': lat_min, 'lat_max': lat_max,
+                'lon_min': lon_min, 'lon_max': lon_max,
+                'source': 'csv',
+                'n_spots': len(lats),
+            }
+            print(f'[grid] bounds from CSV ({len(lats)} spots): '
+                  f'lat {lat_min:.4f}–{lat_max:.4f}, lon {lon_min:.4f}–{lon_max:.4f}')
+            return _grid_bounds_cache
+
+    except Exception as e:
+        print(f'[grid] CSV bounds failed ({e}); using fallback')
+
+    # Fallback: Rishiri Island known full extent + margin
+    # (covers lat 45.0976–45.2582, lon 141.1317–141.3283 as of 334-spot CSV)
+    _grid_bounds_cache = {
+        'lat_min': 45.07, 'lat_max': 45.27,
+        'lon_min': 141.12, 'lon_max': 141.35,
+        'source': 'fallback',
+        'n_spots': 0,
+    }
+    print('[grid] bounds: using fallback (Rishiri Island known extent)')
+    return _grid_bounds_cache
+
+
+def _build_rishiri_grid(rows: int = 6, cols: int = 8) -> list:
+    """Build rows×cols representative grid over Rishiri Island.
+
+    Bounds are derived from hoshiba_spots.csv min/max + margin via
+    _compute_grid_bounds() (result cached for process lifetime).
+    Default 6×8 = 48 grid points sent in one Open-Meteo multi-coordinate request.
+    """
+    b = _compute_grid_bounds()
+    lat_min, lat_max = b['lat_min'], b['lat_max']
+    lon_min, lon_max = b['lon_min'], b['lon_max']
     return [
         {
             'lat': lat_min + (lat_max - lat_min) * r / (rows - 1),
@@ -2156,70 +2309,7 @@ def _build_rishiri_grid(rows: int = 5, cols: int = 5) -> list:
     ]
 
 
-def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list,
-                             forecast_days: int = 7) -> list:
-    """
-    Fetch Open-Meteo forecast for multiple coordinates in ONE request.
-    Returns a list of per-point response dicts.
-    """
-    lat_str = ','.join(f'{lat:.4f}' for lat in lats)
-    lon_str = ','.join(f'{lon:.4f}' for lon in lons)
-    hourly_str = ','.join(hourly_vars)
-    url = (
-        f'https://api.open-meteo.com/v1/forecast'
-        f'?latitude={lat_str}&longitude={lon_str}'
-        f'&hourly={hourly_str}'
-        f'&timezone=Asia/Tokyo'
-        f'&forecast_days={forecast_days}'
-    )
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-    return [data] if isinstance(data, dict) else data
-
-
-def _field_target_date(day: int) -> str:
-    """Return YYYY-MM-DD string for JST day offset (0=today)."""
-    from datetime import datetime, timezone, timedelta
-    jst = timezone(timedelta(hours=9))
-    return (datetime.now(jst) + timedelta(days=day)).strftime('%Y-%m-%d')
-
-
-def _extract_day_window(hourly: dict, target_date: str,
-                         h_start: int = 4, h_end: int = 16) -> dict:
-    """Extract hourly values for h_start..h_end on target_date (JST)."""
-    times = hourly.get('time', [])
-    prefix_s = f'{target_date}T{h_start:02d}:00'
-    prefix_e = f'{target_date}T{h_end:02d}:00'
-    indices = [i for i, t in enumerate(times) if prefix_s <= t <= prefix_e]
-    result = {}
-    for var, values in hourly.items():
-        if var == 'time':
-            continue
-        result[var] = [values[i] for i in indices if i < len(values)]
-    return result
-
-
-def _safe_avg(lst):
-    vals = [v for v in (lst or []) if v is not None]
-    return sum(vals) / len(vals) if vals else None
-
-def _safe_min(lst):
-    vals = [v for v in (lst or []) if v is not None]
-    return min(vals) if vals else None
-
-def _safe_max(lst):
-    vals = [v for v in (lst or []) if v is not None]
-    return max(vals) if vals else None
-
-def _safe_sum(lst):
-    vals = [v for v in (lst or []) if v is not None]
-    return sum(vals) if vals else None
-
-
-def _score_color(score: int) -> str:
-    if score >= 80: return '#1f9d55'
-    if score >= 50: return '#f2c94c'
+    if score >= 50: return '#c9a500'  # 凡例(legend.stops/HTML)と完全一致
     return '#d64545'
 
 def _score_category(score: int) -> str:
@@ -2228,16 +2318,25 @@ def _score_category(score: int) -> str:
     return 'poor'
 
 def _wind_color(speed) -> str:
+    """Color for wind speed: 4-band scale (too weak / ideal / strong / dangerous)."""
     if speed is None: return '#adb5bd'
-    if speed >= 3.0:  return '#1f9d55'
-    if speed >= 2.0:  return '#f2c94c'
-    return '#d64545'
+    if speed >= 9.0:  return '#d64545'   # 強風・飛散注意（乾燥不適）
+    if speed >= 6.0:  return '#e07b39'   # 強め・作業注意
+    if speed >= 2.0:  return '#1f9d55'   # 適風（2.0–5.9 m/s 乾燥適正）
+    return '#4a90d9'                      # 弱風・乾きにくい（< 2.0 m/s）
+
+def _wind_category(speed) -> str:
+    if speed is None: return 'unknown'
+    if speed >= 9.0:  return 'strong_danger'
+    if speed >= 6.0:  return 'strong_caution'
+    if speed >= 2.0:  return 'ideal'
+    return 'weak'
 
 def _hum_color(hum) -> str:
     if hum is None: return '#adb5bd'
-    if hum > 94:  return '#d64545'   # 乾きにくい
-    if hum >= 85: return '#f2c94c'   # 注意
-    return '#1f9d55'                  # 良好
+    if hum > 94:  return '#d64545'
+    if hum >= 85: return '#c9a500'  # 凡例(legend.stops/HTML)と完全一致
+    return '#1f9d55'
 
 def _hum_category(hum) -> str:
     if hum is None: return 'unknown'
@@ -2248,7 +2347,7 @@ def _hum_category(hum) -> str:
 def _solar_color(solar) -> str:
     if solar is None: return '#adb5bd'
     if solar >= 400: return '#1f9d55'
-    if solar >= 50:  return '#f2c94c'
+    if solar >= 50:  return '#c9a500'  # 凡例(legend.stops/HTML)と完全一致
     return '#d64545'
 
 def _solar_category(solar) -> str:
@@ -2258,7 +2357,6 @@ def _solar_category(solar) -> str:
     return 'poor'
 
 def _temp_color(temp) -> str:
-    """Color by temperature (°C): ≥20 warm/orange, 10-19 moderate/green, <10 cool/blue."""
     if temp is None: return '#adb5bd'
     if temp >= 20: return '#e07b39'
     if temp >= 10: return '#1f9d55'
@@ -2271,90 +2369,203 @@ def _temp_category(temp) -> str:
     return 'cool'
 
 
+def _make_wind_warning(max_wind_ms) -> dict | None:
+    """
+    日内最大風速(m/s)から wind_warning オブジェクトを生成する共通ヘルパー。
+
+    判定基準（_wind_color・get_forecast の wind_warning と完全整合）:
+        < 6.0 m/s  → None        (弱風〜適風)
+        6.0〜8.9   → caution     (強め・作業注意)
+        ≥ 9.0      → danger      (強風・飛散注意)
+
+    使用箇所: get_forecast() と _compute_score_field() の両方で参照する。
+    """
+    if max_wind_ms is None:
+        return None
+    ms = float(max_wind_ms)
+    if ms >= 9.0:
+        return {
+            'level':       'danger',
+            'label':       '強風・飛散注意',
+            'message':     '昆布の飛散や作業安全に注意してください',
+            'max_wind_ms': round(ms, 1),
+        }
+    if ms >= 6.0:
+        return {
+            'level':       'caution',
+            'label':       '強めの風・作業注意',
+            'message':     '乾燥は進みやすい一方、取り扱いに注意してください',
+            'max_wind_ms': round(ms, 1),
+        }
+    return None
+
+
 def _compute_score_field(day: int) -> dict:
-    """Compute drying score for all 334 spots with a single Open-Meteo request."""
+    """
+    Compute drying score for 6×8=48 representative grid points.
+
+    【旧実装の問題】
+    334地点を0.01°精度でユニーク化 → 100点以上のユニーク座標 → Open-Meteo URL超長大
+    → 初回レスポンス約401秒 のタイムアウト問題が発生していた。
+
+    【修正後】
+    wind/humidity/solar/temperature と同じく _build_rishiri_grid() の48点グリッドを使用。
+    島内分布の面表示として十分な近似。個別干場の精密予報は /api/forecast を使うこと。
+
+    【風速スコア修正済み（v2.6.1相当）】
+    旧実装: wind_speed ≥ 2.0 で +15、≥ 3.0 で +10（上限なし → ≥9m/s でも +25点）
+    新実装: 4バンド評価で表示レイヤー（_wind_color）と完全整合。
+        < 2.0 m/s → +0  (弱風)
+        2.0〜5.9  → +25 (適風)
+        6.0〜8.9  → +10 (強め・作業注意)
+        ≥ 9.0     → -15 (強風・飛散注意)
+    """
     target_date = _field_target_date(day)
-    spots = _load_all_spots_for_field()
-    if not spots:
-        return {'error': 'spots unavailable'}
 
-    # Deduplicate to unique ~2-decimal grid cells to minimise API payload
-    cell_map: dict = {}
-    for i, s in enumerate(spots):
-        key = (round(s['lat'], 2), round(s['lon'], 2))
-        cell_map.setdefault(key, []).append(i)
-
-    unique_cells = list(cell_map.keys())
-    lats = [c[0] for c in unique_cells]
-    lons = [c[1] for c in unique_cells]
+    grid = _build_rishiri_grid()   # 6×8=48点（CSV座標から自動導出）
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
 
     hourly_vars = [
         'temperature_2m', 'relative_humidity_2m', 'wind_speed_10m',
         'precipitation', 'precipitation_probability', 'shortwave_radiation',
+        'dewpoint_2m',   # 露点温度: 霧リスク判定に使用 (/api/forecast と同一ロジック)
     ]
+
+    # 標高を一括取得（1HTTPリクエスト ≈ 2s）
+    # 個別取得(48×get_elevation() ≈ 72s)を回避する核心の高速化
+    grid_elevations = _fetch_elevations_batch(lats, lons)
 
     try:
         api_results = _fetch_open_meteo_multi(lats, lons, hourly_vars)
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
 
-    # Aggregate day window per cell
-    cell_agg: dict = {}
-    for cell, api_data in zip(unique_cells, api_results):
-        win = _extract_day_window(api_data.get('hourly', {}), target_date)
-        # wind_speed_10m from Open-Meteo is in km/h → convert to m/s
-        wind_kmh = win.get('wind_speed_10m', [])
-        wind_ms_vals = [v / 3.6 for v in wind_kmh if v is not None]
-        cell_agg[cell] = {
-            'temp_max':    _safe_max(win.get('temperature_2m', [])),
-            'humidity_min': _safe_min(win.get('relative_humidity_2m', [])),
-            'wind_avg_ms': (_safe_avg(wind_ms_vals)),
-            'precip_sum':  _safe_sum(win.get('precipitation', [])),
-            'pop_max':     _safe_max(win.get('precipitation_probability', [])),
-            'solar_avg':   _safe_avg(win.get('shortwave_radiation', [])),
-        }
-
     points = []
     counts = {'excellent': 0, 'fair': 0, 'poor': 0}
     best = None
 
-    for s in spots:
-        cell_key = (round(s['lat'], 2), round(s['lon'], 2))
-        agg = cell_agg.get(cell_key, {})
+    for i, (g, api_data) in enumerate(zip(grid, api_results)):
+        win = _extract_day_window(api_data.get('hourly', {}), target_date)
+        wind_kmh     = win.get('wind_speed_10m', [])
+        wind_ms_vals = [v / 3.6 for v in wind_kmh if v is not None]
+
+        temp_vals    = win.get('temperature_2m', [])
+        dewpt_vals   = win.get('dewpoint_2m', [])
+        temp_max     = _safe_max(temp_vals)
+        temp_avg     = _safe_avg(temp_vals)
+        humidity_min = _safe_min(win.get('relative_humidity_2m', []))
+        wind_avg_ms  = _safe_avg(wind_ms_vals)
+        wind_max_ms  = _safe_max(wind_ms_vals)   # 日内最大風速（wind_warning 判定に使用）
+        precip_sum   = _safe_sum(win.get('precipitation', []))
+        pop_max      = _safe_max(win.get('precipitation_probability', []))
+        solar_avg    = _safe_avg(win.get('shortwave_radiation', []))
+        elev         = grid_elevations[i] if i < len(grid_elevations) else 0.0
 
         score = calculate_enhanced_drying_score(
-            temp_max=agg.get('temp_max'),
-            humidity=agg.get('humidity_min'),
-            wind_speed=agg.get('wind_avg_ms'),
-            precipitation=agg.get('precip_sum') or 0,
-            lat=s['lat'],
-            lon=s['lon'],
-            avg_solar_radiation=agg.get('solar_avg'),
-            pop_max=agg.get('pop_max'),
+            temp_max=temp_max,
+            humidity=humidity_min,
+            wind_speed=wind_avg_ms,
+            precipitation=precip_sum or 0,
+            lat=g['lat'],
+            lon=g['lon'],
+            avg_solar_radiation=solar_avg,
+            pop_max=pop_max,
+            elevation=elev,          # バッチ取得済み標高を渡す（個別API呼び出しをスキップ）
         )
+
+        # ─── local_risk_adjustments (field score 版) ───────────────────────────
+        # 露点温度降下量 (temp - dewpoint) による霧リスク判定 (/api/forecast と同一ロジック)
+        # depression < 2°C → high(-10点)  < 5°C → medium(-5点)  ≥ 5°C → low(0点)
+        # 露点データが取得できない場合は最低湿度による簡易推定にフォールバック。
+        # CAPE・フェーン・SST は field score では 0 固定（hourly_vars に未含有）。
+        _dewpt_method = 'humidity_estimate'
+        _fog_hours_high = 0
+        _fog_hours_med  = 0
+        _valid_dewpt_pairs = 0
+        if temp_avg is not None and dewpt_vals:
+            for _t, _d in zip(temp_vals, dewpt_vals):
+                if _t is not None and _d is not None:
+                    _dep = _t - _d
+                    _valid_dewpt_pairs += 1
+                    if _dep < 2.0:
+                        _fog_hours_high += 1
+                    elif _dep < 5.0:
+                        _fog_hours_med  += 1
+        if _valid_dewpt_pairs > 0:
+            # 有効な露点ペアが1つ以上あれば露点降下法を採用
+            _dewpt_method = 'dewpoint_depression'
+            # /api/forecast と同一の集計ロジック
+            if _fog_hours_high >= 4:
+                _ff_level, _ff_pen = 'high',   -10
+            elif _fog_hours_high >= 2:
+                _ff_level, _ff_pen = 'medium',  -5
+            elif _fog_hours_med  >= 4:
+                _ff_level, _ff_pen = 'medium',  -5
+            else:
+                _ff_level, _ff_pen = 'low',      0
+        else:
+            # フォールバック: 最低湿度による推定（旧ロジック）
+            if humidity_min is not None and humidity_min > 95:
+                _ff_level, _ff_pen = 'high',   -10
+            elif humidity_min is not None and humidity_min > 90:
+                _ff_level, _ff_pen = 'medium', -5
+            else:
+                _ff_level, _ff_pen = 'low',     0
+
+        score = max(0, min(100, score + _ff_pen))
+
+        _ff_notes = []
+        if _ff_pen < 0:
+            if _dewpt_method == 'dewpoint_depression':
+                _ff_notes.append(
+                    f'露点降下霧リスク({_ff_level}, 高リスク{_fog_hours_high}h): {_ff_pen:+d}点'
+                )
+            else:
+                _ff_notes.append(f'高湿度霧推定({_ff_level}): {_ff_pen:+d}点')
+
+        local_risk_adjustments = {
+            'fog_penalty':      _ff_pen,
+            'cape_penalty':     0,   # field score: hourly_vars に cape 未含有
+            'foehn_adjustment': 0,   # field score: wind_direction 未含有
+            'sst_fog_penalty':  0,   # field score: Marine API 未取得
+            'total_adjustment': _ff_pen,
+            'notes':            _ff_notes,
+            'method':           _dewpt_method,  # 'dewpoint_depression' or 'humidity_estimate'
+        }
+        # ────────────────────────────────────────────────────────────────────────
+
         cat = _score_category(score)
         counts[cat] = counts.get(cat, 0) + 1
-        if best is None or score > best['score']:
-            best = {'name': s['name'], 'score': score}
 
-        wind_ms = agg.get('wind_avg_ms')
+        # wind_warning: _make_wind_warning() で /api/forecast と同一ロジックを共用
+        # max_wind_ms（日内最大）を使用し、avg（平均）では見逃すピーク強風を捕捉する
+        wind_warning = _make_wind_warning(wind_max_ms)
+
+        display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+        if best is None or score > best['score']:
+            best = {'name': display_name, 'score': score}
+
         points.append({
-            'name':     s['name'],
-            'lat':      s['lat'],
-            'lon':      s['lon'],
-            'town':     s['town'],
-            'district': s['district'],
-            'buraku':   s['buraku'],
+            'name':     display_name,
+            'lat':      round(g['lat'], 4),
+            'lon':      round(g['lon'], 4),
+            'town':     '',          # グリッド点は行政区分なし（干場個別は /api/forecast を使用）
+            'district': '',
+            'buraku':   '',
             'value':    score,
             'category': cat,
             'color':    _score_color(score),
             'metrics': {
-                'precipitation': round(agg.get('precip_sum') or 0, 2),
-                'min_humidity':  round(agg.get('humidity_min') or 0),
-                'avg_wind_ms':   round(wind_ms, 1) if wind_ms is not None else None,
-                'avg_solar':     round(agg.get('solar_avg') or 0),
-                'pop_max':       round(agg.get('pop_max') or 0),
+                'precipitation': round(precip_sum or 0, 2),
+                'min_humidity':  round(humidity_min or 0),
+                'avg_wind_ms':   round(wind_avg_ms, 1) if wind_avg_ms is not None else None,
+                'max_wind_ms':   round(wind_max_ms, 1) if wind_max_ms is not None else None,
+                'avg_solar':     round(solar_avg or 0),
+                'pop_max':       round(pop_max or 0),
             },
+            'wind_warning': wind_warning,   # None / {level, label, message, max_wind_ms}
+            'local_risk_adjustments': local_risk_adjustments,
         })
 
     return {
@@ -2369,7 +2580,7 @@ def _compute_score_field(day: int) -> dict:
             'unit': 'score (0-100)',
             'stops': [
                 {'value': 80, 'label': '干せる',  'color': '#1f9d55'},
-                {'value': 50, 'label': '微妙',    'color': '#f2c94c'},
+                {'value': 50, 'label': '微妙',    'color': '#c9a500'},
                 {'value': 0,  'label': '厳しい',  'color': '#d64545'},
             ],
         },
@@ -2378,11 +2589,11 @@ def _compute_score_field(day: int) -> dict:
 
 
 def _compute_wind_field(day: int, hour: int) -> dict:
-    """Compute wind vectors for 5x5 representative grid (single Open-Meteo request)."""
+    """Compute wind vectors for 6×8 representative grid (covers all 334 spots)."""
     target_date = _field_target_date(day)
     target_time = f'{target_date}T{hour:02d}:00'
 
-    grid = _build_rishiri_grid(5, 5)
+    grid = _build_rishiri_grid()
     lats = [g['lat'] for g in grid]
     lons = [g['lon'] for g in grid]
 
@@ -2421,18 +2632,19 @@ def _compute_wind_field(day: int, hour: int) -> dict:
             'u':         u,
             'v':         v,
             'color':     _wind_color(speed_ms),
-            'category':  'good' if (speed_ms or 0) >= 2.0 else 'poor',
+            'category':  _wind_category(speed_ms),
         })
 
     return {
         'hour': hour,
-        'thresholds': {'drying_min_wind': 2.0},
+        'thresholds': {'drying_min_wind': 2.0, 'caution': 6.0, 'danger': 9.0},
         'legend': {
             'unit': 'm/s',
             'stops': [
-                {'value': 3.0, 'label': '3.0+',       'color': '#1f9d55'},
-                {'value': 2.0, 'label': '2.0〜3.0',   'color': '#f2c94c'},
-                {'value': 0,   'label': '2.0未満',     'color': '#d64545'},
+                {'value': 9.0, 'label': '9.0+ m/s 強風・飛散注意',  'color': '#d64545'},
+                {'value': 6.0, 'label': '6.0〜8.9 m/s 強め・注意', 'color': '#e07b39'},
+                {'value': 2.0, 'label': '2.0〜5.9 m/s 適風',       'color': '#1f9d55'},
+                {'value': 0,   'label': '2.0未満 m/s 弱風',         'color': '#4a90d9'},
             ],
         },
         'vectors': vectors,
@@ -2440,17 +2652,11 @@ def _compute_wind_field(day: int, hour: int) -> dict:
 
 
 def _compute_humidity_field(day: int, hour: int) -> dict:
-    """Compute humidity for 5x5 grid with terrain correction.
-
-    Coastal +5% humidity is applied only when wind is onshore (factor > 0),
-    using the same mountain-bearing model as get_onshore_wind_factor().
-    wind_direction_10m is fetched alongside relative_humidity_2m so no
-    extra API round-trip is needed.
-    """
+    """Compute humidity for 6×8 grid with terrain correction (covers all 334 spots)."""
     target_date = _field_target_date(day)
     target_time = f'{target_date}T{hour:02d}:00'
 
-    grid = _build_rishiri_grid(5, 5)
+    grid = _build_rishiri_grid()
     lats = [g['lat'] for g in grid]
     lons = [g['lon'] for g in grid]
 
@@ -2481,14 +2687,13 @@ def _compute_humidity_field(day: int, hour: int) -> dict:
                 correction_parts.append('森林+10%')
             if is_coastal_area(g['lat'], g['lon']) and wind_dir is not None:
                 onshore_factor = get_onshore_wind_factor(g['lat'], g['lon'], wind_dir)
-                coastal_adj = 5.0 * onshore_factor  # 0–5% depending on onshore degree
+                coastal_adj = 5.0 * onshore_factor
                 if coastal_adj > 0.1:
                     hum = min(100.0, hum + coastal_adj)
                     correction_parts.append(f'海岸+{coastal_adj:.1f}%')
             hum = round(hum)
 
         display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
-
         points.append({
             'name':       display_name,
             'lat':        round(g['lat'], 4),
@@ -2508,21 +2713,21 @@ def _compute_humidity_field(day: int, hour: int) -> dict:
             'unit': '%',
             'stops': [
                 {'value': 95, 'label': '95%超 乾きにくい', 'color': '#d64545'},
-                {'value': 85, 'label': '85〜94% 注意',    'color': '#f2c94c'},
+                {'value': 85, 'label': '85〜94% 注意',    'color': '#c9a500'},  # HTML legend color
                 {'value': 0,  'label': '84%以下 良好',    'color': '#1f9d55'},
             ],
         },
-        'correction_note': '森林+10% / 海岸+5%×onshore係数の地形補正を適用（標高補正は省略）',
+        'correction_note': '森林+10% / 海岸+5%×onshore係数の地形補正を適用',
         'points': points,
     }
 
 
 def _compute_solar_field(day: int, hour: int) -> dict:
-    """Compute shortwave radiation (W/m²) for 5x5 grid. No terrain correction applied."""
+    """Compute shortwave radiation (W/m²) for 6×8 grid (covers all 334 spots)."""
     target_date = _field_target_date(day)
     target_time = f'{target_date}T{hour:02d}:00'
 
-    grid = _build_rishiri_grid(5, 5)
+    grid = _build_rishiri_grid()
     lats = [g['lat'] for g in grid]
     lons = [g['lon'] for g in grid]
 
@@ -2559,22 +2764,22 @@ def _compute_solar_field(day: int, hour: int) -> dict:
         'legend': {
             'unit': 'W/m²',
             'stops': [
-                {'value': 400, 'label': '400+ W/m² 乾燥促進', 'color': '#1f9d55'},
-                {'value': 50,  'label': '50〜399 W/m² 曇天',  'color': '#f2c94c'},
+                {'value': 400, 'label': '400+ W/m² 乾燥促進',   'color': '#1f9d55'},
+                {'value': 50,  'label': '50〜399 W/m² 曇天',    'color': '#c9a500'},  # HTML legend color
                 {'value': 0,   'label': '50未満 W/m² 乾燥困難', 'color': '#d64545'},
             ],
         },
-        'correction_note': '地形補正なし（Open-Meteo MSM/GSM の日射量をそのまま表示）',
+        'correction_note': '地形補正なし（Open-Meteo MSM/GSMの日射量をそのまま表示）',
         'points': points,
     }
 
 
 def _compute_temperature_field(day: int, hour: int) -> dict:
-    """Compute temperature (°C) for 5x5 grid. Open-Meteo already applies elevation correction."""
+    """Compute temperature (°C) for 6×8 grid (covers all 334 spots)."""
     target_date = _field_target_date(day)
     target_time = f'{target_date}T{hour:02d}:00'
 
-    grid = _build_rishiri_grid(5, 5)
+    grid = _build_rishiri_grid()
     lats = [g['lat'] for g in grid]
     lons = [g['lon'] for g in grid]
 
@@ -2611,9 +2816,9 @@ def _compute_temperature_field(day: int, hour: int) -> dict:
         'legend': {
             'unit': '°C',
             'stops': [
-                {'value': 20, 'label': '20°C以上 温暖',    'color': '#e07b39'},
-                {'value': 10, 'label': '10〜19°C 適温',    'color': '#1f9d55'},
-                {'value': 0,  'label': '10°C未満 低温',    'color': '#4a90d9'},
+                {'value': 20, 'label': '20°C以上 温暖', 'color': '#e07b39'},
+                {'value': 10, 'label': '10〜19°C 適温', 'color': '#1f9d55'},
+                {'value': 0,  'label': '10°C未満 低温', 'color': '#4a90d9'},
             ],
         },
         'correction_note': 'Open-Meteoが標高補正済み（0.7°C/100m）のため独自補正なし',
@@ -2624,14 +2829,13 @@ def _compute_temperature_field(day: int, hour: int) -> dict:
 @app.route('/api/analysis/field')
 def get_analysis_field():
     """
-    島内分布図データを返す（新実装）。
+    島内分布図データを返す。
     Leaflet/Canvas でフロント描画するため matplotlib を使わない。
 
     Parameters:
         type : score | wind | humidity | temperature | solar
         day  : 0=今日, 1=明日, ..., 6 (default 0)
         hour : 4|7|10|13|16 (JST) — score以外で必須。未指定時は10。
-               score は 04:00〜16:00 JST の集計値なので hour パラメータ不要。
     """
     from datetime import datetime, timezone, timedelta
     jst = timezone(timedelta(hours=9))
@@ -2652,7 +2856,6 @@ def get_analysis_field():
         return jsonify({'status': 'error',
                         'message': f'type は {"|".join(valid_types)} のいずれか'}), 400
 
-    # hour validation: only for non-score types
     if field_type != 'score':
         if hour not in _ALLOWED_HOURS:
             return jsonify({
@@ -2661,25 +2864,8 @@ def get_analysis_field():
                 'allowed_hours': _ALLOWED_HOURS,
             }), 400
 
-    cache_key = f'field:{field_type}:{day}:{hour}'
-    cached = _field_cache_get(cache_key)
-    if cached:
-        result = dict(cached)
-        result['cache'] = {'hit': True}
-        return jsonify(result)
-
-    target_date = _field_target_date(day)
-
-    if field_type == 'score':
-        data = _compute_score_field(day)
-    elif field_type == 'wind':
-        data = _compute_wind_field(day, hour)
-    elif field_type == 'humidity':
-        data = _compute_humidity_field(day, hour)
-    elif field_type == 'solar':
-        data = _compute_solar_field(day, hour)
-    elif field_type == 'temperature':
-        data = _compute_temperature_field(day, hour)
+    else:
+        data = {'error': 'unknown type'}
 
     if 'error' in data:
         return jsonify({'status': 'error', 'message': data['error']}), 503
@@ -4070,7 +4256,7 @@ def get_forecast_calibration():
         import json
 
         # ERA5等値線相関データを読み込み
-        correlation_file = 'era5_contour_correlation_results.json'
+        correlation_file = os.path.join(BASE_DIR, 'era5_contour_correlation_results.json')
 
         if os.path.exists(correlation_file):
             with open(correlation_file, 'r', encoding='utf-8') as f:
@@ -4119,8 +4305,8 @@ def get_forecast_accuracy():
         import json
         import glob
 
-        amedas_dir = 'amedas_data'
-        forecast_dir = 'forecast_history'
+        amedas_dir = AMEDAS_DATA_DIR
+        forecast_dir = FORECAST_HISTORY_DIR
 
         if not os.path.exists(amedas_dir):
             os.makedirs(amedas_dir, exist_ok=True)
@@ -4303,10 +4489,10 @@ def _collect_amedas_from_openmeteo(target_date_str):
         {'id': '11151', 'lat': 45.1783, 'lon': 141.1383, 'name': '沓形'},
         {'id': '11311', 'lat': 45.2417, 'lon': 141.1867, 'name': '本泊'},
     ]
-    os.makedirs('amedas_data', exist_ok=True)
+    os.makedirs(AMEDAS_DATA_DIR, exist_ok=True)
     success = True
     for st in STATIONS:
-        filepath = os.path.join('amedas_data', f'amedas_{st["id"]}_{target_date_str}.json')
+        filepath = os.path.join(AMEDAS_DATA_DIR, f'amedas_{st["id"]}_{target_date_str}.json')
         if os.path.exists(filepath):
             continue
         url = (
@@ -5137,9 +5323,11 @@ def calculate_stage_based_drying_assessment(hourly_data, day_number):
             else:
                 wind_score = 20
 
-            # Humidity penalty (higher humidity reduces drying)
-            humidity_factor = max(0, (100 - humidity) / 100)
-            hour_score = wind_score * humidity_factor
+            # Humidity is applied once at the daily risk layer via assess_drying_risk();
+            # do not multiply hourly stage scores by humidity again (double-damping).
+            # At 78% humidity: factor=(100-78)/100=0.22, which would crush wind_score=100→22
+            # before assess_drying_risk() applies its own 0.85× multiplier — net ×0.19 error.
+            hour_score = wind_score
             ventilation_wind_scores.append(hour_score)
 
         ventilation_score = sum(ventilation_wind_scores) / len(ventilation_wind_scores) if ventilation_wind_scores else 0
@@ -5174,12 +5362,12 @@ def calculate_stage_based_drying_assessment(hourly_data, day_number):
             elif solar_radiation >= 50:  solar_score = 15
             else:                         solar_score = 0  # 曇天・霧：乾燥促進効果なし
 
-            # Humidity penalty
-            humidity_factor = max(0, (100 - humidity) / 100)
+            # Humidity is applied once at the daily risk layer via assess_drying_risk();
+            # do not multiply hourly stage scores by humidity again (same reason as ventilation).
 
             # Combined heat supply score — K3: 温度と日射を同等重みに変更(0.5/0.5)
             # 研究知見「温度 ≈ 日射」(KOMBU_DRYING_RESEARCH §4-5)
-            hour_score = (temp_score * 0.5 + solar_score * 0.5) * humidity_factor
+            hour_score = temp_score * 0.5 + solar_score * 0.5
             heat_supply_scores.append(hour_score)
 
         heat_supply_score = sum(heat_supply_scores) / len(heat_supply_scores) if heat_supply_scores else 0

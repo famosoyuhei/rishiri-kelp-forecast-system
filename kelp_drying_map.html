@@ -453,6 +453,42 @@
         .fair { background: #fff3cd; color: #856404; }
         .poor { background: #f8d7da; color: #721c24; }
 
+        /* ── 風速警告バッジ (wind_warning) ── */
+        .wind-warning-badge {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin: 8px 0 4px;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        .wind-warning-badge.caution {
+            background: rgba(224, 123, 57, 0.14);
+            border-left: 3px solid #e07b39;
+            color: #7a3d00;
+        }
+        .wind-warning-badge.danger {
+            background: rgba(214, 69, 69, 0.14);
+            border-left: 3px solid #d64545;
+            color: #7a0000;
+        }
+        .wind-warning-icon {
+            font-size: 1.1rem;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .wind-warning-sub {
+            opacity: 0.82;
+            font-size: 0.78rem;
+            margin-top: 2px;
+        }
+        @media (max-width: 480px) {
+            .wind-warning-badge { font-size: 0.8rem; padding: 6px 8px; }
+            .wind-warning-sub   { font-size: 0.74rem; }
+        }
+
         .instructions {
             background: rgba(255, 255, 255, 0.9);
             padding: 15px;
@@ -1317,27 +1353,27 @@
                 <div style="font-size: 0.69rem; color: #aaa; margin-top: 3px;">※乾燥スコアは04〜16時の集計値</div>
             </div>
 
-            <!-- 5図レイヤー -->
+            <!-- 5図レイヤー（単一選択） -->
             <div style="background: #f8f9fa; border-radius: 7px; padding: 9px; margin-bottom: 10px;">
-                <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 7px;">表示レイヤー</div>
+                <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 7px;">表示レイヤー（1つを選択）</div>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
-                    <input type="checkbox" id="fieldLayerScore" checked onchange="toggleFieldLayer('score')">
-                    🟢 乾燥スコア分布（334地点）
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerScore" value="score" checked onchange="toggleFieldLayer('score')">
+                    🟢 乾燥スコア分布（48グリッド）
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
-                    <input type="checkbox" id="fieldLayerWind" checked onchange="toggleFieldLayer('wind')">
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerWind" value="wind" onchange="toggleFieldLayer('wind')">
                     💨 風向・風速ベクトル
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
-                    <input type="checkbox" id="fieldLayerHumidity" checked onchange="toggleFieldLayer('humidity')">
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerHumidity" value="humidity" onchange="toggleFieldLayer('humidity')">
                     💧 湿度
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
-                    <input type="checkbox" id="fieldLayerSolar" checked onchange="toggleFieldLayer('solar')">
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerSolar" value="solar" onchange="toggleFieldLayer('solar')">
                     ☀️ 日射量（W/m²）
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;">
-                    <input type="checkbox" id="fieldLayerTemperature" checked onchange="toggleFieldLayer('temperature')">
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerTemperature" value="temperature" onchange="toggleFieldLayer('temperature')">
                     🌡️ 気温（°C）
                 </label>
             </div>
@@ -1345,7 +1381,7 @@
             <!-- ステータス -->
             <div id="fieldStatus" style="font-size: 0.78rem; color: #666; min-height: 18px; margin-bottom: 8px;"></div>
 
-            <!-- 凡例（3行まとめ） -->
+            <!-- 凡例（5行） -->
             <div style="background: #f8f9fa; border-radius: 6px; padding: 8px; font-size: 0.72rem; margin-bottom: 8px;">
                 <div style="font-weight: 600; color: #444; margin-bottom: 5px;">凡例</div>
                 <div style="margin-bottom: 4px; line-height: 1.7;">
@@ -1355,16 +1391,29 @@
                     <span style="color:#d64545">● 〜49</span> 厳しい
                 </div>
                 <div style="margin-bottom: 4px; line-height: 1.7;">
-                    <b>風速</b>:
-                    <span style="color:#1f9d55">— 3.0+ m/s</span> &nbsp;
-                    <span style="color:#c9a500">— 2.0〜</span> &nbsp;
-                    <span style="color:#d64545">— 〜2.0</span>
+                    <b>風速</b><small style="color:#888">(m/s)</small>:
+                    <span style="color:#4a90d9">— 〜1.9</span> 弱 &nbsp;
+                    <span style="color:#1f9d55">— 2〜5.9</span> 適 &nbsp;
+                    <span style="color:#e07b39">— 6〜8.9</span> 強め &nbsp;
+                    <span style="color:#d64545">— 9+</span> 飛散注意
                 </div>
-                <div style="line-height: 1.7;">
+                <div style="margin-bottom: 4px; line-height: 1.7;">
                     <b>湿度</b>:
                     <span style="color:#1f9d55">● 〜84%</span> 良好 &nbsp;
                     <span style="color:#c9a500">● 85〜94%</span> 注意 &nbsp;
                     <span style="color:#d64545">● 95%+</span> 乾きにくい
+                </div>
+                <div style="margin-bottom: 4px; line-height: 1.7;">
+                    <b>日射量</b><small style="color:#888">(W/m²)</small>:
+                    <span style="color:#1f9d55">● 400+</span> 乾燥促進 &nbsp;
+                    <span style="color:#c9a500">● 50〜399</span> 曇天 &nbsp;
+                    <span style="color:#d64545">● 〜49</span> 乾燥困難
+                </div>
+                <div style="line-height: 1.7;">
+                    <b>気温</b><small style="color:#888">(℃)</small>:
+                    <span style="color:#4a90d9">● 〜9</span> 低温 &nbsp;
+                    <span style="color:#1f9d55">● 10〜19</span> 適温 &nbsp;
+                    <span style="color:#e07b39">● 20+</span> 温暖
                 </div>
             </div>
 
@@ -1403,12 +1452,86 @@
                 「予報を更新」ボタンから、気象庁の3ヶ月予報をもとに入力してください。
             </div>
 
+            <!-- ========== 公式長期予報リンク ========== -->
+            <div style="background: #e8f5e9; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; border-left: 4px solid #43a047;">
+                <div style="font-weight: 700; color: #1b5e20; margin-bottom: 6px; font-size: 0.88rem;">
+                    🔗 公式長期予報を確認する
+                </div>
+                <p style="font-size: 0.75rem; color: #444; margin-bottom: 10px; line-height: 1.7;">
+                    昆布シーズン（6〜9月）の乾燥条件を読み取る目安：<br>
+                    <b>気温↑高め</b> → 乾燥速度UP（霧発生に注意）&nbsp;
+                    <b>降水量↓少なめ</b> → 干せる日数が増える可能性&nbsp;
+                    <b>日照↑多め</b> → 乾燥に最も直結する好条件
+                </p>
+
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+
+                    <!-- 1. 季節予報マップ -->
+                    <a href="https://www.jma.go.jp/bosai/season/"
+                       target="_blank" rel="noopener noreferrer"
+                       style="display: block; background: #fff; border-radius: 6px; padding: 10px 12px;
+                              text-decoration: none; border: 1px solid #a5d6a7;">
+                        <div style="font-size: 0.83rem; font-weight: 600; color: #1565c0;">
+                            📊 季節予報マップ（気温・降水量・日照）
+                        </div>
+                        <div style="font-size: 0.72rem; color: #555; margin-top: 3px; line-height: 1.5;">
+                            1ヶ月・3ヶ月・暖候期予報を地図で確認。<b>北海道地方</b>を選択し、
+                            気温/降水量/日照時間の「高め・平年並・低め」確率を見てください。
+                        </div>
+                        <div style="font-size: 0.7rem; color: #1565c0; margin-top: 5px;">
+                            気象庁 jma.go.jp ↗
+                        </div>
+                    </a>
+
+                    <!-- 2. 季節予報解説資料 -->
+                    <a href="https://www.data.jma.go.jp/cpd/longfcst/kaisetsu/"
+                       target="_blank" rel="noopener noreferrer"
+                       style="display: block; background: #fff; border-radius: 6px; padding: 10px 12px;
+                              text-decoration: none; border: 1px solid #a5d6a7;">
+                        <div style="font-size: 0.83rem; font-weight: 600; color: #1565c0;">
+                            📄 季節予報解説資料（北海道地方の詳細）
+                        </div>
+                        <div style="font-size: 0.72rem; color: #555; margin-top: 3px; line-height: 1.5;">
+                            気象庁が毎月発行する季節予報の文章解説PDF。
+                            北海道・宗谷地方・日本海側北部の傾向が詳しく記載されています。
+                        </div>
+                        <div style="font-size: 0.7rem; color: #1565c0; margin-top: 5px;">
+                            気象庁 data.jma.go.jp ↗
+                        </div>
+                    </a>
+
+                    <!-- 3. エルニーニョ監視速報 -->
+                    <a href="https://www.data.jma.go.jp/cpd/elnino/kanshi_joho/kanshi_joho1.html"
+                       target="_blank" rel="noopener noreferrer"
+                       style="display: block; background: #fff; border-radius: 6px; padding: 10px 12px;
+                              text-decoration: none; border: 1px solid #a5d6a7;">
+                        <div style="font-size: 0.83rem; font-weight: 600; color: #1565c0;">
+                            🌊 エルニーニョ監視速報（毎月10日頃）
+                        </div>
+                        <div style="font-size: 0.72rem; color: #555; margin-top: 3px; line-height: 1.5;">
+                            エルニーニョ/ラニーニャの状況と夏季への影響見通し。
+                            ラニーニャ年は北海道の夏が高温・少雨傾向になりやすく昆布漁に有利なことがあります。
+                        </div>
+                        <div style="font-size: 0.7rem; color: #1565c0; margin-top: 5px;">
+                            気象庁 data.jma.go.jp ↗
+                        </div>
+                    </a>
+
+                </div><!-- /link cards -->
+
+                <p style="font-size: 0.69rem; color: #777; margin-top: 10px; margin-bottom: 0;
+                           line-height: 1.5; border-top: 1px solid #c8e6c9; padding-top: 8px;">
+                    ⚠️ すべて外部サイト（気象庁）へのリンクです。
+                    最終判断は必ず最新の気象情報と現地状況をご確認ください。
+                </p>
+            </div><!-- /公式長期予報リンク -->
+
             <!-- 編集ボタン -->
             <button type="button" onclick="openSeasonalEditor()" style="width: 100%; padding: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; margin-bottom: 6px;">
-                ✏️ 予報を更新（月1回）
+                ✏️ 記録メモを更新（月1回）
             </button>
             <p style="font-size: 0.72rem; color: #aaa; text-align: center; margin: 0;">
-                気象庁「3ヶ月予報」「エルニーニョ監視速報」をもとに入力
+                上記公式予報を参照して所見メモを入力できます
             </p>
 
             <!-- ========== 編集フォーム（初期非表示） ========== -->
@@ -2516,6 +2639,7 @@
                         <div class="suitability ${forecast.suitability}">
                             乾燥適性: ${getSuitabilityText(forecast.suitability)} (${forecast.drying_score}点)
                         </div>
+                        ${renderWindWarning(forecast.daily_summary?.wind_warning)}
                         <div class="schedule-recommendation" style="margin-top: 10px; padding: 8px; background: rgba(102, 126, 234, 0.1); border-radius: 5px; font-size: 0.85rem;">
                             <strong>🕒 推奨作業時間:</strong>
                             <div id="workSchedule_${forecast.date}" style="margin-top: 5px; color: #333;"></div>
@@ -2615,6 +2739,8 @@
                             <div class="suitability ${forecast.daily_summary.suitability}">
                                 乾燥適性: ${getSuitabilityText(forecast.daily_summary.suitability)} (${forecast.daily_summary.drying_score}点)
                             </div>
+
+                            ${renderWindWarning(forecast.daily_summary?.wind_warning)}
 
                             <div class="schedule-recommendation" style="margin: 15px 0; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 5px;">
                                 <strong>🕒 予測乾燥時間:</strong> ${forecast.daily_summary.estimated_drying_time}
@@ -2937,6 +3063,34 @@
                 'poor': '悪い'
             };
             return suitabilityMap[suitability] || suitability;
+        }
+
+        /**
+         * 風速警告バッジ HTML を返す。
+         * @param {object|null} ww  daily_summary.wind_warning (null なら空文字)
+         * @returns {string} HTML文字列
+         */
+        function renderWindWarning(ww) {
+            if (!ww || !ww.level) return '';
+            if (ww.level === 'danger') {
+                return `<div class="wind-warning-badge danger">
+                    <span class="wind-warning-icon">💨</span>
+                    <div>
+                        <strong>強風・飛散注意</strong>
+                        <div class="wind-warning-sub">昆布の飛散や作業安全に注意してください（最大 ${ww.max_wind_ms ?? '--'} m/s）</div>
+                    </div>
+                </div>`;
+            }
+            if (ww.level === 'caution') {
+                return `<div class="wind-warning-badge caution">
+                    <span class="wind-warning-icon">🌬️</span>
+                    <div>
+                        <strong>強めの風・作業注意</strong>
+                        <div class="wind-warning-sub">乾燥は進みやすい一方、取り扱いに注意してください（最大 ${ww.max_wind_ms ?? '--'} m/s）</div>
+                    </div>
+                </div>`;
+            }
+            return '';
         }
 
         function getSSICategory(ssi) {
@@ -3394,6 +3548,107 @@
                 }
             } catch (e) {
                 alert('通信エラーが発生しました');
+            }
+        }
+
+        // =========================================================
+        // 昆布季節予報 — ルールベース自動生成
+        // =========================================================
+        async function runSeasonalAutoForecast() {
+            const btn = document.querySelector('button[onclick="runSeasonalAutoForecast()"]');
+            if (btn) { btn.disabled = true; btn.textContent = '🤖 生成中...'; }
+
+            try {
+                // 現在月（JST）
+                const nowJST = new Date(Date.now() + 9 * 3600 * 1000);
+                const currentMonth = nowJST.getUTCMonth() + 1; // 1-12
+
+                // 季節月リスト（6〜9月でまだ到来していないもの）
+                const seasonMonths = [6, 7, 8, 9].filter(m => m >= currentMonth);
+                if (seasonMonths.length === 0) {
+                    alert('昆布シーズン（6〜9月）が終了しているため自動生成できません。');
+                    return;
+                }
+
+                // 簡易ルールベース: 利尻島の月別乾燥傾向（過去記録の統計的知見）
+                // 根拠: 実測閾値（降水0mm・最低湿度≤94%・平均風速≥2.0m/s）を満たす日の期待割合
+                const monthRules = {
+                    6: { outlook: '平年より少ない', confidence: '中',
+                         detail: '6月は梅雨前線とオホーツク海高気圧の影響で湿度が高く、乾燥可能日は少なめの傾向。下旬になるにつれて改善することが多い。' },
+                    7: { outlook: '平年並み', confidence: '中',
+                         detail: '7月は太平洋高気圧の張り出しとともに乾燥可能日が増える。北東風（ナイホ風）が吹くと湿度が上がりやすい点に注意。' },
+                    8: { outlook: '平年より多い', confidence: '中',
+                         detail: '8月は最も乾燥しやすい月。太平洋高気圧が安定し、風も適度に吹く日が多い。ただし台風接近時は要注意。' },
+                    9: { outlook: '平年並み', confidence: '低',
+                         detail: '9月は秋雨前線の影響で乾燥可能日が減少傾向。上旬は比較的乾燥しやすいが、中旬以降は注意が必要。' },
+                };
+
+                // 直近7日の予報から今後の傾向を加味（/api/forecast から取得）
+                let forecastNote = '';
+                try {
+                    const fRes = await fetch('/api/forecast?lat=45.1783&lon=141.1383');
+                    if (fRes.ok) {
+                        const fTxt = await fRes.text();
+                        if (fTxt) {
+                            const fData = JSON.parse(fTxt);
+                            const forecasts = fData.forecasts || [];
+                            const goodDays = forecasts.filter(f =>
+                                (f.daily_summary?.drying_score ?? 0) >= 50
+                            ).length;
+                            const total = forecasts.length;
+                            if (total > 0) {
+                                const rate = Math.round(goodDays / total * 100);
+                                forecastNote = `（直近${total}日間で乾燥適日は約${goodDays}日・${rate}%）`;
+                            }
+                        }
+                    }
+                } catch (_) { /* 取得失敗は無視 */ }
+
+                // ENSOヒューリスティック（月・現在の暫定判断）
+                const ensoHeuristic = '※ENSO状況は気象庁エルニーニョ監視速報でご確認ください';
+
+                // 専門家コメント雛形
+                const expertComment =
+                    `【自動生成 ${nowJST.getUTCFullYear()}年${currentMonth}月時点】${forecastNote}\n` +
+                    '本予報は月別傾向ルールをもとにした自動試算です。\n' +
+                    '実際の計画には気象庁3ヶ月予報・エルニーニョ監視速報をご参照ください。';
+
+                // ペイロード構築
+                const months = {};
+                [6, 7, 8, 9].forEach(m => {
+                    const rule = monthRules[m];
+                    months[String(m)] = seasonMonths.includes(m) ? {
+                        outlook:    rule.outlook,
+                        confidence: rule.confidence,
+                        detail:     rule.detail,
+                    } : { outlook: '', confidence: '', detail: '（シーズン終了）' };
+                });
+
+                const payload = {
+                    months,
+                    enso:          ensoHeuristic,
+                    expertComment: expertComment,
+                    source:        `自動生成 (${nowJST.getUTCFullYear()}年${currentMonth}月)`,
+                };
+
+                // 保存
+                const saveResp = await fetch('/api/seasonal_outlook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const saveResult = await saveResp.json();
+                if (saveResult.status === 'ok') {
+                    document.getElementById('seasonalAutoNote').style.display = 'block';
+                    await loadSeasonalOutlook();
+                } else {
+                    alert('自動生成の保存に失敗しました: ' + (saveResult.error || ''));
+                }
+            } catch (e) {
+                console.error('[auto-forecast] error:', e);
+                alert('自動生成中にエラーが発生しました: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🤖 長期予報から自動生成'; }
             }
         }
 
@@ -5696,6 +5951,7 @@
         // サイドバータブ切り替え機能
         function cleanupFieldLayers() {
             // 島内分布タブを離れるときに地図上のレイヤーと状態表示を確実に片付ける
+            _fieldGeneration++;   // 進行中のfetchが完了してもレイヤー追加を無視させる
             _clearFieldLayers();
             _fieldLoaded = false;   // 次回タブ復帰時に再ロードさせる
             _setStatus('');
@@ -5755,17 +6011,18 @@
         let _fieldHour = 10;   // default 10:00 JST
         let _fieldLoaded = false;
         const _ALLOWED_HOURS = [4, 7, 10, 13, 16];
+        // レースコンディション防止: タブ離脱時にインクリメントし、古いfetch完了を無視する
+        let _fieldGeneration = 0;
 
         function initFieldTab() {
             _buildDayChips();
             _buildHourChips();
             if (!_fieldLoaded) {
                 _fieldLoaded = true;
+                // 単一選択: 初期は「乾燥スコア」ラジオを選択して1レイヤーだけ描画
+                const scoreRadio = document.getElementById('fieldLayerScore');
+                if (scoreRadio) scoreRadio.checked = true;
                 loadFieldScore(_fieldDay);
-                loadFieldWind(_fieldDay, _fieldHour);
-                loadFieldHumidity(_fieldDay, _fieldHour);
-                loadFieldSolar(_fieldDay, _fieldHour);
-                loadFieldTemperature(_fieldDay, _fieldHour);
             }
         }
 
@@ -5835,17 +6092,20 @@
         }
 
         function toggleFieldLayer(type) {
+            // 単一選択: 他のレイヤーをすべて削除してから選択レイヤーを描画
+            const ALL_TYPES = ['score', 'wind', 'humidity', 'solar', 'temperature'];
+            ALL_TYPES.forEach(t => { if (t !== type) _removeLayer(t); });
+            // summary も一旦隠す（scoreのみ表示）
+            const sumEl = document.getElementById('fieldSummary');
+            if (type !== 'score' && sumEl) sumEl.style.display = 'none';
+            // ラジオなので checked は常に true だが念のため確認
             const el = document.getElementById(`fieldLayer${type.charAt(0).toUpperCase()+type.slice(1)}`);
-            if (!el) return;
-            if (!el.checked) {
-                _removeLayer(type);
-            } else {
-                if (type === 'score')       loadFieldScore(_fieldDay);
-                if (type === 'wind')        loadFieldWind(_fieldDay, _fieldHour);
-                if (type === 'humidity')    loadFieldHumidity(_fieldDay, _fieldHour);
-                if (type === 'solar')       loadFieldSolar(_fieldDay, _fieldHour);
-                if (type === 'temperature') loadFieldTemperature(_fieldDay, _fieldHour);
-            }
+            if (!el || !el.checked) return;
+            if (type === 'score')       loadFieldScore(_fieldDay);
+            if (type === 'wind')        loadFieldWind(_fieldDay, _fieldHour);
+            if (type === 'humidity')    loadFieldHumidity(_fieldDay, _fieldHour);
+            if (type === 'solar')       loadFieldSolar(_fieldDay, _fieldHour);
+            if (type === 'temperature') loadFieldTemperature(_fieldDay, _fieldHour);
         }
 
         function _setStatus(msg) {
@@ -5876,11 +6136,25 @@
 
         async function loadFieldScore(day) {
             if (!document.getElementById('fieldLayerScore').checked) return;
+            const myGen = _fieldGeneration;
             _setStatus('乾燥スコアを読み込み中...');
             try {
                 const res = await fetch(`/api/analysis/field?type=score&day=${day}`);
-                const data = await res.json();
-                if (data.status !== 'success') { _setStatus('スコア取得失敗'); return; }
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] score HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`スコア取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('スコアデータが空です'); console.warn('[field] score: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] score JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('スコアデータの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('スコア取得失敗: ' + (data.message || '')); return; }
 
                 _removeLayer('score');
                 const group = L.layerGroup();
@@ -5893,15 +6167,32 @@
                         fillOpacity: 0.82,
                     });
                     const nick = p.buraku || p.district || p.town || p.name;
+                    // wind_warning: APIの正式キー優先。なければ avg_wind_ms から派生（後方互換）
+                    const _ww = p.wind_warning;
+                    const _wms = p.metrics?.avg_wind_ms ?? 0;
+                    const _windNote = _ww?.level === 'danger'  ? ' 💨強風注意'
+                                    : _ww?.level === 'caution' ? ' 🌬️強め'
+                                    : _wms >= 9.0              ? ' 💨強風注意'   // fallback
+                                    : _wms >= 6.0              ? ' 🌬️強め'       // fallback
+                                    : '';
+                    const _windDisp = p.metrics?.max_wind_ms != null
+                        ? `${_wms}avg / ${p.metrics.max_wind_ms}max m/s`
+                        : `${_wms}m/s`;
+                    // local_risk_adjustments: 霧補正がある場合のみスコア行に追記
+                    // (ツールチップが混みすぎないよう fog_penalty のみ表示)
+                    const _lra = p.local_risk_adjustments;
+                    const _fogPen = _lra?.fog_penalty ?? 0;
+                    const _fogNote = _fogPen < 0 ? ` [霧補正${_fogPen}点]` : '';
                     marker.bindTooltip(
-                        `<b>${nick}</b><br>スコア: ${p.value}<br>` +
+                        `<b>${nick}</b><br>スコア: ${p.value}${_windNote}${_fogNote}<br>` +
                         `降水: ${p.metrics.precipitation}mm / ` +
                         `湿度: ${p.metrics.min_humidity}% / ` +
-                        `風: ${p.metrics.avg_wind_ms ?? '--'}m/s`,
+                        `風: ${_windDisp}`,
                         { sticky: true, className: 'field-tooltip' }
                     );
                     group.addLayer(marker);
                 });
+                if (myGen !== _fieldGeneration) return;  // タブ離脱後のfetch完了は無視
                 _fieldLayers.score = group;
                 group.addTo(map);
 
@@ -6029,11 +6320,25 @@
 
         async function loadFieldWind(day, hour) {
             if (!document.getElementById('fieldLayerWind').checked) return;
+            const myGen = _fieldGeneration;
             _setStatus((_fieldLayers.score ? 'スコア表示中 / ' : '') + '風データ読み込み中...');
             try {
                 const res = await fetch(`/api/analysis/field?type=wind&day=${day}&hour=${hour}`);
-                const data = await res.json();
-                if (data.status !== 'success') { _setStatus('風データ取得失敗'); return; }
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] wind HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`風データ取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('風データが空です'); console.warn('[field] wind: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] wind JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('風データの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('風データ取得失敗: ' + (data.message || '')); return; }
 
                 _removeLayer('wind');
                 const vectors = data.vectors || [];
@@ -6055,6 +6360,7 @@
                     _drawWindArrow(vectors[nearestIdx], true).addTo(group);
                 }
 
+                if (myGen !== _fieldGeneration) return;
                 _fieldLayers.wind = group;
                 group.addTo(map);
 
@@ -6073,11 +6379,25 @@
 
         async function loadFieldHumidity(day, hour) {
             if (!document.getElementById('fieldLayerHumidity').checked) return;
+            const myGen = _fieldGeneration;
             _setStatus(_buildStatusLine('', `湿度データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
             try {
                 const res = await fetch(`/api/analysis/field?type=humidity&day=${day}&hour=${hour}`);
-                const data = await res.json();
-                if (data.status !== 'success') { _setStatus('湿度データ取得失敗'); return; }
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] humidity HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`湿度データ取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('湿度データが空です'); console.warn('[field] humidity: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] humidity JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('湿度データの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('湿度データ取得失敗: ' + (data.message || '')); return; }
 
                 _removeLayer('humidity');
                 const group = L.layerGroup();
@@ -6098,6 +6418,7 @@
                     );
                     group.addLayer(marker);
                 });
+                if (myGen !== _fieldGeneration) return;
                 _fieldLayers.humidity = group;
                 group.addTo(map);
 
@@ -6116,11 +6437,25 @@
 
         async function loadFieldSolar(day, hour) {
             if (!document.getElementById('fieldLayerSolar').checked) return;
+            const myGen = _fieldGeneration;
             _setStatus(_buildStatusLine('', `日射量データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
             try {
                 const res = await fetch(`/api/analysis/field?type=solar&day=${day}&hour=${hour}`);
-                const data = await res.json();
-                if (data.status !== 'success') { _setStatus('日射量データ取得失敗'); return; }
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] solar HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`日射量データ取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('日射量データが空です'); console.warn('[field] solar: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] solar JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('日射量データの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('日射量データ取得失敗: ' + (data.message || '')); return; }
 
                 _removeLayer('solar');
                 const group = L.layerGroup();
@@ -6138,6 +6473,7 @@
                     );
                     group.addLayer(marker);
                 });
+                if (myGen !== _fieldGeneration) return;
                 _fieldLayers.solar = group;
                 group.addTo(map);
 
@@ -6156,11 +6492,25 @@
 
         async function loadFieldTemperature(day, hour) {
             if (!document.getElementById('fieldLayerTemperature').checked) return;
+            const myGen = _fieldGeneration;
             _setStatus(_buildStatusLine('', `気温データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
             try {
                 const res = await fetch(`/api/analysis/field?type=temperature&day=${day}&hour=${hour}`);
-                const data = await res.json();
-                if (data.status !== 'success') { _setStatus('気温データ取得失敗'); return; }
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] temperature HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`気温データ取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('気温データが空です'); console.warn('[field] temperature: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] temperature JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('気温データの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('気温データ取得失敗: ' + (data.message || '')); return; }
 
                 _removeLayer('temperature');
                 const group = L.layerGroup();
@@ -6178,6 +6528,7 @@
                     );
                     group.addLayer(marker);
                 });
+                if (myGen !== _fieldGeneration) return;
                 _fieldLayers.temperature = group;
                 group.addTo(map);
 
