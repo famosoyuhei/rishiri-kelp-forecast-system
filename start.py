@@ -2309,6 +2309,60 @@ def _build_rishiri_grid(rows: int = 6, cols: int = 8) -> list:
     ]
 
 
+def _fetch_elevations_batch(lats: list, lons: list) -> list:
+    """
+    Open-Meteo Elevation API で複数地点の標高を一括取得（単一HTTPリクエスト）。
+
+    _compute_score_field() から呼び出すことで、個別の get_elevation() を
+    48回（48×~1.5s ≈ 72s）呼ぶ代わりに1回のリクエスト（~2s）で済む。
+
+    Returns:
+        各地点の標高(m)リスト。長さは常に len(lats) と一致する。
+        失敗・欠損・型エラーがあった要素は個別に 0.0 で補完し、
+        呼び出し元が IndexError / TypeError で落ちないことを保証する。
+
+    Fallback:
+        - API通信失敗 / タイムアウト → 全点 0.0（警告をログ出力）
+        - API応答の配列長がlats長より短い → 不足分を 0.0 で補完
+        - 個別要素が None / 非数値 → その点を 0.0 で補完
+        ※ elevation=0 は「標高0m（海面付近）」として正しく扱われ、
+          None とは区別される（calculate_enhanced_drying_score の `if elevation is None:` 分岐参照）
+    """
+    n = len(lats)
+    try:
+        lat_str = ','.join(f'{lat:.4f}' for lat in lats)
+        lon_str = ','.join(f'{lon:.4f}' for lon in lons)
+        url = f'https://api.open-meteo.com/v1/elevation?latitude={lat_str}&longitude={lon_str}'
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        raw = data.get('elevation', [])
+
+        # 長さ不一致・個別欠損をすべて安全に補完
+        result: list = []
+        missing = 0
+        for i in range(n):
+            try:
+                v = raw[i]
+                result.append(max(0.0, float(v)) if v is not None else 0.0)
+                if v is None:
+                    missing += 1
+            except (IndexError, TypeError, ValueError):
+                result.append(0.0)
+                missing += 1
+        if missing:
+            print(f'[elevation-batch] {missing}/{n} points missing; 0m fallback applied')
+        return result
+
+    except Exception as e:
+        print(f'[elevation-batch] batch request failed ({e}); '
+              f'using 0m fallback for all {n} points. '
+              f'Score terrain correction will be skipped (elevation > 100m check).')
+        return [0.0] * n
+
+
+def _score_color(score: int) -> str:
+    if score >= 80: return '#1f9d55'
     if score >= 50: return '#c9a500'  # 凡例(legend.stops/HTML)と完全一致
     return '#d64545'
 
