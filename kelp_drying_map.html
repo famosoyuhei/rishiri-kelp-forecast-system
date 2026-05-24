@@ -1685,7 +1685,7 @@
 
                 <!-- Canvas for chart -->
                 <div style="position: relative; height: 500px; margin: 20px 0;">
-                    <canvas id="emagramCanvas"></canvas>
+                    <canvas id="emagramCanvas" role="img" aria-label="エマグラム図（気温・露点温度の鉛直プロファイル）"></canvas>
                 </div>
 
                 <!-- 解説情報 -->
@@ -1742,7 +1742,7 @@
             </div>
 
             <div class="chart-container">
-                <canvas id="forecastChart" width="350" height="300"></canvas>
+                <canvas id="forecastChart" width="350" height="300" role="img" aria-label="7日間乾燥スコア予報チャート"></canvas>
             </div>
         </div>
     </div>
@@ -6640,11 +6640,18 @@
             metadataDiv.innerHTML = '';
 
             try {
-                // APIリクエスト
+                // APIリクエスト（等値線図は互換用エンドポイント。波浪/高層データのみ有効）
                 const response = await fetch(`/api/analysis/contours?type=${category}&time=${timeOffset}`);
                 const data = await response.json();
 
-                if (data.status === 'success') {
+                if (data.status === 'deprecated') {
+                    // M-5: matplotlib廃止カテゴリーは 410 が返る → 誘導メッセージを表示
+                    imageDiv.innerHTML = `
+                        <div style="background:#fff8e1;padding:20px;border-radius:8px;text-align:center;border:1px solid #f0c040;">
+                            <p style="font-size:1rem;color:#7a6000;margin:0 0 8px;">このカテゴリーの等値線図は廃止されました。</p>
+                            <p style="font-size:0.85rem;color:#999;margin:0;">「島内分布」タブの <strong>スコア/風速/湿度/気温/日射</strong> 分布図をご利用ください。</p>
+                        </div>`;
+                } else if (data.status === 'success') {
                     // 画像表示
                     if (data.visualization_url) {
                         imageDiv.innerHTML = `

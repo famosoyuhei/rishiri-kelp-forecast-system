@@ -98,7 +98,12 @@ def verify_line_signature(body_bytes: bytes, x_line_signature: str) -> bool:
     """Verify LINE webhook signature using HMAC-SHA256."""
     secret = _cfg()['secret']
     if not secret:
-        logger.warning('LINE_CHANNEL_SECRET is not set; signature verification skipped')
+        # M-8: 本番環境では LINE_CHANNEL_SECRET 未設定を ERROR レベルで記録
+        # （開発環境では CRITICAL にはしないが、明確な警告を出す）
+        logger.error(
+            'LINE_CHANNEL_SECRET is not set — webhook signature verification SKIPPED. '
+            'Set the environment variable on Render before going live.'
+        )
         return False
     digest = hmac.new(
         secret.encode('utf-8'),

@@ -20,7 +20,17 @@ JST = timezone(timedelta(hours=9))  # 日本標準時 (UTC+9)
 
 # Create Flask app
 app = Flask(__name__)
-CORS(app)
+# M-2: CORS を本番URLとローカル開発に限定
+CORS(app, origins=[
+    "https://rishiri-kelp-forecast-system.onrender.com",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+])
+
+# M-3: APIレート制限（外部API呼び出しを誘発するエンドポイントを保護）
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 # Configuration — all paths are BASE_DIR-relative so the app works regardless of cwd
 CSV_FILE             = os.path.join(BASE_DIR, "hoshiba_spots.csv")
@@ -717,6 +727,7 @@ def _save_forecast_history(spot_name, forecasts):
 
 
 @app.route('/api/forecast')
+@limiter.limit("30 per minute")
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
     lat = float(request.args.get('lat', 45.178269))
@@ -1539,6 +1550,14 @@ def get_forecast_legacy():
     """Legacy endpoint for /forecast - redirects to /api/forecast"""
     return get_forecast()
 
+def _sanitize_csv_field(value) -> str:
+    """
+    CSVインジェクション対策: 改行・NULLバイトを除去し最大100文字に制限。
+    カンマはPandasのCSV書き込み時に自動クォートされるため除去不要。
+    """
+    return str(value or '').replace('\r', '').replace('\n', ' ').replace('\x00', '')[:100]
+
+
 @app.route('/add', methods=['POST'])
 def add_spot():
     """新規干場を追加"""
@@ -1555,13 +1574,18 @@ def add_spot():
         # 重複チェック（命名規則による）
         name = generate_spot_name(lat, lon)
 
+        # M-4: ユーザー入力をサニタイズしてCSVインジェクションを防ぐ
+        town     = _sanitize_csv_field(data.get("town", ""))
+        district = _sanitize_csv_field(data.get("district", ""))
+        buraku   = _sanitize_csv_field(data.get("buraku", ""))
+
         new_row = pd.DataFrame([{
             "name": name,
             "lat": lat,
             "lon": lon,
-            "town": data.get("town", ""),
-            "district": data.get("district", ""),
-            "buraku": data.get("buraku", "")
+            "town": town,
+            "district": district,
+            "buraku": buraku
         }])
 
         # Read existing data
@@ -1588,9 +1612,9 @@ def add_spot():
                 "name": name,
                 "lat": lat,
                 "lon": lon,
-                "town": data.get("town", ""),
-                "district": data.get("district", ""),
-                "buraku": data.get("buraku", "")
+                "town": town,
+                "district": district,
+                "buraku": buraku
             },
             "sync_status": sync_result
         })
@@ -2872,6 +2896,7 @@ def _compute_temperature_field(day: int, hour: int) -> dict:
 
 
 @app.route('/api/analysis/field')
+@limiter.limit("20 per minute")
 def get_analysis_field():
     """
     島内分布図データを返す。

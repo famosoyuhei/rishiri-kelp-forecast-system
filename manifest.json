@@ -25,23 +25,6 @@
     }
   ],
   
-  "screenshots": [
-    {
-      "src": "/static/screenshots/desktop-home.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "ホーム画面 - デスクトップ"
-    },
-    {
-      "src": "/static/screenshots/mobile-home.png",
-      "sizes": "360x640",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "ホーム画面 - モバイル"
-    }
-  ],
-  
   "categories": ["weather", "productivity", "utilities"],
   "lang": "ja",
   
@@ -53,8 +36,9 @@
       "url": "/?shortcut=weather",
       "icons": [
         {
-          "src": "/static/icons/weather-icon.png",
-          "sizes": "96x96"
+          "src": "/static/icons/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
         }
       ]
     },
@@ -65,8 +49,9 @@
       "url": "/?shortcut=fog",
       "icons": [
         {
-          "src": "/static/icons/fog-icon.png",
-          "sizes": "96x96"
+          "src": "/static/icons/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
         }
       ]
     },
@@ -77,8 +62,9 @@
       "url": "/dashboard",
       "icons": [
         {
-          "src": "/static/icons/dashboard-icon.png",
-          "sizes": "96x96"
+          "src": "/static/icons/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
         }
       ]
     }
