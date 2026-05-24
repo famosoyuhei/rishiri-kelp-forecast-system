@@ -10,12 +10,13 @@ import numpy as np
 import requests
 import pandas as pd
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from scipy.optimize import fsolve
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JST = timezone(timedelta(hours=9))  # 日本標準時 (UTC+9)
 
 # Create Flask app
 app = Flask(__name__)
@@ -590,7 +591,7 @@ def get_weather():
                 'wind_direction': current.get('winddirection'),
                 'weather_code': current.get('weathercode')
             },
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(tz=JST).isoformat(),
             'status': 'success'
         }
 
@@ -629,7 +630,7 @@ def get_jma_warnings():
         return {
             'warnings': warnings,
             'hasWarnings': len(warnings) > 0,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(tz=JST).isoformat(),
             'status': 'success'
         }
 
@@ -653,7 +654,7 @@ def get_seasonal_outlook():
                 data = json.load(f)
         else:
             data = {
-                'season': str(datetime.now().year),
+                'season': str(datetime.now(tz=JST).year),
                 'updated': None,
                 'source': '',
                 'expertComment': '',
@@ -687,7 +688,7 @@ def update_seasonal_outlook():
 
 def _save_forecast_history(spot_name, forecasts):
     """Save each day's forecast to forecast_history/ for later accuracy comparison."""
-    today_str = datetime.now().strftime('%Y%m%d')
+    today_str = datetime.now(tz=JST).strftime('%Y%m%d')
     spot_dir = os.path.join(FORECAST_HISTORY_DIR, spot_name)
     os.makedirs(spot_dir, exist_ok=True)
     for fc in forecasts:
@@ -1115,7 +1116,7 @@ def get_forecast():
             'spot_theta': round(spot_theta, 1),  # 干場の極座標θ（仕様書 lines 72-73）
             'mountain_azimuth': round(mountain_azimuth, 1),  # 干場→山頂方位角
             'forecasts': forecasts,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(tz=JST).isoformat(),
             'status': 'success'
         }
 
@@ -1702,8 +1703,8 @@ def delete_spot():
 
         if os.path.exists(lock_file):
             # ロックファイルの更新時刻を確認
-            lock_time = datetime.fromtimestamp(os.path.getmtime(lock_file))
-            if datetime.now() - lock_time < timedelta(minutes=5):
+            lock_time = datetime.fromtimestamp(os.path.getmtime(lock_file), tz=JST)
+            if datetime.now(tz=JST) - lock_time < timedelta(minutes=5):
                 return jsonify({
                     "status": "error",
                     "message": "他のユーザーが同じ干場を編集中です。しばらく時間を置いてから再度お試しください。",
@@ -3828,7 +3829,7 @@ def get_forecast_accuracy():
         validation_results = []
         accuracy_by_day = {f'{i}_day': {'errors': [], 'count': 0} for i in range(1, 8)}
 
-        end_date = datetime.now()
+        end_date = datetime.now(tz=JST)
         start_date = end_date - timedelta(days=days_back)
 
         for day_offset in range(days_back):
@@ -4042,7 +4043,7 @@ def _collect_amedas_from_openmeteo(target_date_str):
                     'avg_wind': round(sum(valid_w) / len(valid_w), 2) if valid_w else None,
                     'total_precipitation': round(sum(valid_p), 2) if valid_p else None,
                 },
-                'collected_at': datetime.now().isoformat(),
+                'collected_at': datetime.now(tz=JST).isoformat(),
             }
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(record, f, ensure_ascii=False)
@@ -4064,7 +4065,7 @@ def collect_amedas():
     days = min(days, 90)  # cap at 90 days to avoid abuse
     results = []
     for i in range(1, days + 1):
-        target = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+        target = (datetime.now(tz=JST) - timedelta(days=i)).strftime('%Y%m%d')
         ok = _collect_amedas_from_openmeteo(target)
         results.append({'date': target, 'success': ok})
     return jsonify({'status': 'ok', 'results': results})
@@ -4075,13 +4076,13 @@ def _daily_amedas_collection():
     import time
     from datetime import timedelta
     while True:
-        now = datetime.now()
+        now = datetime.now(tz=JST)
         # Target 03:00 JST (same timezone the app runs in)
         next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run = next_run + timedelta(days=1)
         time.sleep((next_run - now).total_seconds())
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+        yesterday = (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
         _collect_amedas_from_openmeteo(yesterday)
 
 
