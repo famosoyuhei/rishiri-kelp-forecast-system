@@ -2469,6 +2469,83 @@ def _make_wind_warning(max_wind_ms) -> dict | None:
     return None
 
 
+def _field_target_date(day: int) -> str:
+    """day=0→今日(JST), day=1→明日, … Returns 'YYYY-MM-DD'."""
+    return (datetime.now(tz=JST) + timedelta(days=day)).strftime('%Y-%m-%d')
+
+
+def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
+    """
+    Open-Meteo JMA-MSM 予報を複数地点並列取得（ThreadPoolExecutor）。
+    Returns list[dict] — 順序は lats/lons と一致。
+    失敗した地点は {'hourly': {}} で補完するため呼び出し元が IndexError にならない。
+    """
+    import concurrent.futures as _cf
+
+    vars_str = ','.join(hourly_vars)
+
+    def _fetch_one(lat_lon):
+        lat, lon = lat_lon
+        url = (
+            f'https://api.open-meteo.com/v1/forecast'
+            f'?latitude={lat:.4f}&longitude={lon:.4f}'
+            f'&hourly={vars_str}'
+            f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless'
+        )
+        try:
+            r = requests.get(url, timeout=15)
+            r.raise_for_status()
+            return r.json()
+        except Exception as exc:
+            print(f'[field-multi] {lat:.4f},{lon:.4f} failed: {exc}')
+            return {'hourly': {}}
+
+    with _cf.ThreadPoolExecutor(max_workers=10) as ex:
+        return list(ex.map(_fetch_one, zip(lats, lons)))
+
+
+def _extract_day_window(hourly: dict, target_date: str) -> dict:
+    """
+    Open-Meteo hourly dict から target_date の作業時間帯（04〜16時JST）だけ抽出。
+    Returns {variable: [values]} — time キーは除外。
+    """
+    times = hourly.get('time', [])
+    indices = [
+        i for i, t in enumerate(times)
+        if t.startswith(target_date) and 4 <= int(t[11:13]) <= 16
+    ]
+    result = {}
+    for var, values in hourly.items():
+        if var == 'time':
+            continue
+        result[var] = [values[i] for i in indices if i < len(values)]
+    return result
+
+
+def _safe_max(values) -> float | None:
+    """None を除いた最大値。値が空なら None。"""
+    valid = [v for v in (values or []) if v is not None]
+    return max(valid) if valid else None
+
+
+def _safe_min(values) -> float | None:
+    """None を除いた最小値。値が空なら None。"""
+    valid = [v for v in (values or []) if v is not None]
+    return min(valid) if valid else None
+
+
+def _safe_avg(values) -> float | None:
+    """None を除いた平均値。値が空なら None。"""
+    valid = [v for v in (values or []) if v is not None]
+    return sum(valid) / len(valid) if valid else None
+
+
+def _safe_sum(values) -> float | None:
+    """None を除いた合計。値が空なら None。"""
+    valid = [v for v in (values or []) if v is not None]
+    return sum(valid) if valid else None
+
+
 def _compute_score_field(day: int) -> dict:
     """
     Compute drying score for 6×8=48 representative grid points.
@@ -2934,6 +3011,26 @@ def get_analysis_field():
                 'allowed_hours': _ALLOWED_HOURS,
             }), 400
 
+    # キャッシュヒット確認（外部APIコールをスキップ）
+    cache_key = f'{field_type}:{day}:{hour}'
+    cached = _field_cache_get(cache_key)
+    if cached:
+        cached['cache'] = {'hit': True}
+        return jsonify(cached)
+
+    target_date = _field_target_date(day)
+
+    # フィールドタイプ別データ取得
+    if field_type == 'score':
+        data = _compute_score_field(day)
+    elif field_type == 'wind':
+        data = _compute_wind_field(day, hour)
+    elif field_type == 'humidity':
+        data = _compute_humidity_field(day, hour)
+    elif field_type == 'temperature':
+        data = _compute_temperature_field(day, hour)
+    elif field_type == 'solar':
+        data = _compute_solar_field(day, hour)
     else:
         data = {'error': 'unknown type'}
 
