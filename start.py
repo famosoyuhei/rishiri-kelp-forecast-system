@@ -2280,24 +2280,65 @@ def _compute_grid_bounds() -> dict:
     return _grid_bounds_cache
 
 
-def _build_rishiri_grid(rows: int = 6, cols: int = 8) -> list:
-    """Build rows×cols representative grid over Rishiri Island.
+def _build_rishiri_grid(n_points: int = 48) -> list:
+    """利尻島沿岸部を等間隔で周回するグリッドを生成。
 
-    Bounds are derived from hoshiba_spots.csv min/max + margin via
-    _compute_grid_bounds() (result cached for process lifetime).
-    Default 6×8 = 48 grid points sent in one Open-Meteo multi-coordinate request.
+    【旧実装: 矩形 6×8 グリッド】
+    - 山頂付近（標高1,721m）・島沖の海上に約20点が無駄に配置されていた
+    - 干場は沿岸部に集中しているため気象差異の可視化に不向きだった
+
+    【新実装: 沿岸リング】
+    - 全点が実際の干場と同じ沿岸帯（海岸線付近）に配置される
+    - 北/東/南/西で山背風・onshore効果の違いが明確に表れる
+    - フェーン判定の精度も向上（各点が山頂に対して均等な方位を持つ）
+
+    Parameters
+    ----------
+    n_points : 生成する沿岸格子点数（デフォルト48）
+
+    座標計算
+    ----------
+    中心: 利尻山頂 (45.1800N, 141.2392E) — onshore/foehn計算と同じ基準点
+    半径: 9.0 km  ← CSV内の最大/最小座標から実測（北端45.2582 - 中心45.1800 = 8.7km）
+    方位: 北=0°、時計回り（気象学的方位角と同一）
     """
-    b = _compute_grid_bounds()
-    lat_min, lat_max = b['lat_min'], b['lat_max']
-    lon_min, lon_max = b['lon_min'], b['lon_max']
-    return [
-        {
-            'lat': lat_min + (lat_max - lat_min) * r / (rows - 1),
-            'lon': lon_min + (lon_max - lon_min) * c / (cols - 1),
-        }
-        for r in range(rows)
-        for c in range(cols)
+    import math as _m
+
+    CENTER_LAT = 45.1800   # 利尻山頂緯度（R_1800_2392）
+    CENTER_LON = 141.2392  # 利尻山頂経度
+    RADIUS_KM  = 9.0       # 沿岸までの距離（km）
+
+    # 1°あたりのkm換算
+    LAT_DEG_PER_KM = 1.0 / 111.0
+    LON_DEG_PER_KM = 1.0 / (111.0 * _m.cos(_m.radians(CENTER_LAT)))
+
+    # 16方位名（16方位 × 3点 = 48点）
+    _COMPASS = [
+        '北', '北北東', '北東', '東北東',
+        '東', '東南東', '南東', '南南東',
+        '南', '南南西', '南西', '西南西',
+        '西', '西北西', '北西', '北北西',
     ]
+
+    points = []
+    for i in range(n_points):
+        bearing_deg = 360.0 * i / n_points   # 北=0°, 時計回り
+        bearing_rad = _m.radians(bearing_deg)
+
+        lat = CENTER_LAT + RADIUS_KM * LAT_DEG_PER_KM * _m.cos(bearing_rad)
+        lon = CENTER_LON + RADIUS_KM * LON_DEG_PER_KM * _m.sin(bearing_rad)
+
+        compass_idx = i // (n_points // 16)          # 16方位のインデックス
+        sub_idx     = (i % (n_points // 16)) + 1    # 方位内の番号 (1,2,3)
+        label = _COMPASS[compass_idx] if compass_idx < len(_COMPASS) else f'{bearing_deg:.0f}°'
+
+        points.append({
+            'lat':     round(lat, 4),
+            'lon':     round(lon, 4),
+            'bearing': round(bearing_deg, 1),   # 山頂からの方位角（デバッグ用）
+            'label':   f'沿岸{label}{sub_idx}',  # 表示名（例: 沿岸北1, 沿岸東南東2）
+        })
+    return points
 
 
 def _fetch_elevations_batch(lats: list, lons: list) -> list:
@@ -2829,7 +2870,7 @@ def _compute_score_field(day: int) -> dict:
         # max_wind_ms（日内最大）を使用し、avg（平均）では見逃すピーク強風を捕捉する
         wind_warning = _make_wind_warning(wind_max_ms)
 
-        display_name = f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+        display_name = g.get('label') or f'沿岸{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
         if best is None or score > best['score']:
             best = {'name': display_name, 'score': score}
 
@@ -2837,6 +2878,7 @@ def _compute_score_field(day: int) -> dict:
             'name':     display_name,
             'lat':      round(g['lat'], 4),
             'lon':      round(g['lon'], 4),
+            'bearing':  g.get('bearing'),    # 山頂からの方位角（フロントエンドツールチップ用）
             'town':     '',          # グリッド点は行政区分なし（干場個別は /api/forecast を使用）
             'district': '',
             'buraku':   '',
