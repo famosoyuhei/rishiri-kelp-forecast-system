@@ -5775,5 +5775,15 @@ def line_notify():
     return handle_notify()
 
 
+@app.route('/api/line/setup-richmenu', methods=['POST'])
+def line_setup_rich_menu():
+    """
+    Create / replace the LINE rich menu and upload auto-generated image.
+    Requires X-Notify-Secret header or 'secret' in JSON body.
+    """
+    from line_integration import handle_setup_rich_menu
+    return handle_setup_rich_menu()
+
+
 if __name__ == '__main__':
     main()

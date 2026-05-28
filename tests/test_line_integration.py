@@ -1186,3 +1186,226 @@ def test_notify_all_uses_display_name(tmp_sub_file, monkeypatch):
     assert pushed, "push_text must have been called"
     assert "浜の前" in pushed[0]
     assert "H_1631_1434" not in pushed[0]
+
+
+# ---------------------------------------------------------------------------
+# format_single_day — improved emoji labels and layout
+# ---------------------------------------------------------------------------
+
+def test_format_single_day_shows_emoji_label():
+    """Suitability label now uses emoji (☀️/🌤/⛅/🌧) instead of ★/○/△/×."""
+    fc = _sample_fc(suitability="excellent", score=90)
+    msg = li.format_single_day("浜の前", fc)
+    assert "☀️" in msg or "干せます" in msg
+
+
+def test_format_single_day_score_in_parens():
+    """Score is shown as （72点） format."""
+    fc = _sample_fc(suitability="good", score=72)
+    msg = li.format_single_day("浜の前", fc)
+    assert "72" in msg
+
+
+def test_format_single_day_wind_with_unit():
+    """Wind speed has m/s unit."""
+    fc = _sample_fc()
+    msg = li.format_single_day("浜の前", fc)
+    assert "m/s" in msg
+
+
+def test_format_single_day_humidity_with_unit():
+    """Humidity has % unit."""
+    fc = _sample_fc()
+    msg = li.format_single_day("浜の前", fc)
+    assert "%" in msg
+
+
+def test_format_single_day_rain_note_no_rain():
+    """No-rain message does not say '雨Xmm' when precip=0."""
+    fc = _sample_fc(precip=0.0)
+    msg = li.format_single_day("浜の前", fc)
+    assert "雨なし" in msg or "雨0mm" in msg or "☔" in msg
+
+
+def test_format_single_day_poor_rain_emoji():
+    """With rain, 🌧 emoji and mm value are shown."""
+    fc = _sample_fc(suitability="poor", score=10, precip=3.5)
+    msg = li.format_single_day("浜の前", fc)
+    assert "3.5mm" in msg
+
+
+def test_format_weekly_summary_emoji_labels():
+    """Weekly summary uses short emoji labels (☀️/🌤/⛅/🌧)."""
+    forecasts = [_sample_fc(i) for i in range(7)]
+    msg = li.format_weekly_summary("浜の前", forecasts)
+    assert any(e in msg for e in ("☀️", "🌤", "⛅", "🌧"))
+
+
+def test_format_weekly_summary_checkmark_summary():
+    """Weekly summary has ✅ good-days count."""
+    forecasts = [_sample_fc(i) for i in range(7)]
+    msg = li.format_weekly_summary("浜の前", forecasts)
+    assert "✅" in msg
+    assert "7" in msg  # 7 good days (all 'good' in sample)
+
+
+# ---------------------------------------------------------------------------
+# _add_forecast_qr — Quick Reply wrapping
+# ---------------------------------------------------------------------------
+
+def test_add_forecast_qr_wraps_forecast():
+    """Successful forecast str → dict with text + quick_reply."""
+    text = "【浜の前 今日(5/28水)】\n☀️ 干せます！（89点）"
+    result = li._add_forecast_qr(text, 'today')
+    assert isinstance(result, dict)
+    assert result['text'] == text
+    labels = [i['label'] for i in result['quick_reply']]
+    assert '明日の予報' in labels
+    assert '今週の予報' in labels
+    assert '干し記録' in labels
+
+
+def test_add_forecast_qr_no_wrap_for_hint():
+    """Registration hint (contains 'Webアプリ') is NOT wrapped."""
+    hint = li._no_registration_hint()
+    result = li._add_forecast_qr(hint, 'today')
+    assert isinstance(result, str)
+
+
+def test_add_forecast_qr_no_wrap_for_empty():
+    """Empty string is returned as-is."""
+    assert li._add_forecast_qr('', 'today') == ''
+
+
+def test_add_forecast_qr_no_wrap_for_dict():
+    """Already-dict responses pass through unchanged."""
+    d = {'text': 'foo', 'quick_reply': []}
+    assert li._add_forecast_qr(d, 'today') is d
+
+
+def test_add_forecast_qr_tomorrow_has_today_button():
+    """Tomorrow forecast QR includes '今日の予報' button."""
+    text = "【浜の前 明日(5/29木)】\n🌤 干せそう（72点）"
+    result = li._add_forecast_qr(text, 'tomorrow')
+    labels = [i['label'] for i in result['quick_reply']]
+    assert '今日の予報' in labels
+
+
+# ---------------------------------------------------------------------------
+# process_event — single-spot forecast now returns Quick Reply
+# ---------------------------------------------------------------------------
+
+def test_process_event_today_one_spot_calls_quick_reply(tmp_sub_file, monkeypatch):
+    """process_event '今日' with 1 spot → reply_with_quick_reply (not reply_text)."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "神居", "district": "", "town": ""})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [{"date": "2026-07-01", "day_number": 0,
+                                           "suitability": "good", "score": 80,
+                                           "precipitation": 0, "min_humidity": 70,
+                                           "avg_wind": 3.5, "pop": 10}])
+    li.upsert_subscription("user", "U_1sp", {
+        "spots": ["H_1631_1434"],
+        "spot_nicknames": {"神居の前": "H_1631_1434"},
+    })
+    qr_calls = []
+    monkeypatch.setattr(li, "reply_with_quick_reply",
+                        lambda token, text, items: qr_calls.append((token, text, items)))
+    monkeypatch.setattr(li, "reply_text", lambda *a: None)
+
+    event = {
+        "type": "message",
+        "replyToken": "tok_1sp",
+        "source": {"type": "user", "userId": "U_1sp"},
+        "message": {"type": "text", "text": "今日"},
+    }
+    li.process_event(event)
+    assert len(qr_calls) == 1, "reply_with_quick_reply must be called for single-spot today"
+    labels = [i['label'] for i in qr_calls[0][2]]
+    assert '明日の予報' in labels
+    assert '干し記録' in labels
+
+
+def test_process_event_spot_id_query_has_quick_reply(tmp_sub_file, monkeypatch):
+    """process_event with a direct spot ID query → Quick Reply buttons attached."""
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                                     "buraku": "神居", "district": "", "town": ""})
+    monkeypatch.setattr(li, "get_forecast_for_spot",
+                        lambda lat, lon: [_sample_fc(i) for i in range(7)])
+    qr_calls = []
+    monkeypatch.setattr(li, "reply_with_quick_reply",
+                        lambda tok, txt, items: qr_calls.append(items))
+    monkeypatch.setattr(li, "reply_text", lambda *a: None)
+
+    event = {
+        "type": "message",
+        "replyToken": "tok_sp",
+        "source": {"type": "user", "userId": "U_spid"},
+        "message": {"type": "text", "text": "H_1631_1434"},
+    }
+    li.process_event(event)
+    assert qr_calls, "QR must be attached to spot-ID forecast reply"
+
+
+# ---------------------------------------------------------------------------
+# _build_rich_menu_payload — structure validation
+# ---------------------------------------------------------------------------
+
+def test_build_rich_menu_payload_structure():
+    """Payload has required top-level keys and 6 areas."""
+    p = li._build_rich_menu_payload()
+    assert p['size'] == {'width': 2500, 'height': 1686}
+    assert p['selected'] is True
+    assert 'chatBarText' in p
+    assert len(p['areas']) == 6
+
+
+def test_build_rich_menu_payload_all_message_actions():
+    """All 6 areas use message action type."""
+    for area in li._build_rich_menu_payload()['areas']:
+        assert area['action']['type'] == 'message'
+        assert area['action']['text']   # non-empty text
+
+
+def test_build_rich_menu_payload_covers_full_area():
+    """The 6 areas together cover the full 2500×1686 area without gaps."""
+    p = li._build_rich_menu_payload()
+    W, H = p['size']['width'], p['size']['height']
+    covered = set()
+    for area in p['areas']:
+        b = area['bounds']
+        for x in range(b['x'], b['x'] + b['width'], 100):
+            for y in range(b['y'], b['y'] + b['height'], 100):
+                covered.add((x // 100, y // 100))
+    # Sample-check that corners are covered
+    corners = [(0, 0), (W // 100 - 1, 0), (0, H // 100 - 1), (W // 100 - 1, H // 100 - 1)]
+    for cx, cy in corners:
+        assert (cx, cy) in covered or any(
+            abs(cx - x) <= 1 and abs(cy - y) <= 1 for x, y in covered
+        ), f'Corner ({cx*100},{cy*100}) not covered'
+
+
+def test_build_rich_menu_payload_labels_not_too_long():
+    """All area labels are within LINE's 20-char limit."""
+    for area in li._build_rich_menu_payload()['areas']:
+        label = area['action'].get('label', '')
+        assert len(label) <= 20, f'Label too long: {label!r}'
+
+
+# ---------------------------------------------------------------------------
+# generate_rich_menu_image — basic smoke test
+# ---------------------------------------------------------------------------
+
+def test_generate_rich_menu_image(tmp_path):
+    """generate_rich_menu_image creates a valid PNG file."""
+    path = str(tmp_path / "test_rich_menu.png")
+    result = li.generate_rich_menu_image(path)
+    assert result is True
+    import os
+    assert os.path.exists(path)
+    assert os.path.getsize(path) > 10_000   # must be non-trivial
+    from PIL import Image
+    img = Image.open(path)
+    assert img.size == (2500, 1686)

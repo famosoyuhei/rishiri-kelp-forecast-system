@@ -389,10 +389,18 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 10) -> list:
 # ---------------------------------------------------------------------------
 
 _SUITABILITY_LABEL = {
-    'excellent': '★良好',
-    'good': '○良好',
-    'fair': '△普通',
-    'poor': '×不可',
+    'excellent': '☀️ 干せます！',
+    'good':      '🌤 干せそう',
+    'fair':      '⛅ 微妙',
+    'poor':      '🌧 干せません',
+}
+
+# 週間サマリー用短縮ラベル（1行に収める）
+_SUITABILITY_SHORT = {
+    'excellent': '☀️干せます',
+    'good':      '🌤干せそう',
+    'fair':      '⛅微妙',
+    'poor':      '🌧不可',
 }
 
 _WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
@@ -838,12 +846,19 @@ def format_single_day(spot_name: str, fc: dict) -> str:
     """Format one day's forecast as a short LINE text."""
     label = _SUITABILITY_LABEL.get(fc['suitability'], fc['suitability'])
     date_lbl = _date_label(fc['date'], fc['day_number'])
-    rain_note = f"雨{fc['precipitation']}mm" if fc['precipitation'] > 0 else '雨0mm'
-    pop_note = f" 降水確率{fc['pop']}%" if fc.get('pop') is not None else ''
+    pop_note = f'（確率{fc["pop"]}%）' if fc.get('pop') is not None else ''
+    if fc['precipitation'] > 0:
+        rain_line = f'🌧 雨: {fc["precipitation"]}mm{pop_note}'
+    else:
+        rain_line = f'☔ 雨なし{pop_note}'
     lines = [
-        f"【{spot_name} {date_lbl}の予報】",
-        f"適性: {label}（スコア{fc['score']}）",
-        f"{rain_note}{pop_note} / 最低湿度{fc['min_humidity']}% / 平均風{fc['avg_wind']}m/s",
+        f'【{spot_name} {date_lbl}】',
+        f'{label}（{fc["score"]}点）',
+        '',
+        rain_line,
+        f'💨 風: {fc["avg_wind"]}m/s',
+        f'💦 湿度: {fc["min_humidity"]}%（最低）',
+        '',
         _LINE_DISCLAIMER,
     ]
     return '\n'.join(lines)
@@ -851,14 +866,14 @@ def format_single_day(spot_name: str, fc: dict) -> str:
 
 def format_weekly_summary(spot_name: str, forecasts: list) -> str:
     """Format 7-day summary for LINE."""
-    lines = [f"【{spot_name} 今週の予報】"]
+    lines = [f'【{spot_name} 今週の予報】']
     for fc in forecasts:
-        label = _SUITABILITY_LABEL.get(fc['suitability'], fc['suitability'])
+        label = _SUITABILITY_SHORT.get(fc['suitability'], fc['suitability'])
         date_lbl = _date_label(fc['date'], fc['day_number'])
-        rain = f"雨{fc['precipitation']}mm" if fc['precipitation'] > 0 else '雨なし'
-        lines.append(f"{date_lbl} {label} {fc['score']}点 {rain}")
+        rain = f' 雨{fc["precipitation"]}mm' if fc['precipitation'] > 0 else ''
+        lines.append(f'{date_lbl} {label} {fc["score"]}点{rain}')
     good_days = [fc for fc in forecasts if fc['suitability'] in ('excellent', 'good')]
-    lines.append(f"\n干せそうな日: {len(good_days)}/7日")
+    lines.append(f'\n✅ 干せそうな日: {len(good_days)}/{len(forecasts)}日')
     lines.append(_LINE_DISCLAIMER)
     return '\n'.join(lines)
 
@@ -1669,6 +1684,63 @@ def notify_all(kind: str) -> dict:
     return {'sent': sent, 'failed': failed, 'skipped': skipped, 'kind': kind}
 
 # ---------------------------------------------------------------------------
+# Forecast Quick Reply — buttons shown after every forecast response
+# ---------------------------------------------------------------------------
+
+_FORECAST_QR: dict = {
+    'today': [
+        {'label': '明日の予報', 'text': '明日'},
+        {'label': '今週の予報', 'text': '今週'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+    'tomorrow': [
+        {'label': '今日の予報', 'text': '今日'},
+        {'label': '今週の予報', 'text': '今週'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+    'weekly': [
+        {'label': '今日の予報', 'text': '今日'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+    'day': [
+        {'label': '今日の予報', 'text': '今日'},
+        {'label': '今週の予報', 'text': '今週'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+    'area': [
+        {'label': '今日の予報', 'text': '今日'},
+        {'label': '今週の予報', 'text': '今週'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+    'spot': [
+        {'label': '今日の予報', 'text': '今日'},
+        {'label': '干し記録',   'text': '記録'},
+    ],
+}
+
+# Messages containing these strings are hint/error texts — QR should not be attached.
+# NOTE: '登録されていません' covers _no_registration_hint(); '取得失敗' covers fetch errors.
+# Do NOT include 'Webアプリ' here — the disclaimer _LINE_DISCLAIMER also contains it.
+_FORECAST_QR_SKIP_KW = ('登録されていません', '見つかりません', '取得失敗', 'LINEで通知登録')
+
+
+def _add_forecast_qr(response, cmd: str):
+    """
+    Wrap a plain-text forecast response with Quick Reply buttons for easier navigation.
+    Returns dict {text, quick_reply} or the original response if QR is not applicable
+    (e.g. for error/hint strings, dict responses already carrying QR, or unknown cmd).
+    """
+    if not isinstance(response, str) or not response:
+        return response
+    if any(kw in response for kw in _FORECAST_QR_SKIP_KW):
+        return response
+    items = _FORECAST_QR.get(cmd)
+    if not items:
+        return response
+    return {'text': response, 'quick_reply': items}
+
+
+# ---------------------------------------------------------------------------
 # Webhook event processor
 # ---------------------------------------------------------------------------
 
@@ -1797,6 +1869,10 @@ def process_event(event: dict) -> None:
     else:
         response = handle_unknown()
 
+    # Attach Quick Reply navigation buttons to successful forecast responses
+    if cmd['cmd'] in _FORECAST_QR:
+        response = _add_forecast_qr(response, cmd['cmd'])
+
     if reply_token and response:
         if isinstance(response, dict):
             reply_with_quick_reply(reply_token, response['text'], response['quick_reply'])
@@ -1880,4 +1956,299 @@ def handle_notify():
         return jsonify({'status': 'kind must be evening or morning'}), 400
 
     result = notify_all(kind)
+    return jsonify({'status': 'ok', **result})
+
+
+# ---------------------------------------------------------------------------
+# Rich Menu API
+# ---------------------------------------------------------------------------
+
+_RICH_MENU_W = 2500
+_RICH_MENU_H = 1686   # 2 rows × 3 cols
+_RICH_MENU_NAME = '利尻昆布予報メニュー'
+_RICH_MENU_CHAT_BAR = '予報メニュー'
+
+# LINE Messaging API data endpoint (image upload uses api-data.line.me)
+_LINE_DATA_API = 'https://api-data.line.me/v2/bot'
+
+
+def _build_rich_menu_payload() -> dict:
+    """
+    Build the rich menu JSON payload (2 rows × 3 cols = 6 buttons).
+
+    Button layout:
+      Row 1: ☀️ 今日の予報 | 📅 明日の予報 | 📊 今週の予報
+      Row 2: 📝 乾燥記録   | ⚓ 沖止め     | ⚙️ 設定確認
+    """
+    W, H = _RICH_MENU_W, _RICH_MENU_H
+    BW, BH = W // 3, H // 2
+
+    def _btn(col: int, row: int, label: str, text: str) -> dict:
+        return {
+            'bounds': {
+                'x': col * BW,
+                'y': row * BH,
+                'width': BW,
+                'height': BH,
+            },
+            'action': {
+                'type': 'message',
+                'label': label[:20],   # LINE max 20 chars
+                'text': text,
+            },
+        }
+
+    return {
+        'size': {'width': W, 'height': H},
+        'selected': True,
+        'name': _RICH_MENU_NAME,
+        'chatBarText': _RICH_MENU_CHAT_BAR,
+        'areas': [
+            # Row 1
+            _btn(0, 0, '今日の予報', '今日'),
+            _btn(1, 0, '明日の予報', '明日'),
+            _btn(2, 0, '今週の予報', '今週'),
+            # Row 2
+            _btn(0, 1, '乾燥記録',   '記録'),
+            _btn(1, 1, '沖止め',     '沖止め'),
+            _btn(2, 1, '設定確認',   '設定確認'),
+        ],
+    }
+
+
+def generate_rich_menu_image(path: str) -> bool:
+    """
+    Generate a 2500×1686 rich menu PNG with 6 colored button areas.
+
+    Attempts to render Japanese labels using:
+    1. Windows Japanese fonts (meiryo / msgothic / YuGothB)
+    2. Linux Noto Sans CJK (Render/Debian)
+    3. Pillow built-in fallback (ASCII labels only)
+
+    Returns True on success.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        logger.error('Pillow not installed; cannot generate rich menu image')
+        return False
+
+    W, H = _RICH_MENU_W, _RICH_MENU_H
+    BW, BH = W // 3, H // 2
+    BORDER = 8
+
+    # Button definitions: (col, row, bg_color, emoji, ja_label, ascii_fallback)
+    BTNS = [
+        (0, 0, '#1d4ed8', '☀️', '今日の予報', 'TODAY'),
+        (1, 0, '#0369a1', '📅', '明日の予報', 'TMRW'),
+        (2, 0, '#0e7490', '📊', '今週の予報', 'WEEK'),
+        (0, 1, '#15803d', '📝', '乾燥記録',   'REC'),
+        (1, 1, '#b91c1c', '⚓', '沖止め',     'NOGO'),
+        (2, 1, '#7c3aed', '⚙️', '設定確認',   'SET'),
+    ]
+
+    # Font search order: prefer Japanese fonts
+    _FONT_PATHS_LARGE = [
+        'C:/Windows/Fonts/meiryo.ttc',
+        'C:/Windows/Fonts/msgothic.ttc',
+        'C:/Windows/Fonts/YuGothB.ttc',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc',
+        '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    ]
+
+    def _try_font(size: int):
+        for fp in _FONT_PATHS_LARGE:
+            try:
+                return ImageFont.truetype(fp, size)
+            except Exception:
+                continue
+        try:
+            return ImageFont.load_default(size=size)
+        except Exception:
+            return ImageFont.load_default()
+
+    font_emoji = _try_font(120)   # emoji / large text
+    font_label = _try_font(72)    # Japanese label below emoji
+    font_ascii = _try_font(60)    # ASCII fallback
+
+    img = Image.new('RGB', (W, H), '#0f172a')   # dark slate background
+    draw = ImageDraw.Draw(img)
+
+    for col, row, color, emoji, ja_label, ascii_label in BTNS:
+        x1 = col * BW + BORDER
+        y1 = row * BH + BORDER
+        x2 = (col + 1) * BW - BORDER
+        y2 = (row + 1) * BH - BORDER
+        bw = x2 - x1
+        bh = y2 - y1
+
+        # Button background
+        try:
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=20,
+                                   fill=color, outline='#e2e8f0', width=4)
+        except AttributeError:
+            draw.rectangle([x1, y1, x2, y2], fill=color, outline='#e2e8f0', width=4)
+
+        # Emoji — upper half of button
+        try:
+            bbox = draw.textbbox((0, 0), emoji, font=font_emoji)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.text(
+                (x1 + (bw - tw) // 2, y1 + bh // 4 - th // 2),
+                emoji, fill='#ffffff', font=font_emoji,
+            )
+        except Exception:
+            pass
+
+        # Japanese label — lower half of button
+        rendered = False
+        try:
+            bbox = draw.textbbox((0, 0), ja_label, font=font_label)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            if tw < bw * 0.9:           # fits in button width
+                draw.text(
+                    (x1 + (bw - tw) // 2, y1 + bh * 3 // 4 - th // 2),
+                    ja_label, fill='#ffffff', font=font_label,
+                )
+                rendered = True
+        except Exception:
+            pass
+
+        if not rendered:
+            # ASCII fallback
+            try:
+                bbox = draw.textbbox((0, 0), ascii_label, font=font_ascii)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text(
+                    (x1 + (bw - tw) // 2, y1 + bh * 3 // 4 - th // 2),
+                    ascii_label, fill='#ffffff', font=font_ascii,
+                )
+            except Exception:
+                pass
+
+    import os as _os
+    _os.makedirs(_os.path.dirname(path), exist_ok=True)
+    try:
+        img.save(path, 'PNG', optimize=True)
+        return True
+    except Exception as e:
+        logger.error('generate_rich_menu_image save failed: %s', e)
+        return False
+
+
+def create_rich_menu() -> dict:
+    """
+    Create (or replace) the LINE rich menu and set it as default for all users.
+
+    Steps:
+      1. POST /v2/bot/richmenu         — create menu structure
+      2. POST rich menu image           — upload 2500×1686 PNG
+      3. POST /v2/bot/user/all/richmenu — set as default
+
+    Returns dict with 'richMenuId' and 'status', or 'error' on failure.
+    """
+    cfg = _cfg()
+    if not cfg['token']:
+        return {'error': 'LINE_CHANNEL_ACCESS_TOKEN not set'}
+
+    # ── Step 1: create rich menu structure ──────────────────────────────────
+    payload = _build_rich_menu_payload()
+    try:
+        resp = _requests.post(
+            'https://api.line.me/v2/bot/richmenu',
+            headers=_line_headers(),
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return {'error': f'create rich menu failed {resp.status_code}: {resp.text[:200]}'}
+        rich_menu_id = resp.json().get('richMenuId', '')
+        if not rich_menu_id:
+            return {'error': 'LINE API did not return richMenuId'}
+    except Exception as e:
+        return {'error': f'create rich menu exception: {e}'}
+
+    logger.info('Rich menu created: %s', rich_menu_id)
+
+    # ── Step 2: generate + upload image ─────────────────────────────────────
+    import os as _os
+    image_path = _os.path.join(
+        _os.path.dirname(_os.path.abspath(__file__)),
+        'static', 'icons', 'rich_menu.png',
+    )
+    image_uploaded = False
+
+    if generate_rich_menu_image(image_path):
+        try:
+            with open(image_path, 'rb') as f:
+                img_data = f.read()
+            img_resp = _requests.post(
+                f'{_LINE_DATA_API}/richmenu/{rich_menu_id}/content',
+                headers={
+                    'Authorization': f'Bearer {cfg["token"]}',
+                    'Content-Type': 'image/png',
+                },
+                data=img_data,
+                timeout=30,
+            )
+            if img_resp.status_code == 200:
+                image_uploaded = True
+                logger.info('Rich menu image uploaded (%d bytes)', len(img_data))
+            else:
+                logger.warning('Rich menu image upload failed %s: %s',
+                               img_resp.status_code, img_resp.text[:200])
+        except Exception as e:
+            logger.error('Rich menu image upload exception: %s', e)
+    else:
+        logger.warning('Rich menu image generation failed; menu created without image')
+
+    # ── Step 3: set as default for all users ────────────────────────────────
+    try:
+        default_resp = _requests.post(
+            f'https://api.line.me/v2/bot/user/all/richmenu/{rich_menu_id}',
+            headers=_line_headers(),
+            timeout=15,
+        )
+        if default_resp.status_code not in (200, 204):
+            logger.warning('Set default rich menu failed %s: %s',
+                           default_resp.status_code, default_resp.text[:100])
+    except Exception as e:
+        logger.error('Set default rich menu exception: %s', e)
+
+    return {
+        'richMenuId': rich_menu_id,
+        'image_uploaded': image_uploaded,
+        'status': 'created',
+    }
+
+
+def handle_setup_rich_menu():
+    """
+    Handle POST /api/line/setup-richmenu.
+
+    Requires LINE_ADMIN_NOTIFY_SECRET in the request body or
+    X-Notify-Secret header. Creates the rich menu and uploads
+    the auto-generated image to LINE.
+    """
+    from flask import request, jsonify  # noqa: PLC0415
+
+    cfg = _cfg()
+    if not cfg['enabled']:
+        return jsonify({'status': 'LINE integration disabled'}), 503
+
+    data = request.get_json(silent=True) or {}
+    secret = data.get('secret') or request.headers.get('X-Notify-Secret', '')
+
+    if not cfg['admin_secret']:
+        return jsonify({'status': 'LINE_ADMIN_NOTIFY_SECRET not configured'}), 503
+
+    if not hmac.compare_digest(secret, cfg['admin_secret']):
+        return jsonify({'status': 'unauthorized'}), 403
+
+    result = create_rich_menu()
+    if 'error' in result:
+        return jsonify({'status': 'error', **result}), 500
     return jsonify({'status': 'ok', **result})
