@@ -779,9 +779,18 @@ def _format_confirm(pa: dict) -> str:
     return '\n'.join(lines)
 
 
+_REGISTER_QR = [
+    {'label': '今日の予報', 'text': '今日'},
+    {'label': '干場一覧',   'text': '干場一覧'},
+]
+
+
 def handle_register_spot_nickname(source_type: str, source_id: str,
-                                  nickname: str, spot_id: str) -> str:
-    """Register a nickname → spot_id mapping for this subscriber."""
+                                  nickname: str, spot_id: str):
+    """Register a nickname → spot_id mapping AND add to notification list.
+
+    Returns dict {text, quick_reply} on success, or str on error.
+    """
     if not nickname or not spot_id:
         return '入力形式: 「干場登録 ニックネーム H_XXXX_XXXX」\n例: 干場登録 浜の前 H_1631_1434'
     if not _SPOT_ID_RE.match(spot_id):
@@ -791,21 +800,40 @@ def handle_register_spot_nickname(source_type: str, source_id: str,
         return f'{spot_id} が見つかりません。IDを確認してください。'
     sub = get_subscription(source_type, source_id)
     nicknames = dict(sub.get('spot_nicknames', {})) if sub else {}
+    existing_spots = sub.get('spots', []) if sub else []
 
-    # Check if this spot_id already has a different nickname for this user
+    # Update nickname: remove old mapping for this spot_id, then save new one
     old_nick = next((k for k, v in nicknames.items() if v == spot_id and k != nickname), None)
     if old_nick:
-        # Remove old nickname and replace with new one
         del nicknames[old_nick]
-        nicknames[nickname] = spot_id
-        upsert_subscription(source_type, source_id, {'spot_nicknames': nicknames})
-        return (
-            f'✓ {spot_id} の名前を「{old_nick}」→「{nickname}」に変更しました。'
-        )
-
     nicknames[nickname] = spot_id
     upsert_subscription(source_type, source_id, {'spot_nicknames': nicknames})
-    return f'✓ 「{nickname}」→ {spot_id} を登録しました。\n「記録」コマンドで「{nickname}」と入力できます。'
+
+    # Also add to notification list if not already subscribed
+    newly_added = spot_id not in existing_spots
+    if newly_added:
+        upsert_subscription(source_type, source_id, {
+            'spots': existing_spots + [spot_id],
+            'notify_enabled': True,
+        })
+
+    if newly_added and old_nick:
+        msg = (
+            f'✓ 呼び名を「{old_nick}」→「{nickname}」に変更し、\n'
+            '通知リストに追加しました！\n'
+            '毎日16:00と01:30に乾燥予報をお届けします。'
+        )
+    elif newly_added:
+        msg = (
+            f'✓ 「{nickname}」を通知リストに追加しました！\n'
+            '毎日16:00と01:30に乾燥予報をお届けします。'
+        )
+    elif old_nick:
+        msg = f'✓ 呼び名を「{old_nick}」→「{nickname}」に変更しました。'
+    else:
+        msg = f'✓ 「{nickname}」の呼び名を登録しました。（通知登録済み）'
+
+    return {'text': msg, 'quick_reply': _REGISTER_QR}
 
 
 def handle_list_spots(source_type: str, source_id: str) -> str:
@@ -1418,11 +1446,13 @@ def handle_subscribe(source_type: str, source_id: str, target: str,
                 'spot_nicknames': {**cleaned, nickname: target}
             })
         display = nickname or _auto_display_name(spot)
-        return (
-            f'✓ 「{display}」を通知登録しました。\n'
-            '毎日16:00と01:30に予報をお届けします。\n'
-            '「通知解除」で解除できます。'
-        )
+        return {
+            'text': (
+                f'✓ 「{display}」を通知リストに追加しました！\n'
+                '毎日16:00と01:30に乾燥予報をお届けします。'
+            ),
+            'quick_reply': _REGISTER_QR,
+        }
 
     # Area registration
     spots = find_spots_by_area(target)
@@ -1440,11 +1470,13 @@ def handle_subscribe(source_type: str, source_id: str, target: str,
         'areas': ([target] + (sub['areas'] if sub else [])),
         'notify_enabled': True,
     })
-    return (
-        f'✓ {target}の{len(new_ids)}地点を通知登録しました。\n'
-        '毎日16:00と01:30に予報をお届けします。\n'
-        '「通知解除」で解除できます。'
-    )
+    return {
+        'text': (
+            f'✓ {target}の{len(new_ids)}地点を通知リストに追加しました！\n'
+            '毎日16:00と01:30に乾燥予報をお届けします。'
+        ),
+        'quick_reply': _REGISTER_QR,
+    }
 
 
 def handle_unsubscribe(source_type: str, source_id: str) -> str:

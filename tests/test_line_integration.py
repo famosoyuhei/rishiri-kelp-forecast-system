@@ -594,9 +594,13 @@ def test_register_spot_nickname(tmp_sub_file, monkeypatch):
     monkeypatch.setattr(li, "find_spot_by_id",
                         lambda sid: {"name": sid, "lat": 45.1631, "lon": 141.1434})
     result = li.handle_register_spot_nickname("user", "U1", "浜の前", "H_1631_1434")
-    assert "✓" in result
+    # Returns dict with text + quick_reply (also adds to notification list)
+    assert isinstance(result, dict)
+    assert "✓" in result['text']
+    assert len(result['quick_reply']) > 0
     sub = li.get_subscription("user", "U1")
     assert sub["spot_nicknames"]["浜の前"] == "H_1631_1434"
+    assert "H_1631_1434" in sub.get("spots", [])  # also added to notifications
 
 def test_register_spot_invalid_id(tmp_sub_file):
     result = li.handle_register_spot_nickname("user", "U1", "浜の前", "INVALID")
@@ -626,7 +630,8 @@ def test_register_spot_nickname_replaces_old_name(tmp_sub_file, monkeypatch):
         "spot_nicknames": {"浜の前": "H_1631_1434"},
     })
     result = li.handle_register_spot_nickname("user", "U1", "砂浜", "H_1631_1434")
-    assert "浜の前" in result and "砂浜" in result  # shows rename
+    assert isinstance(result, dict)
+    assert "浜の前" in result['text'] and "砂浜" in result['text']  # shows rename
     sub = li.get_subscription("user", "U1")
     nicks = sub["spot_nicknames"]
     assert "砂浜" in nicks
@@ -1111,8 +1116,9 @@ def test_handle_subscribe_saves_nickname(tmp_sub_file, monkeypatch):
                         lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
                                      "buraku": "", "district": "", "town": ""})
     result = li.handle_subscribe("user", "U_sub", "H_1631_1434", nickname="浜の前")
-    assert "浜の前" in result
-    assert "H_1631_1434" not in result  # 成功メッセージにIDが出ない
+    text = result['text'] if isinstance(result, dict) else result
+    assert "浜の前" in text
+    assert "H_1631_1434" not in text  # 成功メッセージにIDが出ない
     sub = li.get_subscription("user", "U_sub")
     assert sub["spot_nicknames"]["浜の前"] == "H_1631_1434"
 
@@ -1139,8 +1145,9 @@ def test_handle_subscribe_no_nickname_uses_auto_display(tmp_sub_file, monkeypatc
                         lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
                                      "buraku": "神居", "district": "", "town": ""})
     result = li.handle_subscribe("user", "U_sub2", "H_1631_1434")
-    assert "神居の干場" in result
-    assert "H_1631_1434" not in result
+    text = result['text'] if isinstance(result, dict) else result
+    assert "神居の干場" in text
+    assert "H_1631_1434" not in text
 
 
 def test_list_spots_shows_unnamed_spots_with_auto_name(tmp_sub_file, monkeypatch):
