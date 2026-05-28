@@ -2586,7 +2586,9 @@ def _compute_score_field(day: int) -> dict:
     hourly_vars = [
         'temperature_2m', 'relative_humidity_2m', 'wind_speed_10m',
         'precipitation', 'precipitation_probability', 'shortwave_radiation',
-        'dewpoint_2m',   # 露点温度: 霧リスク判定に使用 (/api/forecast と同一ロジック)
+        'dewpoint_2m',          # 露点温度: 霧リスク判定に使用 (/api/forecast と同一ロジック)
+        'cape',                 # CAPE 対流不安定リスク（assess_cape_risk() に供給）
+        'wind_direction_10m',   # フェーン判定（山背風: angle_diff > 150° + wind > 3 m/s）
     ]
 
     # 標高を一括取得（1HTTPリクエスト ≈ 2s）
@@ -2597,6 +2599,14 @@ def _compute_score_field(day: int) -> dict:
         api_results = _fetch_open_meteo_multi(lats, lons, hourly_vars)
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    # ─── 島共通 SST（Marine API は 1 回だけ取得）──────────────────────────────
+    # 利尻島は直径約20km。SST の島内空間変動は小さいため、
+    # 島中心1点で代表し全48格子点に共通適用する。
+    _ISLAND_LAT,  _ISLAND_LON  = 45.1821, 141.2421   # 利尻島地理中心
+    _SUMMIT_LAT,  _SUMMIT_LON  = 45.1800, 141.2392   # 利尻山頂（R_1800_2392）
+    _sst_field = get_sea_surface_temperature(_ISLAND_LAT, _ISLAND_LON)
+    _sst_today_field = _sst_field[day] if day < len(_sst_field) else None
 
     points = []
     counts = {'excellent': 0, 'fair': 0, 'poor': 0}
@@ -2632,10 +2642,20 @@ def _compute_score_field(day: int) -> dict:
         )
 
         # ─── local_risk_adjustments (field score 版) ───────────────────────────
-        # 露点温度降下量 (temp - dewpoint) による霧リスク判定 (/api/forecast と同一ロジック)
-        # depression < 2°C → high(-10点)  < 5°C → medium(-5点)  ≥ 5°C → low(0点)
+        # /api/forecast と同一の4補正（CAPE・霧・フェーン・SST）を適用。
+        # 適用順序も /api/forecast に準拠:
+        #   1. CAPE（対流不安定ペナルティ）
+        #   2. 霧リスク（露点降下法）
+        #   3. フェーン（山背風ボーナス）+ SST霧リスク
+
+        # ── 1. CAPE ──────────────────────────────────────────────────────────
+        _cape_vals_f  = win.get('cape', [])
+        _max_cape_f   = _safe_max(_cape_vals_f)
+        _cape_risk_f  = assess_cape_risk(_max_cape_f)
+        score = max(0, min(100, score + _cape_risk_f['score_penalty']))
+
+        # ── 2. 霧リスク（露点降下法 / 湿度推定フォールバック）──────────────
         # 露点データが取得できない場合は最低湿度による簡易推定にフォールバック。
-        # CAPE・フェーン・SST は field score では 0 固定（hourly_vars に未含有）。
         _dewpt_method = 'humidity_estimate'
         _fog_hours_high = 0
         _fog_hours_med  = 0
@@ -2650,9 +2670,7 @@ def _compute_score_field(day: int) -> dict:
                     elif _dep < 5.0:
                         _fog_hours_med  += 1
         if _valid_dewpt_pairs > 0:
-            # 有効な露点ペアが1つ以上あれば露点降下法を採用
             _dewpt_method = 'dewpoint_depression'
-            # /api/forecast と同一の集計ロジック
             if _fog_hours_high >= 4:
                 _ff_level, _ff_pen = 'high',   -10
             elif _fog_hours_high >= 2:
@@ -2662,7 +2680,6 @@ def _compute_score_field(day: int) -> dict:
             else:
                 _ff_level, _ff_pen = 'low',      0
         else:
-            # フォールバック: 最低湿度による推定（旧ロジック）
             if humidity_min is not None and humidity_min > 95:
                 _ff_level, _ff_pen = 'high',   -10
             elif humidity_min is not None and humidity_min > 90:
@@ -2672,23 +2689,54 @@ def _compute_score_field(day: int) -> dict:
 
         score = max(0, min(100, score + _ff_pen))
 
-        _ff_notes = []
+        # ── 3a. フェーン（山背風ボーナス）──────────────────────────────────
+        # 格子点から利尻山頂（R_1800_2392）への方位角（気象学的: 北=0°, 時計回り）
+        _dlat_f   = _SUMMIT_LAT - g['lat']
+        _dlon_f   = _SUMMIT_LON - g['lon']
+        _maz_f    = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
+        _wd_raw_f = win.get('wind_direction_10m', [])
+        _ws_raw_f = win.get('wind_speed_10m', [])   # km/h
+        _foehn_h  = 0
+        for _wd_f, _wkm_f in zip(_wd_raw_f, _ws_raw_f):
+            if _wd_f is None or _wkm_f is None:
+                continue
+            _adiff_f = abs((_wd_f + 180) % 360 - _maz_f)
+            if _adiff_f > 180:
+                _adiff_f = 360 - _adiff_f
+            if _adiff_f > 150 and (_wkm_f / 3.6) > 3.0:
+                _foehn_h += 1
+        _foehn_adj_f = min(8, _foehn_h * 2)
+
+        # ── 3b. SST 霧リスク ─────────────────────────────────────────────────
+        _sst_risk_f = assess_sst_fog_risk(_sst_today_field, temp_max)
+        _sst_adj_f  = -5 if _sst_risk_f in ('very_high', 'high') else 0
+
+        score = max(0, min(100, score + _foehn_adj_f + _sst_adj_f))
+
+        # ── notes 組み立て ───────────────────────────────────────────────────
+        _all_notes = []
         if _ff_pen < 0:
             if _dewpt_method == 'dewpoint_depression':
-                _ff_notes.append(
+                _all_notes.append(
                     f'露点降下霧リスク({_ff_level}, 高リスク{_fog_hours_high}h): {_ff_pen:+d}点'
                 )
             else:
-                _ff_notes.append(f'高湿度霧推定({_ff_level}): {_ff_pen:+d}点')
+                _all_notes.append(f'高湿度霧推定({_ff_level}): {_ff_pen:+d}点')
+        if _cape_risk_f['score_penalty'] < 0:
+            _all_notes.append(f'CAPE対流リスク({_cape_risk_f["risk"]}): {_cape_risk_f["score_penalty"]:+d}点')
+        if _foehn_adj_f > 0:
+            _all_notes.append(f'山背風フェーン({_foehn_h}時間): +{_foehn_adj_f}点')
+        if _sst_adj_f < 0:
+            _all_notes.append(f'SST霧リスク({_sst_risk_f}): {_sst_adj_f:+d}点')
 
         local_risk_adjustments = {
             'fog_penalty':      _ff_pen,
-            'cape_penalty':     0,   # field score: hourly_vars に cape 未含有
-            'foehn_adjustment': 0,   # field score: wind_direction 未含有
-            'sst_fog_penalty':  0,   # field score: Marine API 未取得
-            'total_adjustment': _ff_pen,
-            'notes':            _ff_notes,
-            'method':           _dewpt_method,  # 'dewpoint_depression' or 'humidity_estimate'
+            'cape_penalty':     _cape_risk_f['score_penalty'],
+            'foehn_adjustment': _foehn_adj_f,
+            'sst_fog_penalty':  _sst_adj_f,
+            'total_adjustment': _ff_pen + _cape_risk_f['score_penalty'] + _foehn_adj_f + _sst_adj_f,
+            'notes':            _all_notes,
+            'method':           _dewpt_method,
         }
         # ────────────────────────────────────────────────────────────────────────
 
