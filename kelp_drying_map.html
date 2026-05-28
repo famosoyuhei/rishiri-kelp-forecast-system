@@ -1212,7 +1212,7 @@
 
             <div style="margin: 15px 0;">
                 <h5 style="font-size: 0.95rem; margin-bottom: 10px;">🚢 沖止め日設定</h5>
-                <p style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">昆布漁が休みの日を設定すると、その前日は通知されません</p>
+                <p style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">海の神の祭りなど、事前に出漁が禁止されている日を設定すると、その前日は通知されません</p>
                 <input type="date" id="offDayDate" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 100%;">
                 <button onclick="addOffDay()" style="margin-top: 8px; padding: 8px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100%;">
                     沖止め日を追加
@@ -7774,7 +7774,7 @@
 
         function respondOffDay() {
             setQuickReplies(['通知の設定', '漁期設定とは？', '使い方を教えて']);
-            return '⛵ 沖止め日・漁期設定\n\n沖止め日（漁がない日）を設定すると、前日の16:00通知が自動でスキップされます。\n\n設定場所：通知設定パネル内の「🚢 沖止め日設定」\n\n漁期（6〜9月推奨）を設定すると、漁期外は通知が届かなくなります。「📅 漁期設定」から開始日・終了日を登録してください。';
+            return '⛵ 沖止め日・漁期設定\n\n沖止め日とは、海の神の祭りや神社行事など「事前に出漁が禁止されている日」のことです。悪天候による急きょ中止とは異なり、年間行事として決まっている禁漁日です。\n\n沖止め日を設定すると、前日の16:00通知が自動でスキップされます。\n\n設定場所：通知設定パネル内の「🚢 沖止め日設定」\n\n漁期（6〜9月推奨）を設定すると、漁期外は通知が届かなくなります。「📅 漁期設定」から開始日・終了日を登録してください。';
         }
 
         function respondAccuracy() {

@@ -1100,29 +1100,14 @@ def parse_command(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _HELP_TEXT = """\
-【利尻島昆布干場予報 コマンド一覧】
-「今日」「明日」「今週」
-　→ 登録済み干場の予報
-「H_1631_1434」など干場ID
-　→ その干場の予報
-「沓形」「仙法志 明日」
-　→ 地区・部落の予報
-「通知登録 H_1631_1434」
-　→ 毎日通知に登録
+【コマンド早見表】
+「今日」「明日」「今週」→ 干場の乾燥予報
+「H_XXXX_XXXX」など → 特定干場の予報
+「通知登録 H_XXXX_XXXX」→ 毎日通知をON
 「通知解除」→ 通知をOFF
-──────
-「記録」→ 乾燥記録を入力（会話式）
-「干場登録 浜の前 H_1631_1434」
-　→ 干場にニックネームを付ける
-「干場一覧」→ 登録済み干場を確認
-──────
-「沖止め」→ 翌日を沖止め設定
-「沖止め 6/25」→ 指定日を沖止め設定
-「沖止め解除」→ 直近の沖止めを解除
-「漁期開始 6/15」→ 漁業開始日を設定
-「漁期終了 9/5」→ 漁業終了日を設定
-「設定確認」→ 現在の設定を表示
-──────
+「記録」→ 乾燥記録を入力
+「沖止め」「沖止め 6/25」→ 沖止め日を登録（祭りなど事前禁漁日）
+「設定確認」→ 現在の設定一覧
 「ヘルプ」→ このメッセージ"""
 
 
@@ -1723,6 +1708,13 @@ _FORECAST_QR: dict = {
 # Do NOT include 'Webアプリ' here — the disclaimer _LINE_DISCLAIMER also contains it.
 _FORECAST_QR_SKIP_KW = ('登録されていません', '見つかりません', '取得失敗', 'LINEで通知登録')
 
+# Help Quick Reply — shown after ヘルプ to let users jump to common actions
+_HELP_QR = [
+    {'label': '今日の予報', 'text': '今日'},
+    {'label': '記録する',   'text': '記録'},
+    {'label': '沖止め',     'text': '沖止め'},
+]
+
 
 def _add_forecast_qr(response, cmd: str):
     """
@@ -1819,7 +1811,7 @@ def process_event(event: dict) -> None:
     cmd = parse_command(text)
 
     if cmd['cmd'] == 'help':
-        response = handle_help()
+        response = {'text': handle_help(), 'quick_reply': _HELP_QR}
     elif cmd['cmd'] == 'today':
         response = handle_select_spot(source_type, source_id, 'today')
     elif cmd['cmd'] == 'tomorrow':
@@ -1978,23 +1970,31 @@ def _build_rich_menu_payload() -> dict:
 
     Button layout:
       Row 1: ☀️ 今日の予報 | 📅 明日の予報 | 📊 今週の予報
-      Row 2: 📝 乾燥記録   | ⚓ 沖止め     | ⚙️ 設定確認
+      Row 2: 📝 干し記録   | ⚓ 沖止め     | 🌐 アプリを開く (URI)
     """
     W, H = _RICH_MENU_W, _RICH_MENU_H
     BW, BH = W // 3, H // 2
 
+    def _bounds(col: int, row: int) -> dict:
+        return {'x': col * BW, 'y': row * BH, 'width': BW, 'height': BH}
+
     def _btn(col: int, row: int, label: str, text: str) -> dict:
         return {
-            'bounds': {
-                'x': col * BW,
-                'y': row * BH,
-                'width': BW,
-                'height': BH,
-            },
+            'bounds': _bounds(col, row),
             'action': {
                 'type': 'message',
                 'label': label[:20],   # LINE max 20 chars
                 'text': text,
+            },
+        }
+
+    def _btn_uri(col: int, row: int, label: str, uri: str) -> dict:
+        return {
+            'bounds': _bounds(col, row),
+            'action': {
+                'type': 'uri',
+                'label': label[:20],
+                'uri': uri,
             },
         }
 
@@ -2009,9 +2009,10 @@ def _build_rich_menu_payload() -> dict:
             _btn(1, 0, '明日の予報', '明日'),
             _btn(2, 0, '今週の予報', '今週'),
             # Row 2
-            _btn(0, 1, '乾燥記録',   '記録'),
+            _btn(0, 1, '干し記録',   '記録'),
             _btn(1, 1, '沖止め',     '沖止め'),
-            _btn(2, 1, '設定確認',   '設定確認'),
+            _btn_uri(2, 1, 'アプリを開く',
+                     'https://rishiri-kelp-forecast-system.onrender.com/'),
         ],
     }
 
@@ -2042,9 +2043,9 @@ def generate_rich_menu_image(path: str) -> bool:
         (0, 0, '#1d4ed8', '☀️', '今日の予報', 'TODAY'),
         (1, 0, '#0369a1', '📅', '明日の予報', 'TMRW'),
         (2, 0, '#0e7490', '📊', '今週の予報', 'WEEK'),
-        (0, 1, '#15803d', '📝', '乾燥記録',   'REC'),
-        (1, 1, '#b91c1c', '⚓', '沖止め',     'NOGO'),
-        (2, 1, '#7c3aed', '⚙️', '設定確認',   'SET'),
+        (0, 1, '#15803d', '📝', '干し記録',    'REC'),
+        (1, 1, '#b91c1c', '⚓', '沖止め',      'NOGO'),
+        (2, 1, '#0d9488', '🌐', 'アプリを開く', 'APP'),
     ]
 
     # Font search order: prefer Japanese fonts

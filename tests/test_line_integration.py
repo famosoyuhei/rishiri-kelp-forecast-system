@@ -1362,11 +1362,18 @@ def test_build_rich_menu_payload_structure():
     assert len(p['areas']) == 6
 
 
-def test_build_rich_menu_payload_all_message_actions():
-    """All 6 areas use message action type."""
-    for area in li._build_rich_menu_payload()['areas']:
-        assert area['action']['type'] == 'message'
-        assert area['action']['text']   # non-empty text
+def test_build_rich_menu_payload_actions():
+    """5 areas use message action; 1 area (アプリ) uses uri action."""
+    areas = li._build_rich_menu_payload()['areas']
+    msg_areas = [a for a in areas if a['action']['type'] == 'message']
+    uri_areas = [a for a in areas if a['action']['type'] == 'uri']
+    assert len(msg_areas) == 5
+    assert len(uri_areas) == 1
+    for a in msg_areas:
+        assert a['action']['text']  # non-empty text
+    for a in uri_areas:
+        assert a['action']['uri']   # non-empty uri
+        assert 'onrender.com' in a['action']['uri']
 
 
 def test_build_rich_menu_payload_covers_full_area():
@@ -1409,3 +1416,51 @@ def test_generate_rich_menu_image(tmp_path):
     from PIL import Image
     img = Image.open(path)
     assert img.size == (2500, 1686)
+
+
+# ---------------------------------------------------------------------------
+# _HELP_QR and process_event help path
+# ---------------------------------------------------------------------------
+
+def test_help_qr_has_three_buttons():
+    """_HELP_QR contains exactly 3 quick-reply buttons."""
+    assert len(li._HELP_QR) == 3
+    labels = [item['label'] for item in li._HELP_QR]
+    assert '今日の予報' in labels
+
+
+def test_help_qr_buttons_have_text():
+    """Every _HELP_QR item has a non-empty text field."""
+    for item in li._HELP_QR:
+        assert item.get('text'), f'Missing text in {item!r}'
+
+
+def test_process_event_help_uses_quick_reply(tmp_sub_file, monkeypatch):
+    """process_event for 'ヘルプ' calls reply_with_quick_reply (not reply_text)."""
+    qr_calls = []
+    txt_calls = []
+
+    monkeypatch.setattr(li, 'reply_with_quick_reply',
+                        lambda token, text, items: qr_calls.append((text, items)))
+    monkeypatch.setattr(li, 'reply_text',
+                        lambda token, text: txt_calls.append(text))
+
+    event = {
+        'type': 'message',
+        'message': {'type': 'text', 'text': 'ヘルプ'},
+        'source': {'type': 'user', 'userId': 'U_HELP_TEST'},
+        'replyToken': 'TOKEN_HELP',
+    }
+    li.process_event(event)
+
+    assert len(qr_calls) == 1, 'Expected exactly one quick-reply send'
+    assert len(txt_calls) == 0, 'reply_text should not be called for help'
+    sent_text, items = qr_calls[0]
+    assert 'コマンド' in sent_text
+    assert len(items) == 3
+
+
+def test_help_text_compact():
+    """_HELP_TEXT is shorter than the old 21-line version (≤ 12 lines)."""
+    lines = li._HELP_TEXT.strip().splitlines()
+    assert len(lines) <= 12, f'_HELP_TEXT has {len(lines)} lines; expected ≤ 12'
