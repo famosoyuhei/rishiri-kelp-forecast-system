@@ -727,7 +727,7 @@ def _save_forecast_history(spot_name, forecasts):
 
 
 @app.route('/api/forecast')
-@limiter.limit("30 per minute")
+@limiter.limit("60 per minute")
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
     lat = float(request.args.get('lat', 45.178269))
@@ -1055,7 +1055,8 @@ def get_forecast():
                 solunar_score, moon_phase_name, moon_age = 0, '不明', 0.0
 
             # --- 予報信頼度（日数ベース簡易版、W14）---
-            reliability_stars = max(1, 5 - i)  # Day0=5, Day6=1 (概算)
+            # Day0-1:5★(今日・明日), Day2-3:3★(準備検討), Day4-6:2★(傾向把握)
+            reliability_stars = [5, 5, 3, 3, 2, 2, 1][i] if i < 7 else 1
 
             # Determine suitability based on corrected drying_score (= score).
             # 旧実装: stage_analysis['overall_score'] を使用 → drying_score と乖離しUIに矛盾が生じた

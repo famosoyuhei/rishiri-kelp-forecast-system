@@ -1008,6 +1008,19 @@
                 display: block !important;
             }
         }
+
+        /* 島内分布タブ: ツールチップ */
+        .field-tooltip {
+            background: rgba(30,30,30,0.88);
+            border: none;
+            border-radius: 5px;
+            color: #fff;
+            font-size: 0.8rem;
+            padding: 5px 8px;
+            white-space: nowrap;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .field-tooltip::before { border-top-color: rgba(30,30,30,0.88); }
     </style>
 </head>
 <body>
@@ -1740,6 +1753,9 @@
                 </div>
                 <!-- Dynamic daily forecast content will be inserted here -->
             </div>
+
+            <!-- 部落内ランキング（干場選択時に非同期挿入） -->
+            <div id="burakuRanking" style="margin-top:12px;"></div>
 
             <div class="chart-container">
                 <canvas id="forecastChart" width="350" height="300" role="img" aria-label="7日間乾燥スコア予報チャート"></canvas>
@@ -2558,6 +2574,9 @@
             // 予報データ取得
             await loadForecastData(spot);
 
+            // 島内部落ランキングボタンを表示（非同期・メイン予報をブロックしない）
+            showIslandRankingButton();
+
             // 自動更新開始
             startAutoUpdate();
         }
@@ -2589,6 +2608,256 @@
             }
         }
 
+        // 部落内ランキング取得・表示
+        async function loadBurakuRanking(selectedSpot) {
+            const rankEl = document.getElementById('burakuRanking');
+            if (!rankEl) return;
+            rankEl.innerHTML = '';
+
+            // const hoshibaSpots (all_spots_array.js) を使用 — selectSpot と同じ配列
+            if (typeof hoshibaSpots === 'undefined' || !hoshibaSpots.length || !selectedSpot.buraku) return;
+
+            // 同じ部落のH_干場を抽出（特別地点除外）
+            const sameVillage = hoshibaSpots.filter(s =>
+                s.name && s.name.startsWith('H_') &&
+                s.buraku === selectedSpot.buraku &&
+                s.district === selectedSpot.district &&
+                s.town === selectedSpot.town
+            );
+
+            // 2地点未満なら表示しない
+            if (sameVillage.length < 2) return;
+
+            // 距離計算（簡易ユークリッド）
+            const dist = s => Math.hypot(s.lat - selectedSpot.lat, s.lon - selectedSpot.lon);
+            const targets = sameVillage.sort((a, b) => dist(a) - dist(b)).slice(0, 8);
+
+            // ローディング表示
+            rankEl.innerHTML = `<div style="padding:8px 0;font-size:0.83rem;color:#666;">📊 ${selectedSpot.buraku} の今日のランキングを取得中…</div>`;
+
+            // 並列で今日の予報を取得
+            const results = await Promise.allSettled(
+                targets.map(s =>
+                    fetch(`/api/forecast?lat=${s.lat}&lon=${s.lon}&name=${encodeURIComponent(s.name)}`)
+                        .then(r => r.json())
+                        .then(data => ({ spot: s, forecast: data.forecasts?.[0] || null }))
+                )
+            );
+
+            // 成功分だけ集める
+            const ranked = results
+                .filter(r => r.status === 'fulfilled' && r.value.forecast)
+                .map(r => r.value)
+                .sort((a, b) => {
+                    const sa = a.forecast.daily_summary?.drying_score ?? a.forecast.drying_score ?? 0;
+                    const sb = b.forecast.daily_summary?.drying_score ?? b.forecast.drying_score ?? 0;
+                    return sb - sa;
+                });
+
+            if (!ranked.length) { rankEl.innerHTML = ''; return; }
+
+            const medalIcons = ['🥇','🥈','🥉'];
+            const scoreColor = score => score >= 70 ? '#16a34a' : score >= 50 ? '#ca8a04' : score >= 30 ? '#ea580c' : '#dc2626';
+
+            let rows = ranked.map(({ spot, forecast }, i) => {
+                const score = forecast.daily_summary?.drying_score ?? forecast.drying_score ?? 0;
+                const isSelected = spot.name === selectedSpot.name;
+                const medal = medalIcons[i] || `${i + 1}位`;
+                const nick = getSpotDisplayName(spot.name);
+                const displayName = (nick && nick !== spot.name) ? `${nick}` : spot.name;
+                const summary = generateDailySummary(forecast);
+                const summaryShort = summary.text.length > 30 ? summary.text.substring(0, 28) + '…' : summary.text;
+                const bg = isSelected ? 'rgba(102,126,234,0.12)' : 'transparent';
+                const border = isSelected ? '1px solid #667eea' : '1px solid #e5e7eb';
+                return `
+                    <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 8px;margin-bottom:4px;background:${bg};border:${border};border-radius:6px;cursor:pointer;"
+                         onclick="selectSpot(hoshibaSpots.findIndex(s=>s.name==='${spot.name}'))">
+                        <span style="font-size:1.1rem;min-width:28px;">${medal}</span>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:0.85rem;font-weight:${isSelected?'700':'500'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${displayName}</div>
+                            <div style="font-size:0.75rem;color:#6b7280;">${summaryShort}</div>
+                        </div>
+                        <span style="font-size:0.9rem;font-weight:700;color:${scoreColor(score)};white-space:nowrap;">${score}<small style="font-weight:400;color:#9ca3af;">/100</small></span>
+                    </div>`;
+            }).join('');
+
+            rankEl.innerHTML = `
+                <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa;">
+                    <div style="font-size:0.83rem;font-weight:600;color:#374151;margin-bottom:8px;">📍 ${selectedSpot.buraku} の今日のランキング（${ranked.length}件）</div>
+                    ${rows}
+                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:6px;">※ タップで干場を切り替えられます</div>
+                </div>`;
+        }
+
+        // 窓の長さを返すランキング用ヘルパー（generateDailySummary と同じロジック）
+        function _rankWindowLen(forecast) {
+            const hourly = forecast.hourly_details;
+            if (!hourly || !hourly.length) return 0;
+            let best = 0, cur = 0;
+            for (const h of hourly) {
+                const ok = h.precipitation === 0 &&
+                    (h.humidity  != null ? h.humidity  <= 94  : true) &&
+                    (h.wind_speed != null ? h.wind_speed >= 2.0 : true);
+                if (ok) { cur++; if (cur > best) best = cur; } else cur = 0;
+            }
+            return best;
+        }
+
+        // 島内部落ランキング — ボタン表示（干場選択時に呼び出す）
+        function showIslandRankingButton() {
+            const rankEl = document.getElementById('burakuRanking');
+            if (!rankEl) return;
+            // キャッシュがあればすぐ描画
+            try {
+                const cached = JSON.parse(localStorage.getItem('islandRankingCache') || 'null');
+                if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+                    renderIslandRanking(cached.rankings);
+                    return;
+                }
+            } catch(e) {}
+            rankEl.innerHTML = `
+                <div style="text-align:center;padding:10px 0;">
+                    <button onclick="loadIslandRanking()"
+                        style="background:#667eea;color:#fff;border:none;border-radius:20px;padding:8px 20px;font-size:0.85rem;cursor:pointer;">
+                        📊 今日の島内部落ランキングを取得（全32部落）
+                    </button>
+                    <div style="font-size:0.75rem;color:#9ca3af;margin-top:4px;">※ 約15〜20秒かかります。30分キャッシュ。</div>
+                </div>`;
+        }
+
+        // 島内部落ランキング — フェッチ本体
+        async function loadIslandRanking() {
+            const rankEl = document.getElementById('burakuRanking');
+            if (!rankEl || typeof hoshibaSpots === 'undefined') return;
+
+            rankEl.innerHTML = `<div style="padding:8px 0;font-size:0.83rem;color:#666;text-align:center;">
+                <div class="spinner" style="display:inline-block;"></div> 全32部落を並列取得中…</div>`;
+
+            // 部落ごとに代表地点（重心に最も近い1点）を選ぶ
+            const burakuMap = {};
+            hoshibaSpots.filter(s => s.name && s.name.startsWith('H_')).forEach(s => {
+                const key = `${s.town}||${s.district}||${s.buraku}`;
+                if (!burakuMap[key]) burakuMap[key] = [];
+                burakuMap[key].push(s);
+            });
+
+            const representatives = Object.entries(burakuMap).map(([key, spots]) => {
+                const [town, district, buraku] = key.split('||');
+                const avgLat = spots.reduce((a, s) => a + s.lat, 0) / spots.length;
+                const avgLon = spots.reduce((a, s) => a + s.lon, 0) / spots.length;
+                const center = [...spots].sort((a, b) =>
+                    Math.hypot(a.lat - avgLat, a.lon - avgLon) -
+                    Math.hypot(b.lat - avgLat, b.lon - avgLon)
+                )[0];
+                return { town, district, buraku, spot: center, count: spots.length };
+            });
+
+            // 全32部落を並列フェッチ（レート制限60/分に引き上げ済み）
+            const results = await Promise.allSettled(
+                representatives.map(r =>
+                    fetch(`/api/forecast?lat=${r.spot.lat}&lon=${r.spot.lon}&name=${encodeURIComponent(r.spot.name)}`)
+                        .then(res => res.json())
+                        .then(data => ({ ...r, forecast: data.forecasts?.[0] || null }))
+                )
+            );
+
+            // 表示に必要な最小フィールドだけ抽出（localStorage 容量節約）
+            const slimRankings = results
+                .filter(r => r.status === 'fulfilled' && r.value.forecast)
+                .map(r => {
+                    const { town, district, buraku, spot, count } = r.value;
+                    const fc = r.value.forecast;
+                    return {
+                        town, district, buraku, count,
+                        spotName: spot.name,
+                        score: fc.daily_summary?.drying_score ?? 0,
+                        windowLen: _rankWindowLen(fc),
+                        summaryText: generateDailySummary(fc).text,
+                        summaryLevel: generateDailySummary(fc).level,
+                    };
+                })
+                .sort((a, b) =>
+                    b.score !== a.score ? b.score - a.score : b.windowLen - a.windowLen
+                );
+
+            const rankings = slimRankings;
+            try {
+                localStorage.setItem('islandRankingCache',
+                    JSON.stringify({ timestamp: Date.now(), rankings }));
+            } catch(e) {}
+
+            renderIslandRanking(rankings);
+        }
+
+        // 島内部落ランキング — 描画
+        function renderIslandRanking(rankings) {
+            const rankEl = document.getElementById('burakuRanking');
+            if (!rankEl || !rankings.length) return;
+
+            const scoreColor = s => s >= 70 ? '#16a34a' : s >= 50 ? '#ca8a04' : s >= 30 ? '#ea580c' : '#dc2626';
+            const medals = ['🥇','🥈','🥉'];
+            const curBuraku   = selectedSpot?.buraku   || '';
+            const curDistrict = selectedSpot?.district || '';
+            const curTown     = selectedSpot?.town     || '';
+
+            const rows = rankings.slice(0, 10).map(({ town, district, buraku, spotName, score, windowLen, summaryText, summaryLevel }, i) => {
+                const isCur = buraku === curBuraku && district === curDistrict && town === curTown;
+                const medal = medals[i] || `${i + 1}位`;
+                const short = summaryText.length > 34 ? summaryText.substring(0, 32) + '…' : summaryText;
+                const bg    = isCur ? 'rgba(102,126,234,0.12)' : 'transparent';
+                const border = isCur ? '1px solid #667eea' : '1px solid #e5e7eb';
+                const spotIdx = hoshibaSpots.findIndex(s => s.name === spotName);
+                const winBadge = windowLen > 0
+                    ? `<span style="font-size:0.7rem;background:#fef3c7;color:#92400e;border-radius:8px;padding:1px 5px;margin-left:4px;">${windowLen}h窓</span>`
+                    : '';
+                return `
+                    <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 8px;margin-bottom:4px;
+                                background:${bg};border:${border};border-radius:6px;cursor:pointer;"
+                         onclick="selectSpot(${spotIdx})">
+                        <span style="font-size:1.05rem;min-width:28px;">${medal}</span>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:0.86rem;font-weight:${isCur ? '700' : '500'};">
+                                ${buraku}${winBadge}
+                                <span style="font-size:0.73rem;color:#9ca3af;">${district}／${town}</span>
+                                ${isCur ? '<span style="font-size:0.72rem;color:#667eea;">← 現在地</span>' : ''}
+                            </div>
+                            <div style="font-size:0.75rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${short}</div>
+                        </div>
+                        <span style="font-size:0.9rem;font-weight:700;color:${scoreColor(score)};white-space:nowrap;">
+                            ${score}<small style="font-weight:400;color:#9ca3af;">/100</small>
+                        </span>
+                    </div>`;
+            }).join('');
+
+            const cacheStr = (() => {
+                try {
+                    const c = JSON.parse(localStorage.getItem('islandRankingCache'));
+                    return c ? new Date(c.timestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '';
+                } catch(e) { return ''; }
+            })();
+
+            rankEl.innerHTML = `
+                <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:0.83rem;font-weight:600;color:#374151;">📊 今日の島内部落ランキング（上位10位）</span>
+                        <button onclick="clearIslandRankingCache()"
+                            style="font-size:0.72rem;color:#6b7280;background:none;border:1px solid #d1d5db;border-radius:10px;cursor:pointer;padding:2px 8px;">
+                            🔄 更新
+                        </button>
+                    </div>
+                    ${rows}
+                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:6px;">
+                        ※ 各部落の代表地点スコア。タップで干場へ移動。取得時刻: ${cacheStr}（30分キャッシュ）
+                    </div>
+                </div>`;
+        }
+
+        // キャッシュクリア → 再取得
+        function clearIslandRankingCache() {
+            localStorage.removeItem('islandRankingCache');
+            loadIslandRanking();
+        }
+
         // 予報表示
         function displayForecast(forecasts) {
             const forecastContent = document.getElementById('forecastContent');
@@ -2602,6 +2871,7 @@
                 html += `
                     <div class="forecast-item">
                         <div class="forecast-date">${dateStr} (${dayStr})</div>
+                        ${summaryCardHTML(forecast)}
                         <div class="forecast-data">
                             <div class="data-item">
                                 <span>最高気温:</span>
@@ -2638,6 +2908,9 @@
                         </div>
                         <div class="suitability ${forecast.suitability}">
                             乾燥適性: ${getSuitabilityText(forecast.suitability)} (${forecast.drying_score}点)
+                        </div>
+                        <div style="margin-top: 5px; font-size: 0.82rem; color: #555;">
+                            予報信頼度: ${getForecastStarsHTML(forecast.reliability_stars)} ${forecast.reliability ? forecast.reliability.usage : ''}
                         </div>
                         ${renderWindWarning(forecast.daily_summary?.wind_warning)}
                         <div class="schedule-recommendation" style="margin-top: 10px; padding: 8px; background: rgba(102, 126, 234, 0.1); border-radius: 5px; font-size: 0.85rem;">
@@ -2685,7 +2958,7 @@
                     <div class="forecast-tab ${isActive}" onclick="showForecastDay(${index})" data-day="${index}">
                         ${dayLabel}<br>
                         <small>${dateStr}(${dayStr})</small><br>
-                        <span class="reliability-badge ${reliabilityClass}">${forecast.reliability.accuracy}%</span>
+                        <span style="font-size:0.75rem;">${getForecastStarsHTML(forecast.reliability_stars)}</span>
                     </div>
                 `;
             });
@@ -2708,9 +2981,10 @@
                     <div class="forecast-content ${isActive}" id="forecastDay${index}">
                         <div class="forecast-item">
                             <div class="forecast-date">${dateStr} (${dayStr}) - ${dayLabel2}</div>
+                            ${summaryCardHTML(forecast)}
 
                             <div class="reliability-badge ${reliabilityClass}" style="margin-bottom: 15px;">
-                                信頼度: ${forecast.reliability.accuracy}% (${forecast.reliability.confidence}) - ${forecast.reliability.usage}
+                                予報信頼度: ${getForecastStarsHTML(forecast.reliability_stars)} <strong>${forecast.reliability.confidence}</strong>（${forecast.reliability.accuracy}%）— ${forecast.reliability.usage}
                             </div>
 
                             <div class="forecast-data">
@@ -2978,6 +3252,111 @@
             return 'reliability-low';
         }
 
+        function getForecastStarsHTML(stars) {
+            const n = Math.max(1, Math.min(5, stars || 3));
+            return '<span style="color:#f59e0b;letter-spacing:1px;">' + '★'.repeat(n) + '</span>'
+                 + '<span style="color:#d1d5db;letter-spacing:1px;">' + '☆'.repeat(5 - n) + '</span>';
+        }
+
+        // 1日分の自然言語サマリーを生成（事実ベース）
+        function generateDailySummary(forecast) {
+            const hourly = forecast.hourly_details;
+            const ds = forecast.daily_summary || {};
+            const score = ds.drying_score ?? forecast.drying_score ?? 0;
+
+            // 時間別データなし → スコアベースの概要
+            if (!hourly || hourly.length === 0) {
+                if (score >= 8) return { text: '終日、乾燥に適した気象条件の予報です（日平均値ベース）。', level: 'good' };
+                if (score >= 6) return { text: '概ね乾燥に適した気象条件の予報です（日平均値ベース）。', level: 'fair' };
+                if (score >= 4) return { text: '乾燥条件は限定的な予報です（日平均値ベース）。', level: 'caution' };
+                return { text: '乾燥には不向きな気象条件の予報です（日平均値ベース）。', level: 'poor' };
+            }
+
+            // 最長条件充足窓を算出
+            const ok = hourly.map(h =>
+                h.precipitation === 0 &&
+                (h.humidity  != null ? h.humidity  <= 94  : true) &&
+                (h.wind_speed != null ? h.wind_speed >= 2.0 : true)
+            );
+            let bestStart = -1, bestLen = 0, curStart = -1, curLen = 0;
+            for (let i = 0; i < ok.length; i++) {
+                if (ok[i]) {
+                    if (curStart < 0) { curStart = i; curLen = 0; }
+                    curLen++;
+                    if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+                } else { curStart = -1; curLen = 0; }
+            }
+
+            // 条件窓なし
+            if (bestLen === 0) {
+                const reasons = [];
+                if (hourly.some(h => (h.precipitation || 0) > 0))   reasons.push('降水あり');
+                if (hourly.filter(h => (h.humidity || 0) > 94).length > 3) reasons.push('湿度高め');
+                if (hourly.filter(h => (h.wind_speed || 0) < 2.0).length > 5) reasons.push('風速不足');
+                const maxPoP = Math.max(...hourly.map(h => h.precipitation_probability || 0));
+                if (maxPoP >= 60) reasons.push(`降水確率${maxPoP}%`);
+                return {
+                    text: `乾燥条件を満たす時間帯がありません（${reasons.join('・') || '複合要因'}）。`,
+                    level: 'poor'
+                };
+            }
+
+            const startHour = parseInt(hourly[bestStart].time.split(':')[0], 10);
+            const endHour   = startHour + bestLen;
+            const startStr  = String(startHour).padStart(2, '0') + ':00';
+            const endStr    = String(endHour % 24).padStart(2, '0') + ':00';
+
+            // 窓終了後のリスク
+            const post = hourly.slice(bestStart + bestLen);
+            let postText = '';
+            let level = 'good';
+            if (post.length > 0) {
+                const hasRain  = post.some(h => (h.precipitation || 0) > 0);
+                const maxPoP   = Math.max(...post.map(h => h.precipitation_probability || 0));
+                const maxCAPE  = Math.max(...post.map(h => h.cape || 0));
+
+                if (hasRain) {
+                    postText = `${endStr}以降は降水の予報があります。`;
+                    level = 'caution';
+                } else if (maxPoP >= 60) {
+                    postText = `${endStr}以降の降水確率は最大${maxPoP}%です。`;
+                    level = 'caution';
+                } else if (maxPoP >= 40) {
+                    postText = `${endStr}以降の降水確率は${maxPoP}%です。`;
+                    level = 'fair';
+                }
+                if (maxCAPE >= 1000) {
+                    postText += `大気不安定（CAPE 最大${Math.round(maxCAPE)} J/kg）の予報があります。`;
+                    if (level === 'good') level = 'caution';
+                } else if (maxCAPE >= 500 && level === 'good') {
+                    level = 'fair';
+                }
+            }
+
+            // 窓の終盤（後半2時間）のPoP上昇チェック
+            if (level === 'good' && bestLen >= 2) {
+                const windowTail = hourly.slice(bestStart + bestLen - 2, bestStart + bestLen);
+                const tailPoP = Math.max(...windowTail.map(h => h.precipitation_probability || 0));
+                if (tailPoP >= 50) {
+                    postText += `（窓の終盤で降水確率${tailPoP}%）`;
+                    level = 'fair';
+                }
+            }
+
+            const mainText = `${startStr}〜${endStr}（${bestLen}時間）に乾燥条件が整う予報です。${postText}`;
+            return { text: mainText, level };
+        }
+
+        // サマリーカードHTML（共通スタイル）
+        function summaryCardHTML(forecast) {
+            const s = generateDailySummary(forecast);
+            const bg     = { good:'rgba(34,197,94,0.08)',  fair:'rgba(234,179,8,0.10)',
+                             caution:'rgba(249,115,22,0.10)', poor:'rgba(239,68,68,0.10)' }[s.level] || 'rgba(102,126,234,0.08)';
+            const border = { good:'#22c55e', fair:'#eab308', caution:'#f97316', poor:'#ef4444' }[s.level] || '#667eea';
+            const icon   = { good:'🌤️', fair:'🌥️', caution:'⚠️', poor:'🚫' }[s.level] || '📋';
+            return `<div style="margin-bottom:10px;padding:9px 12px;background:${bg};border-left:3px solid ${border};border-radius:4px;font-size:0.87rem;line-height:1.6;">${icon} ${s.text}</div>`;
+        }
+
         let currentForecastDay = 0;  // 現在選択されている予報日
 
         function showForecastDay(dayIndex) {
@@ -3008,49 +3387,121 @@
         // グローバルスコープに関数を公開（onclick から呼び出せるように）
         window.showForecastDay = showForecastDay;
 
-        // 作業スケジュール最適化
+        // 作業スケジュール表示（条件充足時間帯）
         function calculateWorkSchedule(forecast) {
             const scheduleElement = document.getElementById(`workSchedule_${forecast.date}`);
             if (!scheduleElement) return;
 
-            let recommendations = [];
+            const hourly = forecast.hourly_details;
 
-            // 乾燥適性に基づく推奨時間帯
-            if (forecast.drying_score >= 8) {
-                recommendations.push('🌟 終日作業最適 (6:00-18:00)');
-            } else if (forecast.drying_score >= 6) {
-                // 風速と湿度を考慮
-                const windSpeed = forecast.wind_speed || 5;
-                const humidity = forecast.humidity || 70;
+            // 時間別データがある場合：条件充足時間帯を実データから抽出
+            if (hourly && hourly.length > 0) {
+                // 各時間の充足フラグ（降水0mm・湿度≤94%・風速≥2.0m/sをすべて満たす）
+                const ok = hourly.map(h =>
+                    h.precipitation === 0 &&
+                    (h.humidity != null ? h.humidity <= 94 : true) &&
+                    (h.wind_speed != null ? h.wind_speed >= 2.0 : true)
+                );
 
-                if (windSpeed > 3 && humidity < 70) {
-                    recommendations.push('☀️ 午前中推奨 (8:00-12:00)');
-                    recommendations.push('🌤️ 午後も良好 (13:00-17:00)');
-                } else if (windSpeed > 3) {
-                    recommendations.push('🌬️ 風強時間帯 (10:00-15:00)');
+                // 最長の連続充足窓を探す
+                let bestStart = -1, bestLen = 0;
+                let curStart = -1, curLen = 0;
+                for (let i = 0; i < ok.length; i++) {
+                    if (ok[i]) {
+                        if (curStart < 0) { curStart = i; curLen = 0; }
+                        curLen++;
+                        if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+                    } else {
+                        curStart = -1; curLen = 0;
+                    }
+                }
+
+                let lines = [];
+                if (bestLen > 0) {
+                    const startHour = parseInt(hourly[bestStart].time.split(':')[0], 10);
+                    const endHour   = startHour + bestLen;
+                    const startStr  = `${String(startHour).padStart(2,'0')}:00`;
+                    const endStr    = `${String(endHour % 24).padStart(2,'0')}:00`;
+                    lines.push(`🕒 条件充足時間帯: ${startStr}〜${endStr}（${bestLen}時間）`);
+                    lines.push(`📦 取り込み目安: ${endStr}`);
+                    lines.push(`<span style="font-size:0.78rem;color:#888;">※ 降水0mm・湿度≤94%・風速≥2.0m/s が続く時間帯です</span>`);
+
+                    // 窓終了後のリスク確認（事実ベース）
+                    const postWindow = hourly.slice(bestStart + bestLen);
+                    if (postWindow.length > 0) {
+                        const hasActualRain = postWindow.some(h => (h.precipitation || 0) > 0);
+                        const maxPoP  = Math.max(...postWindow.map(h => h.precipitation_probability != null ? h.precipitation_probability : 0));
+                        const maxCAPE = Math.max(...postWindow.map(h => h.cape != null ? h.cape : 0));
+                        const riskLines = [];
+
+                        if (hasActualRain) {
+                            riskLines.push(`🌧️ ${endStr}以降に降水予報あり`);
+                        } else if (maxPoP >= 60) {
+                            riskLines.push(`⚠️ ${endStr}以降の降水確率: 最大${maxPoP}%`);
+                        } else if (maxPoP >= 40) {
+                            riskLines.push(`🌦️ ${endStr}以降の降水確率: ${maxPoP}%`);
+                        }
+
+                        if (maxCAPE >= 1000) {
+                            riskLines.push(`⛈️ 大気不安定（CAPE 最大${Math.round(maxCAPE)} J/kg）`);
+                        } else if (maxCAPE >= 500) {
+                            riskLines.push(`⚡ 大気やや不安定（CAPE ${Math.round(maxCAPE)} J/kg）`);
+                        }
+
+                        if (riskLines.length > 0) {
+                            lines.push(`<span style="color:#b45309;font-size:0.82rem;font-weight:600;">── 窓終了後の注意 ──</span>`);
+                            riskLines.forEach(r => lines.push(r));
+                        }
+                    }
                 } else {
-                    recommendations.push('⏰ 短時間作業 (10:00-14:00)');
+                    lines.push('❌ 乾燥条件を満たす時間帯がありません');
+                    if ((forecast.precipitation || 0) > 0) {
+                        lines.push('🌧️ 降水あり');
+                    }
+                    // 条件不成立の原因を補足
+                    const maxCAPE = Math.max(...hourly.map(h => h.cape != null ? h.cape : 0));
+                    const maxPoP  = Math.max(...hourly.map(h => h.precipitation_probability != null ? h.precipitation_probability : 0));
+                    if (maxCAPE >= 1000) lines.push(`⛈️ 大気不安定（CAPE 最大${Math.round(maxCAPE)} J/kg）`);
+                    if (maxPoP >= 60)    lines.push(`⚠️ 降水確率: 最大${maxPoP}%`);
+                }
+
+                // 気温情報を補足
+                const temp = forecast.temperature_max || null;
+                if (temp !== null && temp > 25) {
+                    lines.push('🌡️ 高温注意（熱中症対策を）');
+                } else if (temp !== null && temp < 10) {
+                    lines.push('🧥 低温注意（防寒対策を）');
+                }
+
+                scheduleElement.innerHTML = lines.join('<br>');
+                return;
+            }
+
+            // 時間別データがない場合：日平均値による従来ロジック（フォールバック）
+            let recommendations = [];
+            if (forecast.drying_score >= 8) {
+                recommendations.push('🌟 終日良好（日平均値ベース）');
+            } else if (forecast.drying_score >= 6) {
+                const windSpeed = forecast.wind_speed || 5;
+                const humidity  = forecast.humidity  || 70;
+                if (windSpeed > 3 && humidity < 70) {
+                    recommendations.push('☀️ 午前〜午後 (8:00-17:00)');
+                } else if (windSpeed > 3) {
+                    recommendations.push('🌬️ 日中を中心に（日平均値ベース）');
+                } else {
+                    recommendations.push('⏰ 日中の一部（日平均値ベース）');
                 }
             } else if (forecast.drying_score >= 4) {
-                recommendations.push('⚠️ 限定的作業 (11:00-13:00)');
-                if (forecast.precipitation < 1) {
-                    recommendations.push('💧 雨間を利用');
-                }
+                recommendations.push('⚠️ 条件限定的（日平均値ベース）');
             } else {
                 recommendations.push('❌ 作業非推奨');
-                if (forecast.precipitation > 5) {
-                    recommendations.push('🌧️ 雨天作業停止');
+                if ((forecast.precipitation || 0) > 5) {
+                    recommendations.push('🌧️ 雨天');
                 }
             }
-
-            // 気温による調整
             const temp = forecast.temperature_max || 20;
-            if (temp > 25) {
-                recommendations.push('🌡️ 高温注意 (早朝・夕方推奨)');
-            } else if (temp < 10) {
-                recommendations.push('🧥 低温注意 (日中推奨)');
-            }
-
+            if (temp > 25) recommendations.push('🌡️ 高温注意');
+            else if (temp < 10) recommendations.push('🧥 低温注意');
             scheduleElement.innerHTML = recommendations.join('<br>');
         }
 
@@ -5949,6 +6400,21 @@
         };
 
         // サイドバータブ切り替え機能
+        function _dimSpotMarkers() {
+            allMarkers.forEach(m => m.marker.setStyle({ opacity: 0.15, fillOpacity: 0.12 }));
+        }
+
+        function _restoreSpotMarkers() {
+            allMarkers.forEach(m => {
+                const isFav = favorites.includes(m.index);
+                m.marker.setStyle({
+                    fillColor: isFav ? '#28a745' : '#667eea',
+                    opacity: 1,
+                    fillOpacity: 0.8,
+                });
+            });
+        }
+
         function cleanupFieldLayers() {
             // 島内分布タブを離れるときに地図上のレイヤーと状態表示を確実に片付ける
             _fieldGeneration++;   // 進行中のfetchが完了してもレイヤー追加を無視させる
@@ -5957,6 +6423,7 @@
             _setStatus('');
             const sumEl = document.getElementById('fieldSummary');
             if (sumEl) sumEl.style.display = 'none';
+            _restoreSpotMarkers();  // 通常の干場マーカーを元の見た目に戻す
         }
 
         function switchSidebarTab(tabName) {
@@ -6017,6 +6484,7 @@
         function initFieldTab() {
             _buildDayChips();
             _buildHourChips();
+            _dimSpotMarkers();  // 通常干場マーカーを薄くして島内分布レイヤーを見やすくする
             if (!_fieldLoaded) {
                 _fieldLoaded = true;
                 // 単一選択: 初期は「乾燥スコア」ラジオを選択して1レイヤーだけ描画
@@ -6159,13 +6627,21 @@
                 _removeLayer('score');
                 const group = L.layerGroup();
                 (data.points || []).forEach(p => {
-                    const marker = L.circleMarker([p.lat, p.lon], {
-                        radius:      _scoreRadius(p.value),
-                        fillColor:   p.color,
-                        color:       'rgba(0,0,0,0.3)',
-                        weight:      1,
-                        fillOpacity: 0.82,
+                    const sz = p.value >= 80 ? 28 : p.value >= 50 ? 24 : 20;
+                    const fs = p.value >= 80 ? 11 : 10;
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;` +
+                              `background:${p.color};border:1.5px solid rgba(0,0,0,0.25);` +
+                              `display:flex;align-items:center;justify-content:center;` +
+                              `font-size:${fs}px;font-weight:700;color:white;` +
+                              `text-shadow:0 0 3px rgba(0,0,0,0.5);` +
+                              `box-shadow:0 1px 4px rgba(0,0,0,0.3);">${p.value}</div>`,
+                        iconSize: [sz, sz],
+                        iconAnchor: [sz/2, sz/2],
+                        tooltipAnchor: [sz/2, 0],
                     });
+                    const marker = L.marker([p.lat, p.lon], { icon });
                     const nick = p.buraku || p.district || p.town || p.name;
                     // wind_warning: APIの正式キー優先。なければ avg_wind_ms から派生（後方互換）
                     const _ww = p.wind_warning;
