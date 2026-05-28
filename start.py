@@ -2302,43 +2302,92 @@ def _build_rishiri_grid(n_points: int = 48) -> list:
     半径: 9.0 km  ← CSV内の最大/最小座標から実測（北端45.2582 - 中心45.1800 = 8.7km）
     方位: 北=0°、時計回り（気象学的方位角と同一）
     """
-    import math as _m
+    import math       as _m
+    import csv        as _csv
+    import statistics as _stats
 
-    CENTER_LAT = 45.1800   # 利尻山頂緯度（R_1800_2392）
-    CENTER_LON = 141.2392  # 利尻山頂経度
-    RADIUS_KM  = 9.0       # 沿岸までの距離（km）
-
-    # 1°あたりのkm換算
-    LAT_DEG_PER_KM = 1.0 / 111.0
-    LON_DEG_PER_KM = 1.0 / (111.0 * _m.cos(_m.radians(CENTER_LAT)))
-
-    # 16方位名（16方位 × 3点 = 48点）
-    _COMPASS = [
+    _COMPASS_16 = [
         '北', '北北東', '北東', '東北東',
         '東', '東南東', '南東', '南南東',
         '南', '南南西', '南西', '西南西',
         '西', '西北西', '北西', '北北西',
-    ]
+    ]  # 北 北北東 北東 東北東 東 東南東 南東 南南東 南 南南西 南西 西南西 西 西北西 北西 北北西
 
-    points = []
-    for i in range(n_points):
-        bearing_deg = 360.0 * i / n_points   # 北=0°, 時計回り
-        bearing_rad = _m.radians(bearing_deg)
+    # ── Step 1: CSV から干場座標を読み込み ──────────────────────────────────
+    _spots = []
+    try:
+        with open(CSV_FILE, newline='', encoding='utf-8') as _f:
+            for _row in _csv.DictReader(_f):
+                if _row.get('name', '').startswith('H_'):
+                    try:
+                        _spots.append((float(_row['lat']), float(_row['lon'])))
+                    except ValueError:
+                        pass
+    except Exception as _e:
+        print(f'[coastal-ring] CSV read failed ({_e}); using fixed-radius fallback')
 
-        lat = CENTER_LAT + RADIUS_KM * LAT_DEG_PER_KM * _m.cos(bearing_rad)
-        lon = CENTER_LON + RADIUS_KM * LON_DEG_PER_KM * _m.sin(bearing_rad)
+    # ── Step 2: 重心を基準中心とする（固定半径ではなく実データ依存） ──────────
+    if len(_spots) >= n_points:
+        _clat = sum(s[0] for s in _spots) / len(_spots)
+        _clon = sum(s[1] for s in _spots) / len(_spots)
+    else:
+        _clat, _clon = 45.1800, 141.2392   # fallback: 利尻山頂
 
-        compass_idx = i // (n_points // 16)          # 16方位のインデックス
-        sub_idx     = (i % (n_points // 16)) + 1    # 方位内の番号 (1,2,3)
-        label = _COMPASS[compass_idx] if compass_idx < len(_COMPASS) else f'{bearing_deg:.0f}°'
+    _LAT_D = 1.0 / 111.0
+    _LON_D = 1.0 / (111.0 * _m.cos(_m.radians(_clat)))
 
-        points.append({
-            'lat':     round(lat, 4),
-            'lon':     round(lon, 4),
-            'bearing': round(bearing_deg, 1),   # 山頂からの方位角（デバッグ用）
-            'label':   f'沿岸{label}{sub_idx}',  # 表示名（例: 沿岸北1, 沿岸東南東2）
+    # ── Step 3: 各干場を極座標(方位, 距離km)に変換 ──────────────────────────
+    _polar = []
+    for _lat, _lon in _spots:
+        _dlat = (_lat - _clat) / _LAT_D
+        _dlon = (_lon - _clon) / _LON_D
+        _dist = _m.sqrt(_dlat ** 2 + _dlon ** 2)
+        _bear = (_m.degrees(_m.atan2(_dlon, _dlat)) + 360) % 360
+        _polar.append((_bear, _dist))
+
+    # ── Step 4: 各目標方位の扇形内(±22.5°)の干場距離中央値を求める ──────────
+    _SECTOR = 360.0 / n_points      # 扇形幅 7.5°
+    _SEARCH = _SECTOR * 3           # 探索半幅 ±22.5°（隣接方位も含む）
+    _FALLBACK_KM = 7.5              # 干場ゼロ扇形のデフォルト距離
+
+    _radii = []
+    for _i in range(n_points):
+        _target = _SECTOR * _i
+        _in_sec = [_d for _b, _d in _polar
+                   if min(abs(_b - _target), 360 - abs(_b - _target)) <= _SEARCH]
+        _radii.append(_stats.median(_in_sec) if _in_sec else _FALLBACK_KM)
+
+    # 干場ゼロ扇形が残った場合は隣接扇形の平均で補間（2パス）
+    for _ in range(2):
+        for _i in range(n_points):
+            if _radii[_i] == _FALLBACK_KM:
+                _p = _radii[(_i - 1) % n_points]
+                _n = _radii[(_i + 1) % n_points]
+                if _p != _FALLBACK_KM or _n != _FALLBACK_KM:
+                    _radii[_i] = (_p + _n) / 2
+
+    # ── Step 5: 格子点座標を生成 ─────────────────────────────────────────────
+    _grid = []
+    for _i in range(n_points):
+        _bdeg = _SECTOR * _i
+        _brad = _m.radians(_bdeg)
+        _r    = _radii[_i]
+
+        _lat  = _clat + _r * _LAT_D * _m.cos(_brad)
+        _lon  = _clon + _r * _LON_D * _m.sin(_brad)
+
+        _ci   = _i // (n_points // 16)
+        _si   = (_i %  (n_points // 16)) + 1
+        _lbl  = _COMPASS_16[_ci] if _ci < 16 else f'{_bdeg:.0f}°'
+
+        _grid.append({
+            'lat':     round(_lat, 4),
+            'lon':     round(_lon, 4),
+            'bearing': round(_bdeg, 1),
+            'radius':  round(_r, 2),
+            'label':   f'沿岸{_lbl}{_si}',   # 沿岸北1, 沿岸東南東2 ...
         })
-    return points
+    return _grid
 
 
 def _fetch_elevations_batch(lats: list, lons: list) -> list:
