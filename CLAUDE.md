@@ -90,6 +90,31 @@ kelp_drying_map.html (6,235行)
 
 ## 重要な制約事項
 
+### スコア統一ルール（破ると乖離バグが再発する）
+
+乾燥スコアの補正は **`_apply_local_risk_adjustments()` 一か所のみ** で行う。
+
+```
+/api/forecast          ─┐
+                         ├→ _apply_local_risk_adjustments()  ← ここだけが補正を適用
+_compute_score_field   ─┘
+```
+
+**守るべきルール:**
+1. **新しい補正（例: フロード数、ENSO、潮汐）を追加するときは `_apply_local_risk_adjustments()` のシグネチャと本体だけを変更する**
+2. `/api/forecast` または `_compute_score_field` の一方だけに補正を書いてはいけない
+3. 補正の入力値を計算するヘルパー（例: `_compute_foehn_hours()`）は追加してよいが、スコアへの適用は必ず共通関数経由にする
+
+**補正の現行係数（`_apply_local_risk_adjustments()` 内）:**
+- 霧: medium -5点 / high -10点（stage_analysis より控えめ）
+- CAPE: `assess_cape_risk()` のペナルティをそのまま使用
+- フェーン: +2点/時、最大+8点
+- SST: high/very_high で -5点
+
+**実装:** `start.py` の `_apply_local_risk_adjustments()` 関数（`_safe_sum()` の直後、`_compute_score_field()` の直前）
+
+---
+
 ### 干場削除の5条件制限
 
 干場削除は以下のすべての条件をクリアする必要があります：
