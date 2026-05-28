@@ -784,6 +784,27 @@ _REGISTER_QR = [
     {'label': '干場一覧',   'text': '干場一覧'},
 ]
 
+_APP_URL = 'https://rishiri-kelp-forecast-system.onrender.com/'
+
+# Quick Reply for registration guidance — URI button opens the web app directly
+_REGISTER_GUIDANCE_QR = [
+    {'label': 'Webアプリを開く', 'uri': _APP_URL},
+]
+
+
+def handle_register_guidance() -> dict:
+    """Response for 「干場登録」 tapped alone (from rich menu)."""
+    return {
+        'text': (
+            '🗺 干場の登録・呼び名設定\n\n'
+            '① Webアプリで地図から干場をタップ\n'
+            '② 呼び名を入力（例: 浜の前）\n'
+            '③「LINEで通知登録」をタップ\n\n'
+            '登録後は「今日」で予報が届きます。'
+        ),
+        'quick_reply': _REGISTER_GUIDANCE_QR,
+    }
+
 
 def handle_register_spot_nickname(source_type: str, source_id: str,
                                   nickname: str, spot_id: str):
@@ -984,21 +1005,23 @@ def push_text(to: str, text: str) -> bool:
 
 
 def reply_with_quick_reply(reply_token: str, text: str, items: list) -> bool:
-    """Send reply with Quick Reply buttons. items: [{label, text}, ...]."""
+    """Send reply with Quick Reply buttons.
+
+    items: list of dicts, each either:
+      {'label': str, 'text': str}  — message action (sends text on tap)
+      {'label': str, 'uri': str}   — URI action (opens URL on tap)
+    """
     if not _cfg()['token']:
         logger.warning('LINE_CHANNEL_ACCESS_TOKEN not set; quick reply skipped')
         return False
-    quick_reply_items = [
-        {
-            'type': 'action',
-            'action': {
-                'type': 'message',
-                'label': item['label'][:20],
-                'text': item['text'],
-            },
-        }
-        for item in items[:13]  # LINE max 13 Quick Reply items
-    ]
+
+    def _to_qr_item(item: dict) -> dict:
+        label = item['label'][:20]
+        if 'uri' in item:
+            return {'type': 'action', 'action': {'type': 'uri', 'label': label, 'uri': item['uri']}}
+        return {'type': 'action', 'action': {'type': 'message', 'label': label, 'text': item['text']}}
+
+    quick_reply_items = [_to_qr_item(i) for i in items[:13]]  # LINE max 13 Quick Reply items
     payload = {
         'replyToken': reply_token,
         'messages': [{
@@ -1071,6 +1094,9 @@ def parse_command(text: str) -> dict:
         return {'cmd': 'record_start'}
 
     # Spot nickname registration: "干場登録 ニックネーム H_XXXX_XXXX"
+    # "干場登録" alone (no args, e.g. from rich menu button) → show guidance
+    if text in ('干場登録', '干場 登録', '干場　登録'):
+        return {'cmd': 'register_guidance'}
     if text.startswith('干場登録') or text.startswith('干場 登録'):
         parts = text.split(None, 2)
         nickname = parts[1].strip() if len(parts) > 1 else ''
@@ -1883,6 +1909,8 @@ def process_event(event: dict) -> None:
         response = handle_unsubscribe(source_type, source_id)
     elif cmd['cmd'] == 'record_start':
         response = handle_select_spot(source_type, source_id, 'record')
+    elif cmd['cmd'] == 'register_guidance':
+        response = handle_register_guidance()
     elif cmd['cmd'] == 'register_spot':
         response = handle_register_spot_nickname(
             source_type, source_id, cmd.get('nickname', ''), cmd.get('spot_id', ''))
@@ -2010,7 +2038,7 @@ def _build_rich_menu_payload() -> dict:
 
     Button layout:
       Row 1: ☀️ 今日の予報 | 📅 明日の予報 | 📊 今週の予報
-      Row 2: 📝 干し記録   | ⚓ 沖止め     | 🌐 アプリを開く (URI)
+      Row 2: 📝 干し記録   | 📍 干場登録   | 🌐 アプリを開く (URI)
     """
     W, H = _RICH_MENU_W, _RICH_MENU_H
     BW, BH = W // 3, H // 2
@@ -2050,7 +2078,7 @@ def _build_rich_menu_payload() -> dict:
             _btn(2, 0, '今週の予報', '今週'),
             # Row 2
             _btn(0, 1, '干し記録',   '記録'),
-            _btn(1, 1, '沖止め',     '沖止め'),
+            _btn(1, 1, '干場登録',   '干場登録'),
             _btn_uri(2, 1, 'アプリを開く',
                      'https://rishiri-kelp-forecast-system.onrender.com/'),
         ],
@@ -2084,7 +2112,7 @@ def generate_rich_menu_image(path: str) -> bool:
         (1, 0, '#0369a1', '📅', '明日の予報', 'TMRW'),
         (2, 0, '#0e7490', '📊', '今週の予報', 'WEEK'),
         (0, 1, '#15803d', '📝', '干し記録',    'REC'),
-        (1, 1, '#b91c1c', '⚓', '沖止め',      'NOGO'),
+        (1, 1, '#7c3aed', '📍', '干場登録',    'REG'),
         (2, 1, '#0d9488', '🌐', 'アプリを開く', 'APP'),
     ]
 

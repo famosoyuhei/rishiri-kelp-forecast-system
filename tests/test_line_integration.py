@@ -582,6 +582,48 @@ def test_parse_register_spot():
     assert r["nickname"] == "浜の前"
     assert r["spot_id"] == "H_1631_1434"
 
+
+def test_parse_register_spot_alone_returns_guidance():
+    """「干場登録」単体（引数なし）は register_guidance になる。"""
+    assert li.parse_command("干場登録")["cmd"] == "register_guidance"
+    assert li.parse_command("干場 登録")["cmd"] == "register_guidance"
+
+
+def test_handle_register_guidance_returns_dict_with_uri_qr():
+    """handle_register_guidance は URI QR ボタン付きの dict を返す。"""
+    result = li.handle_register_guidance()
+    assert isinstance(result, dict)
+    assert 'text' in result and 'quick_reply' in result
+    assert 'Webアプリ' in result['text'] or 'onrender.com' in result['text']
+    uri_items = [i for i in result['quick_reply'] if 'uri' in i]
+    assert len(uri_items) == 1
+    assert 'onrender.com' in uri_items[0]['uri']
+
+
+def test_reply_with_quick_reply_uri_action(monkeypatch):
+    """reply_with_quick_reply が uri キーを持つ item を uri アクションに変換する。"""
+    sent = []
+    monkeypatch.setattr(li._requests, 'post',
+                        lambda url, headers, json, timeout: _FakeResp(200, sent, json))
+
+    class _FakeResp:
+        def __init__(self, status, log, payload):
+            self.status_code = status
+            log.append(payload)
+        @property
+        def text(self): return ''
+
+    li.reply_with_quick_reply('TOKEN', 'テスト', [
+        {'label': 'アプリを開く', 'uri': 'https://example.com/'},
+        {'label': 'メッセージ',   'text': 'テスト'},
+    ])
+    assert sent, 'post was not called'
+    qr_items = sent[0]['messages'][0]['quickReply']['items']
+    assert qr_items[0]['action']['type'] == 'uri'
+    assert qr_items[0]['action']['uri'] == 'https://example.com/'
+    assert qr_items[1]['action']['type'] == 'message'
+
+
 def test_parse_list_spots():
     assert li.parse_command("干場一覧") == {"cmd": "list_spots"}
 
