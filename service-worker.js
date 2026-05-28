@@ -1,11 +1,11 @@
 // Service Worker for Rishiri Kelp Forecast System - Offline Functionality
-// Version 2.6.1 - wind_warning / local_risk_adjustments / suitability fix
+// Version 2.6.2 - 降水量レイヤー / MINOR12件修正 / 整合性予防ルール
 
 // Production configuration
-// ★ v2.6.1: wind_warning バッジ・霧補正ツールチップ・suitability整合修正に伴うキャッシュバスト
-const CACHE_NAME = 'rishiri-kelp-v2-6-1';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-1';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-1';
+// ★ v2.6.2: 降水量分布レイヤー・scoreColor統一・dashboard刷新・通知アイコン修正・MINOR12件対応
+const CACHE_NAME = 'rishiri-kelp-v2-6-2';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-2';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-2';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

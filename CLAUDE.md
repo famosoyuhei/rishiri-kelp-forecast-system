@@ -90,6 +90,188 @@ kelp_drying_map.html (6,235行)
 
 ## 重要な制約事項
 
+### 整合性の3大予防ルール（破ると乖離バグ・キャッシュバグが再発する）
+
+> **背景**: フルレビュー2回で最多検出パターンは「値が複数ファイルに散在して乖離」「SW古いキャッシュ配信」「新機能追加後の関連ファイル更新漏れ」。
+> 以下のルールはこれらを予防するためのもの。`python check_consistency.py` で機械的に検出可能。
+
+### ミニルール集（MINOR問題の再発防止）
+
+> **背景**: フルレビューで繰り返し検出された「小さいが確実に発生する」パターンを予防する。
+> 大きな設計判断ではなく、**「次に○○したとき、これも一緒にやる」** という習慣ルール。
+
+#### A. 廃止機能の完全除去ルール
+
+**APIを廃止したとき**（例: matplotlib → field API 移行）は以下をすべて確認する：
+1. フロントエンドの呼び出し箇所を `grep` して **残存がゼロ** になるまで修正する
+2. UIボタン・セレクト・表示エリアの **HTML要素**も一緒に削除する
+3. 関連する **チャットボットの説明文** も更新する
+
+```bash
+# 廃止確認コマンド
+grep -n "api/analysis/contours\|廃止予定の関数名" kelp_drying_map.html start.py dashboard.html
+```
+
+#### B. UIラベルの数値は直書きしないルール
+
+グリッド数・地点数・閾値などをUIテキストに **直書きした場合** は、コメントで定義元を明記する：
+
+```html
+<!-- 49 = 利尻山頂1点 + 内リング24点 + 外リング24点。変更時は _build_rishiri_grid() も更新 -->
+🟢 乾燥スコア分布（49点・山頂含む）
+```
+
+実装が変わったとき UIテキストも必ず一緒に更新する（検索: `grep -n "48グリッド\|49点\|334地点"` で確認）。
+
+#### C. 入力フィールド追加時の必須属性チェックリスト
+
+新しい `<input type="text">` を追加するたびに以下を確認する：
+
+| 属性 | 理由 |
+|------|------|
+| `maxlength="N"` | 長文ペーストによる意図しない処理を防ぐ |
+| `aria-label="説明"` | アクセシビリティ（スクリーンリーダー） |
+| `autocomplete="off"` | 干場名・気象値などへの誤オートコンプリートを防ぐ |
+
+#### D. manifest.json の宣言と実装の同期ルール
+
+`manifest.json` に新しいエントリを追加するときは **必ず実装もセットで行う**：
+
+- `shortcuts[].url` → Flask ルートが存在するか確認
+- `file_handlers[].action` → Flask ルートが存在するか確認
+- `icons[].src` → 実ファイルが存在するか確認
+- `version` → アプリバージョン（CLAUDE.md の「バージョン」欄）と一致させる
+
+**実装のないエントリは manifest.json に書かない**（ブラウザがPWA機能を呼んで404になる）。
+
+#### E. 定数は定数として定義するルール
+
+同じ文字列が **2箇所以上** に現れたら、即座に定数に切り出す：
+
+```javascript
+// ❌ 悪い例: 同じ免責文が sendForecastNotifications と sendTestNotification の2箇所
+const disclaimer = '\n\n※この予報は干場の乾燥条件...';  // ← 2ファイルに同じ文
+
+// ✅ 良い例: 通知セクションの冒頭に1つだけ定義
+const NOTIFICATION_DISCLAIMER = '\n\n※この予報は干場の乾燥条件...';
+// 各関数では: const disclaimer = NOTIFICATION_DISCLAIMER;
+```
+
+対象: 免責文・エラーメッセージ・閾値数値・URLパスなど
+
+#### F. 外部APIデータの innerHTML 注入禁止ルール
+
+Open-Meteo・JMA・外部APIのレスポンスデータを直接 `innerHTML` に入れない：
+
+```javascript
+// ❌ 危険: 外部データをそのまま注入
+div.innerHTML = `<p>${data.message}</p>`;
+div.innerHTML = data.warnings.map(w => `<span>${w.name}</span>`).join('');
+
+// ✅ 安全: textContent または エスケープ関数を使う
+const p = document.createElement('p');
+p.textContent = data.message;          // テキストのみ安全
+div.appendChild(p);
+
+// テンプレートリテラルで構造が必要な場合: エスケープ関数を使う
+const _esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+div.innerHTML = `<span>${_esc(data.name)}</span>`;
+```
+
+例外: 自アプリのサーバーコードが生成する静的文字列（`'<div>固定テキスト</div>'` 等）は許容。
+
+#### G. サーバー側の保護はフロントでも二重防衛するルール
+
+サーバー側で保護している制約（削除不可・編集不可・登録不可）は、**フロントでも同じ条件でUIを制御** する：
+
+```javascript
+// ❌ 危険: 特別地点でも削除ボタンを表示してサーバーに弾かせる
+async function deleteSpot(index) { ... }
+
+// ✅ 安全: フロントでも早期リターン（サーバーエラーをユーザーに見せない）
+async function deleteSpot(index) {
+    if (!spot.name.startsWith('H_')) {
+        alert('この地点は削除できません');
+        return;  // サーバーに送信しない
+    }
+    ...
+}
+```
+
+対象: 特別地点（A_/R_）の削除、記録不可地点への記録、ロック中の編集など。
+
+#### H. 気象値は必ず範囲クランプするルール
+
+気温・湿度・風速・スコアなど気象値を補正した直後は `min/max` でクランプする：
+
+```python
+# 湿度 0〜100% を保証
+humidity = max(0.0, min(100.0, humidity + correction))
+
+# 風速 0以上を保証（マイナス風速は物理的に無意味）
+wind_speed = max(0.0, wind_speed - forest_reduction)
+
+# スコア 0〜100を保証
+score = max(0, min(100, score))
+```
+
+**calculate_enhanced_drying_score() の冒頭にはすでに防衛的クランプが実装済み** — 追加の補正を加えるときも同様に行うこと。
+
+#### ルール1: 正規定義元（Single Source of Truth）
+
+以下の値は **Pythonの関数が正規定義元** であり、JSはその値に必ず合わせること。
+
+| 値 | Python正規定義元 | JS参照箇所 | 現在値 |
+|----|----------------|-----------|--------|
+| スコア色閾値 | `start.py: _score_color()` L2425 | `kelp_drying_map.html` scoreColor(2箇所) | 80/50点 |
+| アイコンパス | `service-worker.js` L312-313 | `kelp_drying_map.html` 通知3箇所 | `/static/icons/icon-192x192.png` |
+| valid_types | `start.py: get_analysis_field()` | `kelp_drying_map.html` toggleFieldLayer() | score/wind/humidity/temperature/solar/precipitation |
+
+**守るべきルール:**
+- JS の色閾値を変えるときは `_score_color()` と `_score_category()` を先に変え、JS はそれに合わせる
+- アイコンファイルを追加/移動したら `service-worker.js` と `kelp_drying_map.html` を同時更新
+- `valid_types` に型を追加したら `toggleFieldLayer()` / `_clearFieldLayers()` / `_fieldLayers` / chatbotPATTERNSを必ずセットで更新
+
+#### ルール2: Service Worker キャッシュバージョン更新
+
+**`kelp_drying_map.html` または `start.py` を変更したら、必ず `service-worker.js` の冒頭3行を上げること。**
+
+```javascript
+// service-worker.js 冒頭（現在値）
+const CACHE_NAME        = 'rishiri-kelp-v2-6-1';      // ← HTMLまたはPY変更時に上げる
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-1';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-1';
+```
+
+バージョン命名規則: `v{メジャー}-{マイナー}-{パッチ}` （例: `v2-6-1` → `v2-6-2`）
+
+> **なぜ重要**: SW が古い HTML をキャッシュし続けると、コードを直してもユーザーの画面に反映されない。
+> Render デプロイ後にブラウザリロードしても古い画面が出る場合は、まずバージョンを確認すること。
+
+#### ルール3: 新レイヤー追加チェックリスト
+
+島内分布タブに新レイヤー（例: `fog`, `cape`）を追加するときは以下を全部チェックする：
+
+**バックエンド（start.py）**
+- [ ] `_compute_{type}_field()` 関数を追加
+- [ ] `get_analysis_field()` の `valid_types` タプルに追加
+- [ ] `elif field_type == '{type}':` ブランチを追加
+
+**フロントエンド（kelp_drying_map.html）**
+- [ ] `_fieldLayers` オブジェクトにキーを追加（`{type}: null`）
+- [ ] `_clearFieldLayers()` に `_removeLayer('{type}')` を追加
+- [ ] `toggleFieldLayer()` の `ALL_TYPES` 配列に追加
+- [ ] `toggleFieldLayer()` に `if (type === '{type}') load...` ブランチを追加
+- [ ] `selectFieldDay()` / `selectFieldHour()` に `load...` 呼び出しを追加
+- [ ] `_buildStatusLine()` にラベルを追加
+- [ ] ラジオボタンを UI に追加（`id="fieldLayer{Type}"`）
+- [ ] 凡例を UI に追加
+- [ ] `loadField{Type}()` 関数を実装し `window.loadField{Type}` に登録
+- [ ] チャットボット `PATTERNS` の `contour` キーワードに関連語を追加
+- [ ] `respondContour()` の説明文を更新
+
+---
+
 ### スコア統一ルール（破ると乖離バグが再発する）
 
 乾燥スコアの補正は **`_apply_local_risk_adjustments()` 一か所のみ** で行う。

@@ -757,7 +757,7 @@ def get_forecast():
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
         # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
 
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -839,7 +839,7 @@ def get_forecast():
                         'wind_angle_diff': wind_mountain_angle_diff,  # 後方互換性のため
                         'wind_mountain_angle_diff': wind_mountain_angle_diff,  # 風向と山頂方位角の角度差
                         'cloud_cover': hourly['cloud_cover'][h] if hourly['cloud_cover'][h] is not None else None,
-                        'solar_radiation': hourly['direct_radiation'][h] if hourly['direct_radiation'][h] is not None else None,
+                        'solar_radiation': (hourly.get('shortwave_radiation', [None])[h] if h < len(hourly.get('shortwave_radiation', [])) and hourly.get('shortwave_radiation', [None])[h] is not None else hourly['direct_radiation'][h] if hourly['direct_radiation'][h] is not None else None),
                         'pressure': hourly['pressure_msl'][h] if hourly['pressure_msl'][h] is not None else None,
                         'precipitation': hourly['precipitation'][h] if hourly['precipitation'][h] is not None else 0.0,
                         # 700hPa pressure level data (for vertical velocity estimation)
@@ -1114,6 +1114,11 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
                     _compute_score_field() はバッチ取得して渡すことで高速化する。
                     /api/forecast などの個別呼び出しは従来どおり None のままでよい。
     """
+    # --- 入力値の防衛的クランプ（呼び出し元での補正後に範囲を超えた場合に備える）---
+    humidity    = max(0.0, min(100.0, float(humidity or 0)))
+    wind_speed  = max(0.0, float(wind_speed or 0))
+    precipitation = max(0.0, float(precipitation or 0))
+
     score = 0
 
     # --- 降水量: 0mm絶対条件 (K8) ---
@@ -1581,9 +1586,11 @@ def add_spot():
         # 4ファイル自動同期: KMLとJSファイルも更新
         sync_result = sync_all_files_from_csv()
 
-        return jsonify({
+        sync_ok = sync_result.get("kml") and sync_result.get("js")
+        http_code = 200 if sync_ok else 207  # 207: 干場追加は成功だが同期に一部失敗
+        response_body = {
             "status": "success",
-            "message": "新しい干場が追加されました（4ファイル同期完了）",
+            "message": "新しい干場が追加されました（4ファイル同期完了）" if sync_ok else "干場は追加されましたが、一部のファイル同期に失敗しました",
             "spot": {
                 "name": name,
                 "lat": lat,
@@ -1593,7 +1600,8 @@ def add_spot():
                 "buraku": buraku
             },
             "sync_status": sync_result
-        })
+        }
+        return jsonify(response_body), http_code
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1724,11 +1732,13 @@ def delete_spot():
         # 4ファイル自動同期: KMLとJSファイルも更新
         sync_result = sync_all_files_from_csv()
 
+        sync_ok = sync_result.get("kml") and sync_result.get("js")
+        http_code = 200 if sync_ok else 207  # 207: 削除は成功だが同期に一部失敗
         return jsonify({
             "status": "success",
-            "message": f"干場 {name} が削除されました（4ファイル同期完了）",
+            "message": f"干場 {name} が削除されました（4ファイル同期完了）" if sync_ok else f"干場 {name} は削除されましたが、一部のファイル同期に失敗しました",
             "sync_status": sync_result
-        })
+        }), http_code
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2280,113 +2290,88 @@ def _compute_grid_bounds() -> dict:
     return _grid_bounds_cache
 
 
-def _build_rishiri_grid(n_points: int = 48) -> list:
-    """利尻島沿岸部を等間隔で周回するグリッドを生成。
+def _build_rishiri_grid() -> list:
+    """利尻島の島内分布グリッドを生成。
 
-    【旧実装: 矩形 6×8 グリッド】
-    - 山頂付近（標高1,721m）・島沖の海上に約20点が無駄に配置されていた
-    - 干場は沿岸部に集中しているため気象差異の可視化に不向きだった
+    【構成: 利尻山頂 + 二重リング = 49点】
+    - 利尻山頂 1点 (中心) ── 山頂の気象を基準として可視化
+    - 内リング 24点: 方位 0°/15°/.../345° (15°刻み) ── 半径は方位別に異なる（下記）
+    - 外リング 24点: r=8km, 方位 7.5°/22.5°/.../352.5° (内リングと7.5°ずれで千鳥配置)
 
-    【新実装: 沿岸リング】
-    - 全点が実際の干場と同じ沿岸帯（海岸線付近）に配置される
-    - 北/東/南/西で山背風・onshore効果の違いが明確に表れる
-    - フェーン判定の精度も向上（各点が山頂に対して均等な方位を持つ）
+    【内リング半径の方位別設計】
+    利尻山頂 (45.1800N, 141.2392E) は島の「東寄り」に位置する。
+    このため、北東・東方向の海岸は5.8〜7.5km（山頂に近い）、
+    西・北西・南方向の海岸は7.1〜9.4km（遠い）と非対称になる。
 
-    Parameters
-    ----------
-    n_points : 生成する沿岸格子点数（デフォルト48）
+    実測データ（331干場）に基づく各方向の平均沿岸距離と内リング半径の割り当て:
+      北:6.9km / 北東:6.2km / 東:6.6km          → r=6km  (i=0〜8,  0°〜120°)
+      南東:7.7km / 南2,3:8.3km / 南西:7.4km / 西1,2:8.0km → r=7km  (i=9〜11, i=13〜19, 135°〜285°)
+      真南:8.3km(max 9.1km)                     → r=9km  (i=12, 180°)
+      西3:8.0km / 北西:8.8km(max 9.4km)         → r=9km  (i=20〜23, 300°〜345°)
 
     座標計算
     ----------
     中心: 利尻山頂 (45.1800N, 141.2392E) — onshore/foehn計算と同じ基準点
-    半径: 9.0 km  ← CSV内の最大/最小座標から実測（北端45.2582 - 中心45.1800 = 8.7km）
+    LAT_D = 1/111.0 °/km
+    LON_D = 1/(111.0×cos(45.18°)) °/km  ≈ 1/78.5 °/km
     方位: 北=0°、時計回り（気象学的方位角と同一）
+
+    ラベル規則 (8方位 × 3サブ = 24点/リング)
+    ----------
+    内リング: 内北1 / 内北2 / 内北3 / 内北東1 ... 内北西3  (半径はラベルに反映しない)
+    外リング: 外北1 / 外北2 / 外北3 / 外北東1 ... 外北西3
+    山頂:     利尻山頂
     """
-    import math       as _m
-    import csv        as _csv
-    import statistics as _stats
+    import math as _m
 
-    _COMPASS_16 = [
-        '北', '北北東', '北東', '東北東',
-        '東', '東南東', '南東', '南南東',
-        '南', '南南西', '南西', '西南西',
-        '西', '西北西', '北西', '北北西',
-    ]  # 北 北北東 北東 東北東 東 東南東 南東 南南東 南 南南西 南西 西南西 西 西北西 北西 北北西
-
-    # ── Step 1: CSV から干場座標を読み込み ──────────────────────────────────
-    _spots = []
-    try:
-        with open(CSV_FILE, newline='', encoding='utf-8') as _f:
-            for _row in _csv.DictReader(_f):
-                if _row.get('name', '').startswith('H_'):
-                    try:
-                        _spots.append((float(_row['lat']), float(_row['lon'])))
-                    except ValueError:
-                        pass
-    except Exception as _e:
-        print(f'[coastal-ring] CSV read failed ({_e}); using fixed-radius fallback')
-
-    # ── Step 2: 重心を基準中心とする（固定半径ではなく実データ依存） ──────────
-    if len(_spots) >= n_points:
-        _clat = sum(s[0] for s in _spots) / len(_spots)
-        _clon = sum(s[1] for s in _spots) / len(_spots)
-    else:
-        _clat, _clon = 45.1800, 141.2392   # fallback: 利尻山頂
-
+    _CLAT  = 45.1800
+    _CLON  = 141.2392
     _LAT_D = 1.0 / 111.0
-    _LON_D = 1.0 / (111.0 * _m.cos(_m.radians(_clat)))
+    _LON_D = 1.0 / (111.0 * _m.cos(_m.radians(_CLAT)))
 
-    # ── Step 3: 各干場を極座標(方位, 距離km)に変換 ──────────────────────────
-    _polar = []
-    for _lat, _lon in _spots:
-        _dlat = (_lat - _clat) / _LAT_D
-        _dlon = (_lon - _clon) / _LON_D
-        _dist = _m.sqrt(_dlat ** 2 + _dlon ** 2)
-        _bear = (_m.degrees(_m.atan2(_dlon, _dlat)) + 360) % 360
-        _polar.append((_bear, _dist))
+    _C8 = ['北', '北東', '東', '南東', '南', '南西', '西', '北西']
 
-    # ── Step 4: 各目標方位の扇形内(±22.5°)の干場距離中央値を求める ──────────
-    _SECTOR = 360.0 / n_points      # 扇形幅 7.5°
-    _SEARCH = _SECTOR * 3           # 探索半幅 ±22.5°（隣接方位も含む）
-    _FALLBACK_KM = 7.5              # 干場ゼロ扇形のデフォルト距離
+    def _pt(bearing_deg, radius_km, label):
+        _brad = _m.radians(bearing_deg)
+        return {
+            'lat':     round(_CLAT + radius_km * _LAT_D * _m.cos(_brad), 4),
+            'lon':     round(_CLON + radius_km * _LON_D * _m.sin(_brad), 4),
+            'bearing': bearing_deg,
+            'radius':  radius_km,
+            'label':   label,
+        }
 
-    _radii = []
-    for _i in range(n_points):
-        _target = _SECTOR * _i
-        _in_sec = [_d for _b, _d in _polar
-                   if min(abs(_b - _target), 360 - abs(_b - _target)) <= _SEARCH]
-        _radii.append(_stats.median(_in_sec) if _in_sec else _FALLBACK_KM)
+    _grid = [
+        # ── 山頂 (中心) ─────────────────────────────────────────────────────
+        {'lat': _CLAT, 'lon': _CLON, 'bearing': None, 'radius': 0, 'label': '利尻山頂'},
+    ]
 
-    # 干場ゼロ扇形が残った場合は隣接扇形の平均で補間（2パス）
-    for _ in range(2):
-        for _i in range(n_points):
-            if _radii[_i] == _FALLBACK_KM:
-                _p = _radii[(_i - 1) % n_points]
-                _n = _radii[(_i + 1) % n_points]
-                if _p != _FALLBACK_KM or _n != _FALLBACK_KM:
-                    _radii[_i] = (_p + _n) / 2
+    # ── 内リング: 方位別半径 ────────────────────────────────────────────────
+    # r=6km: i=0〜7  (0°〜105°, 北/北東/東1-2) — 東寄り海岸線(avg 6.2〜6.9km)に合わせる
+    # r=9km: i=12   (180°, 真南)              — 南avg 8.3km, max 9.1km
+    # r=9km: i=20〜23 (300°〜345°, 内西3〜北西) — 北西avg 8.8km, max 9.4km
+    # r=7km: それ以外 (内東3=120°/南東/南2,3/南西/西) — i=8(120°)は南東境界のため7kmに戻す
+    for _i in range(24):
+        _bdeg = 15.0 * _i
+        if _i <= 7:
+            _r = 6.0                       # 北/北東/東1-2(0°〜105°): 東寄り近い海岸
+        elif _i == 12 or _i >= 20:
+            _r = 9.0                       # 真南(180°)・北西〜北北西(300°〜345°): 遠い海岸
+        else:
+            _r = 7.0                       # 内東3(120°)含む南東〜西: 中間帯
+        _lbl  = f'内{_C8[_i // 3]}{(_i % 3) + 1}'
+        _grid.append(_pt(_bdeg, _r, _lbl))
 
-    # ── Step 5: 格子点座標を生成 ─────────────────────────────────────────────
-    _grid = []
-    for _i in range(n_points):
-        _bdeg = _SECTOR * _i
-        _brad = _m.radians(_bdeg)
-        _r    = _radii[_i]
+    # ── 外リング: 方位別半径, 7.5°, 22.5°, ..., 352.5° ──────────────────────
+    # r=7km: i=0〜6 (7.5°〜97.5°, 外北1〜外東1) — N/NE/E海岸はavg6.2〜6.9km,max6.6〜7.5km
+    #                                              8kmは沖合に出すぎのため7kmへ
+    # r=8km: それ以外 — 南/西/北西は海岸が遠い(avg7.4〜8.8km)
+    for _i in range(24):
+        _bdeg = 15.0 * _i + 7.5
+        _r    = 7.0 if _i <= 6 else 8.0
+        _lbl  = f'外{_C8[_i // 3]}{(_i % 3) + 1}'
+        _grid.append(_pt(_bdeg, _r, _lbl))
 
-        _lat  = _clat + _r * _LAT_D * _m.cos(_brad)
-        _lon  = _clon + _r * _LON_D * _m.sin(_brad)
-
-        _ci   = _i // (n_points // 16)
-        _si   = (_i %  (n_points // 16)) + 1
-        _lbl  = _COMPASS_16[_ci] if _ci < 16 else f'{_bdeg:.0f}°'
-
-        _grid.append({
-            'lat':     round(_lat, 4),
-            'lon':     round(_lon, 4),
-            'bearing': round(_bdeg, 1),
-            'radius':  round(_r, 2),
-            'label':   f'沿岸{_lbl}{_si}',   # 沿岸北1, 沿岸東南東2 ...
-        })
     return _grid
 
 
@@ -2502,6 +2487,23 @@ def _temp_category(temp) -> str:
     if temp >= 20: return 'warm'
     if temp >= 10: return 'moderate'
     return 'cool'
+
+def _precip_color(precip) -> str:
+    """Color for hourly precipitation (mm/h).
+    0mm = 干し可能（緑）、0.1〜0.9mm = 小雨（橙）、1〜4.9mm = 雨（赤）、5+mm = 強雨（濃赤）
+    """
+    if precip is None: return '#adb5bd'
+    if precip >= 5.0:  return '#9b2335'   # 強雨・完全干し不可
+    if precip >= 1.0:  return '#d64545'   # 雨・干し不可
+    if precip >= 0.1:  return '#e07b39'   # 小雨・干し不可（殺し屋境界）
+    return '#1f9d55'                       # 0mm・乾燥可能
+
+def _precip_category(precip) -> str:
+    if precip is None: return 'unknown'
+    if precip >= 5.0:  return 'heavy'
+    if precip >= 1.0:  return 'rain'
+    if precip >= 0.1:  return 'trace'
+    return 'dry'
 
 
 def _make_wind_warning(max_wind_ms) -> dict | None:
@@ -3204,6 +3206,78 @@ def _compute_temperature_field(day: int, hour: int) -> dict:
     }
 
 
+def _compute_precipitation_field(day: int, hour: int) -> dict:
+    """Compute hourly precipitation (mm/h) for the 49-point Rishiri grid.
+
+    Open-Meteo `precipitation` は時間雨量 (mm/h)。
+    0mm = 乾燥可能（緑）、0.1mm以上 = 干し不可（橙〜濃赤）の殺し屋判定に直結。
+    地形補正なし（Open-Meteo MSM が地形性降雨を計算済み）。
+    """
+    target_date = _field_target_date(day)
+    target_time = f'{target_date}T{hour:02d}:00'
+
+    grid = _build_rishiri_grid()
+    lats = [g['lat'] for g in grid]
+    lons = [g['lon'] for g in grid]
+
+    try:
+        api_results = _fetch_open_meteo_multi(lats, lons, ['precipitation'])
+    except Exception as e:
+        return {'error': f'Open-Meteo fetch failed: {e}'}
+
+    points     = []
+    all_zero   = True
+    max_precip = 0.0
+    max_spot   = None
+
+    for i, (g, api_data) in enumerate(zip(grid, api_results)):
+        hourly = api_data.get('hourly', {})
+        times  = hourly.get('time', [])
+        try:
+            idx = times.index(target_time)
+        except ValueError:
+            idx = None
+
+        raw    = hourly.get('precipitation', [None])[idx] if idx is not None else None
+        precip = round(raw, 1) if raw is not None else None
+
+        if precip is not None and precip > 0:
+            all_zero = False
+        if precip is not None and precip > max_precip:
+            max_precip = precip
+            max_spot   = g.get('label') or f'格子点{i + 1}'
+
+        display_name = g.get('label') or f'格子点{i + 1} ({g["lat"]:.2f}N,{g["lon"]:.2f}E)'
+        points.append({
+            'name':     display_name,
+            'lat':      round(g['lat'], 4),
+            'lon':      round(g['lon'], 4),
+            'bearing':  g.get('bearing'),
+            'value':    precip,
+            'color':    _precip_color(precip),
+            'category': _precip_category(precip),
+        })
+
+    return {
+        'hour':      hour,
+        'all_zero':  all_zero,
+        'max_precip': round(max_precip, 1),
+        'max_spot':  max_spot,
+        'thresholds': {'trace': 0.1, 'light': 1.0, 'heavy': 5.0},
+        'legend': {
+            'unit': 'mm/h',
+            'stops': [
+                {'value': 5.0, 'label': '5mm以上 強雨（完全干し不可）', 'color': '#9b2335'},
+                {'value': 1.0, 'label': '1〜4.9mm 雨（干し不可）',      'color': '#d64545'},
+                {'value': 0.1, 'label': '0.1〜0.9mm 小雨（干し不可）',  'color': '#e07b39'},
+                {'value': 0,   'label': '0mm 降水なし（乾燥可能）',      'color': '#1f9d55'},
+            ],
+        },
+        'note': '1時間降水量。0mm = 干し可能、0.1mm以上 = 干し不可（Open-Meteo MSM地形性降雨込み）',
+        'points': points,
+    }
+
+
 @app.route('/api/analysis/field')
 @limiter.limit("20 per minute")
 def get_analysis_field():
@@ -3212,7 +3286,7 @@ def get_analysis_field():
     Leaflet/Canvas でフロント描画するため matplotlib を使わない。
 
     Parameters:
-        type : score | wind | humidity | temperature | solar
+        type : score | wind | humidity | temperature | solar | precipitation
         day  : 0=今日, 1=明日, ..., 6 (default 0)
         hour : 4|7|10|13|16 (JST) — score以外で必須。未指定時は10。
     """
@@ -3230,7 +3304,7 @@ def get_analysis_field():
     except ValueError:
         hour = 10
 
-    valid_types = ('score', 'wind', 'humidity', 'temperature', 'solar')
+    valid_types = ('score', 'wind', 'humidity', 'temperature', 'solar', 'precipitation')
     if field_type not in valid_types:
         return jsonify({'status': 'error',
                         'message': f'type は {"|".join(valid_types)} のいずれか'}), 400
@@ -3263,6 +3337,8 @@ def get_analysis_field():
         data = _compute_temperature_field(day, hour)
     elif field_type == 'solar':
         data = _compute_solar_field(day, hour)
+    elif field_type == 'precipitation':
+        data = _compute_precipitation_field(day, hour)
     else:
         data = {'error': 'unknown type'}
 

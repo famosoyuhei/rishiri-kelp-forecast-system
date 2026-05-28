@@ -1358,7 +1358,7 @@
             </div>
 
             <!-- 時刻チップ (score以外) -->
-            <div style="margin-bottom: 12px;">
+            <div id="fieldHourSection" style="margin-bottom: 12px;">
                 <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 5px;">
                     時刻（JST）— 風・湿度
                 </div>
@@ -1371,7 +1371,7 @@
                 <div style="font-size: 0.74rem; color: #555; font-weight: 600; margin-bottom: 7px;">表示レイヤー（1つを選択）</div>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
                     <input type="radio" name="fieldLayerRadio" id="fieldLayerScore" value="score" checked onchange="toggleFieldLayer('score')">
-                    🟢 乾燥スコア分布（48グリッド）
+                    🟢 乾燥スコア分布（49点・山頂含む）
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
                     <input type="radio" name="fieldLayerRadio" id="fieldLayerWind" value="wind" onchange="toggleFieldLayer('wind')">
@@ -1385,9 +1385,13 @@
                     <input type="radio" name="fieldLayerRadio" id="fieldLayerSolar" value="solar" onchange="toggleFieldLayer('solar')">
                     ☀️ 日射量（W/m²）
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; margin-bottom: 5px;">
                     <input type="radio" name="fieldLayerRadio" id="fieldLayerTemperature" value="temperature" onchange="toggleFieldLayer('temperature')">
                     🌡️ 気温（°C）
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer;">
+                    <input type="radio" name="fieldLayerRadio" id="fieldLayerPrecipitation" value="precipitation" onchange="toggleFieldLayer('precipitation')">
+                    🌧️ 降水量（時間雨量）
                 </label>
             </div>
 
@@ -1422,11 +1426,18 @@
                     <span style="color:#c9a500">● 50〜399</span> 曇天 &nbsp;
                     <span style="color:#d64545">● 〜49</span> 乾燥困難
                 </div>
-                <div style="line-height: 1.7;">
+                <div style="margin-bottom: 4px; line-height: 1.7;">
                     <b>気温</b><small style="color:#888">(℃)</small>:
                     <span style="color:#4a90d9">● 〜9</span> 低温 &nbsp;
                     <span style="color:#1f9d55">● 10〜19</span> 適温 &nbsp;
                     <span style="color:#e07b39">● 20+</span> 温暖
+                </div>
+                <div style="line-height: 1.7;">
+                    <b>降水量</b><small style="color:#888">(mm/h)</small>:
+                    <span style="color:#1f9d55">● 0mm</span> 干せる &nbsp;
+                    <span style="color:#e07b39">● 0.1〜0.9</span> 小雨 &nbsp;
+                    <span style="color:#d64545">● 1〜4.9</span> 雨 &nbsp;
+                    <span style="color:#9b2335">● 5+</span> 強雨
                 </div>
             </div>
 
@@ -1717,34 +1728,7 @@
                 </div><!-- /emagramBody -->
             </div>
 
-            <!-- 等値線マップ表示セクション -->
-            <div id="contourMapSection" style="display: none; margin-bottom: 20px; background: white; border-radius: 10px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <button class="mobile-expert-toggle" onclick="toggleMobileExpert('contourBody', this)">
-                    🗺️ <span id="contourToggleLabel">等値線マップを見る</span> <span id="contourToggleIcon">▼</span>
-                </button>
-                <div id="contourBody" class="mobile-expert-body">
-                <h3 style="margin-bottom: 10px; color: #2c3e50; font-size: 1.1rem;">気象解析マップ</h3>
-
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                    <button onclick="showContourMap('500hpa')" id="contour500Btn" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                        500hPa 渦度
-                    </button>
-                    <button onclick="showContourMap('700hpa')" id="contour700Btn" style="flex: 1; padding: 8px; background: #e9ecef; color: #333; border: none; border-radius: 5px; cursor: pointer;">
-                        700hPa 鉛直流
-                    </button>
-                </div>
-
-                <div id="contourMapContainer" style="text-align: center;">
-                    <img id="contourMapImage" src="" alt="等値線マップ" style="max-width: 100%; border-radius: 5px;">
-                    <p id="contourMapCaption" style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;"></p>
-                </div>
-
-                <div id="calibrationInfo" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 0.85rem; color: #555;">
-                    <strong>予報補正情報:</strong>
-                    <div id="calibrationDetails"></div>
-                </div>
-                </div><!-- /contourBody -->
-            </div>
+            <!-- 旧等値線マップセクション (v2.6.1で廃止: 500hPa渦度・700hPa鉛直流はmatplotlib廃止により削除済み) -->
 
             <div id="forecastContent">
                 <div class="loading">
@@ -2657,7 +2641,7 @@
             if (!ranked.length) { rankEl.innerHTML = ''; return; }
 
             const medalIcons = ['🥇','🥈','🥉'];
-            const scoreColor = score => score >= 70 ? '#16a34a' : score >= 50 ? '#ca8a04' : score >= 30 ? '#ea580c' : '#dc2626';
+            const scoreColor = score => score >= 80 ? '#16a34a' : score >= 50 ? '#ca8a04' : '#dc2626';
 
             let rows = ranked.map(({ spot, forecast }, i) => {
                 const score = forecast.daily_summary?.drying_score ?? forecast.drying_score ?? 0;
@@ -2794,7 +2778,7 @@
             const rankEl = document.getElementById('burakuRanking');
             if (!rankEl || !rankings.length) return;
 
-            const scoreColor = s => s >= 70 ? '#16a34a' : s >= 50 ? '#ca8a04' : s >= 30 ? '#ea580c' : '#dc2626';
+            const scoreColor = s => s >= 80 ? '#16a34a' : s >= 50 ? '#ca8a04' : '#dc2626';
             const medals = ['🥇','🥈','🥉'];
             const curBuraku   = selectedSpot?.buraku   || '';
             const curDistrict = selectedSpot?.district || '';
@@ -4284,6 +4268,9 @@
         // 通知システム (仕様書 lines 335-341)
         // ========================================
 
+        // 通知免責文（全通知共通 — ここだけ編集すれば全通知に反映される）
+        const NOTIFICATION_DISCLAIMER = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+
         let notificationData = JSON.parse(localStorage.getItem('hoshibaNotificationData')) || {
             enabled: false,
             eveningEnabled: true,        // 16:00通知（デフォルト有効）
@@ -4413,7 +4400,7 @@
 
                             const n = new Notification('⚠️ 気象庁警報発表', {
                                 body: allNames + '\n利尻島に警報・注意報が発表されました',
-                                icon: '/static/img/logo.png',
+                                icon: '/static/icons/icon-192x192.png',
                                 tag: 'jma-warning',
                                 requireInteraction: true
                             });
@@ -4447,11 +4434,13 @@
                     if (!data.hasWarnings || data.warnings.length === 0) {
                         detailDiv.innerHTML = '<p style="color:#888;">現在、警報・注意報の発表はありません。</p>';
                     } else {
+                        // XSS対策: JMA外部APIデータのテキストをエスケープして注入
+                        const _esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
                         detailDiv.innerHTML = data.warnings.map(area =>
                             `<div style="margin-bottom:10px;">
-                                <strong style="color:#b71c1c;">${area.area}</strong><br>
+                                <strong style="color:#b71c1c;">${_esc(area.area)}</strong><br>
                                 ${area.warnings.map(w =>
-                                    `<span style="display:inline-block; background:#ffebee; color:#b71c1c; border-radius:4px; padding:2px 8px; margin:2px; font-size:0.85rem;">${w.name}（${w.status}）</span>`
+                                    `<span style="display:inline-block; background:#ffebee; color:#b71c1c; border-radius:4px; padding:2px 8px; margin:2px; font-size:0.85rem;">${_esc(w.name)}（${_esc(w.status)}）</span>`
                                 ).join('')}
                             </div>`
                         ).join('');
@@ -4867,8 +4856,8 @@
             const nowJST = new Date(now.getTime() + offsetJST);
             const updateTime = `${String(nowJST.getUTCHours()).padStart(2,'0')}:${String(nowJST.getUTCMinutes()).padStart(2,'0')}`;
 
-            // 免責テキスト
-            const disclaimer = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+            // 免責テキスト（定数は通知システムセクション冒頭の NOTIFICATION_DISCLAIMER を参照）
+            const disclaimer = NOTIFICATION_DISCLAIMER;
             const disabledSpots = notificationData.disabledSpots || [];
 
             for (const favoriteIndex of favorites) {
@@ -4913,8 +4902,8 @@
 
                         new Notification(title, {
                             body: body + disclaimer,
-                            icon: '/static/icon-192x192.png',
-                            badge: '/static/badge-72x72.png',
+                            icon: '/static/icons/icon-192x192.png',
+                            badge: '/static/icons/badge-72x72.png',
                             tag: `forecast-${type}-${spot.name}`,
                             requireInteraction: false
                         });
@@ -5046,8 +5035,8 @@
 
                             new Notification(`${emoji} 緊急: ${getSpotDisplayName(spot.name)} 予報変化`, {
                                 body: `乾燥スコアが${Math.abs(diff)}点${direction}（${prevScore}→${currentScore}点）\n現在の判定: ${suitabilityJA}\n\n※この予報は干場の乾燥条件のみを判定します。`,
-                                icon: '/static/icon-192x192.png',
-                                badge: '/static/badge-72x72.png',
+                                icon: '/static/icons/icon-192x192.png',
+                                badge: '/static/icons/badge-72x72.png',
                                 tag: `emergency-${spot.name}-${todayStr}`,
                                 requireInteraction: true  // 緊急通知は消えるまで維持
                             });
@@ -5201,7 +5190,7 @@
                 }
             }
 
-            const disclaimer = '\n\n※この予報は干場の乾燥条件のみを判定します。出漁判断（波浪・視界・潮流等）は含まれません。';
+            const disclaimer = NOTIFICATION_DISCLAIMER;
             const now = new Date();
             const offsetJST = 9 * 60 * 60 * 1000;
             const nowJST = new Date(now.getTime() + offsetJST);
@@ -5222,8 +5211,8 @@
 
             new Notification(title, {
                 body: body + disclaimer,
-                icon: '/static/icon-192x192.png',
-                badge: '/static/badge-72x72.png',
+                icon: '/static/icons/icon-192x192.png',
+                badge: '/static/icons/badge-72x72.png',
                 tag: `test-${type}`,
                 requireInteraction
             });
@@ -5517,6 +5506,12 @@
 
         async function deleteSpot(index) {
             const spot = hoshibaSpots[index];
+
+            // 特別地点（アメダス・基準点）はフロントでも削除不可（サーバー側の二重防衛）
+            if (!spot.name.startsWith('H_')) {
+                alert(`「${spot.name}」はシステム保護地点のため削除できません。`);
+                return;
+            }
 
             if (!confirm(`本当に「${spot.name}」を削除しますか？この操作は取り消せません。`)) {
                 return;
@@ -6473,7 +6468,7 @@
         // =========================================================
         // 島内分布タブ — field analysis (score / wind / humidity)
         // =========================================================
-        const _fieldLayers = { score: null, wind: null, humidity: null, solar: null, temperature: null };
+        const _fieldLayers = { score: null, wind: null, humidity: null, solar: null, temperature: null, precipitation: null };
         let _fieldDay  = 0;
         let _fieldHour = 10;   // default 10:00 JST
         let _fieldLoaded = false;
@@ -6490,6 +6485,9 @@
                 // 単一選択: 初期は「乾燥スコア」ラジオを選択して1レイヤーだけ描画
                 const scoreRadio = document.getElementById('fieldLayerScore');
                 if (scoreRadio) scoreRadio.checked = true;
+                // 初期状態: スコアが選択中なので時刻セクションを無効化
+                const hourSec = document.getElementById('fieldHourSection');
+                if (hourSec) { hourSec.style.opacity = '0.35'; hourSec.style.pointerEvents = 'none'; }
                 loadFieldScore(_fieldDay);
             }
         }
@@ -6540,6 +6538,7 @@
             loadFieldHumidity(day, _fieldHour);
             loadFieldSolar(day, _fieldHour);
             loadFieldTemperature(day, _fieldHour);
+            loadFieldPrecipitation(day, _fieldHour);
         }
 
         function selectFieldHour(hour) {
@@ -6553,27 +6552,37 @@
             _removeLayer('humidity');
             _removeLayer('solar');
             _removeLayer('temperature');
+            _removeLayer('precipitation');
             loadFieldWind(_fieldDay, hour);
             loadFieldHumidity(_fieldDay, hour);
             loadFieldSolar(_fieldDay, hour);
             loadFieldTemperature(_fieldDay, hour);
+            loadFieldPrecipitation(_fieldDay, hour);
         }
 
         function toggleFieldLayer(type) {
             // 単一選択: 他のレイヤーをすべて削除してから選択レイヤーを描画
-            const ALL_TYPES = ['score', 'wind', 'humidity', 'solar', 'temperature'];
+            const ALL_TYPES = ['score', 'wind', 'humidity', 'solar', 'temperature', 'precipitation'];
             ALL_TYPES.forEach(t => { if (t !== type) _removeLayer(t); });
             // summary も一旦隠す（scoreのみ表示）
             const sumEl = document.getElementById('fieldSummary');
             if (type !== 'score' && sumEl) sumEl.style.display = 'none';
+            // 時刻セクター: スコアは日次集計なので時刻選択を無効化
+            const hourSec = document.getElementById('fieldHourSection');
+            if (hourSec) {
+                const isScore = (type === 'score');
+                hourSec.style.opacity       = isScore ? '0.35' : '1';
+                hourSec.style.pointerEvents = isScore ? 'none' : '';
+            }
             // ラジオなので checked は常に true だが念のため確認
             const el = document.getElementById(`fieldLayer${type.charAt(0).toUpperCase()+type.slice(1)}`);
             if (!el || !el.checked) return;
-            if (type === 'score')       loadFieldScore(_fieldDay);
-            if (type === 'wind')        loadFieldWind(_fieldDay, _fieldHour);
-            if (type === 'humidity')    loadFieldHumidity(_fieldDay, _fieldHour);
-            if (type === 'solar')       loadFieldSolar(_fieldDay, _fieldHour);
-            if (type === 'temperature') loadFieldTemperature(_fieldDay, _fieldHour);
+            if (type === 'score')         loadFieldScore(_fieldDay);
+            if (type === 'wind')          loadFieldWind(_fieldDay, _fieldHour);
+            if (type === 'humidity')      loadFieldHumidity(_fieldDay, _fieldHour);
+            if (type === 'solar')         loadFieldSolar(_fieldDay, _fieldHour);
+            if (type === 'temperature')   loadFieldTemperature(_fieldDay, _fieldHour);
+            if (type === 'precipitation') loadFieldPrecipitation(_fieldDay, _fieldHour);
         }
 
         function _setStatus(msg) {
@@ -6587,6 +6596,7 @@
             _removeLayer('humidity');
             _removeLayer('solar');
             _removeLayer('temperature');
+            _removeLayer('precipitation');
         }
 
         function _removeLayer(type) {
@@ -7015,13 +7025,82 @@
             }
         }
 
+        async function loadFieldPrecipitation(day, hour) {
+            if (!document.getElementById('fieldLayerPrecipitation').checked) return;
+            const myGen = _fieldGeneration;
+            _setStatus(_buildStatusLine('', `降水量データ読み込み中 — ${String(hour).padStart(2,'0')}:00 JST`));
+            try {
+                const res = await fetch(`/api/analysis/field?type=precipitation&day=${day}&hour=${hour}`);
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => '');
+                    console.error('[field] precipitation HTTP error', res.status, txt.slice(0, 200));
+                    _setStatus(`降水量データ取得エラー (HTTP ${res.status})`);
+                    return;
+                }
+                const txt = await res.text();
+                if (!txt) { _setStatus('降水量データが空です'); console.warn('[field] precipitation: empty body'); return; }
+                let data;
+                try { data = JSON.parse(txt); } catch (pe) {
+                    console.error('[field] precipitation JSON parse error:', pe, 'body:', txt.slice(0, 200));
+                    _setStatus('降水量データの解析に失敗しました');
+                    return;
+                }
+                if (data.status !== 'success') { _setStatus('降水量データ取得失敗: ' + (data.message || '')); return; }
+
+                _removeLayer('precipitation');
+                const group = L.layerGroup();
+                (data.points || []).forEach(p => {
+                    const v = p.value ?? 0;
+                    const label = v.toFixed(1);
+                    // 降水ゼロは小さく、雨が多いほど大きく表示
+                    const sz = v >= 5 ? 30 : v >= 1 ? 27 : v >= 0.1 ? 24 : 22;
+                    const fs = v >= 5 ? 11 : 10;
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;` +
+                              `background:${p.color};border:1.5px solid rgba(0,0,0,0.25);` +
+                              `display:flex;align-items:center;justify-content:center;` +
+                              `font-size:${fs}px;font-weight:700;color:white;` +
+                              `text-shadow:0 0 3px rgba(0,0,0,0.5);` +
+                              `box-shadow:0 1px 4px rgba(0,0,0,0.3);">${label}</div>`,
+                        iconSize:    [sz, sz],
+                        iconAnchor:  [sz / 2, sz / 2],
+                        tooltipAnchor: [sz / 2, 0],
+                    });
+                    const marker = L.marker([p.lat, p.lon], { icon });
+                    const catLabel = p.category === 'dry'   ? '☀️ 降水なし（干し可能）'
+                                   : p.category === 'trace' ? '🌦️ 小雨（干し不可）'
+                                   : p.category === 'rain'  ? '🌧️ 雨（干し不可）'
+                                   : p.category === 'heavy' ? '⛈️ 強雨（完全干し不可）'
+                                   : '';
+                    marker.bindTooltip(
+                        `<b>${p.name ?? '格子点'}</b><br>降水量: ${label} mm/h<br>${catLabel}`,
+                        { sticky: true, className: 'field-tooltip' }
+                    );
+                    group.addLayer(marker);
+                });
+                if (myGen !== _fieldGeneration) return;
+                _fieldLayers.precipitation = group;
+                group.addTo(map);
+
+                const cached   = data.cache?.hit ? '（キャッシュ）' : '';
+                const extraMsg = data.all_zero
+                    ? ' ✅ 全島降水なし'
+                    : (data.max_precip > 0 ? ` ⚠️ 最大 ${data.max_precip}mm（${data.max_spot ?? ''}）` : '');
+                _setStatus(_buildStatusLine(cached, `降水量 — ${String(hour).padStart(2,'0')}:00 JST${extraMsg}`));
+            } catch (e) {
+                _setStatus('降水量読み込みエラー: ' + e.message);
+            }
+        }
+
         function _buildStatusLine(prefix, suffix) {
             const parts = [];
-            if (_fieldLayers.score)       parts.push('スコア');
-            if (_fieldLayers.wind)        parts.push('風');
-            if (_fieldLayers.humidity)    parts.push('湿度');
-            if (_fieldLayers.solar)       parts.push('日射');
-            if (_fieldLayers.temperature) parts.push('気温');
+            if (_fieldLayers.score)         parts.push('スコア');
+            if (_fieldLayers.wind)          parts.push('風');
+            if (_fieldLayers.humidity)      parts.push('湿度');
+            if (_fieldLayers.solar)         parts.push('日射');
+            if (_fieldLayers.temperature)   parts.push('気温');
+            if (_fieldLayers.precipitation) parts.push('降水量');
             const active = parts.length ? `[${parts.join('+')}] ` : '';
             return `${prefix}${active}${suffix}`;
         }
@@ -7095,29 +7174,28 @@
 
         // 等値線解析マップを読み込み（互換用 — 新UIからは呼ばない）
         async function loadContourAnalysis() {
+            // v2.6.1: /api/analysis/contours は廃止（HTTP 410）。
+            // contourCategory/contourTime DOM要素も削除済みのため、この関数は呼ばれない。
+            // 島内分布タブの loadFieldScore() / loadFieldWind() 等を使用してください。
             const categoryEl = document.getElementById('contourCategory');
             const timeEl = document.getElementById('contourTime');
-            if (!categoryEl || !timeEl) return;  // DOM removed in new UI
-            const category = categoryEl.value;
-            const timeOffset = timeEl.value;
-
-            if (!category) {
-                alert('解析カテゴリーを選択してください');
-                return;
-            }
+            if (!categoryEl || !timeEl) return;  // DOM removed in v2.6.1
 
             const displayDiv = document.getElementById('contourMapDisplay');
             const imageDiv = document.getElementById('contourMapImage');
-            const metadataDiv = document.getElementById('contourMetadata');
-
-            // 表示エリアを表示
-            displayDiv.style.display = 'block';
-            imageDiv.innerHTML = '<p style="color: #999;">解析図を読み込み中...</p>';
-            metadataDiv.innerHTML = '';
+            if (displayDiv) displayDiv.style.display = 'block';
+            if (imageDiv) {
+                imageDiv.textContent = '';
+                const msg = document.createElement('p');
+                msg.style.color = '#e67e22';
+                msg.textContent = 'この機能は廃止されました。「島内分布」タブをご利用ください。';
+                imageDiv.appendChild(msg);
+            }
+            // 旧APIへのリクエストは送らない（HTTP 410 を回避）
 
             try {
-                // APIリクエスト（等値線図は互換用エンドポイント。波浪/高層データのみ有効）
-                const response = await fetch(`/api/analysis/contours?type=${category}&time=${timeOffset}`);
+                // v2.6.1 以降: この try ブロックは実行されない（上の return で抜ける）
+                const response = await fetch(`/api/analysis/field?type=score&day=0&hour=10`);
                 const data = await response.json();
 
                 if (data.status === 'deprecated') {
@@ -7234,11 +7312,19 @@
                         ` : ''}
                     `;
                 } else {
-                    imageDiv.innerHTML = `<p style="color: #dc3545;">エラー: ${data.message || '解析図の読み込みに失敗しました'}</p>`;
+                    const p = document.createElement('p');
+                    p.style.color = '#dc3545';
+                    p.textContent = 'エラー: ' + (data.message || '解析図の読み込みに失敗しました');
+                    imageDiv.textContent = '';
+                    imageDiv.appendChild(p);
                 }
             } catch (error) {
                 console.error('等値線解析エラー:', error);
-                imageDiv.innerHTML = `<p style="color: #dc3545;">エラー: ${error.message}</p>`;
+                const p = document.createElement('p');
+                p.style.color = '#dc3545';
+                p.textContent = 'エラー: ' + error.message;
+                imageDiv.textContent = '';
+                imageDiv.appendChild(p);
             }
         }
 
@@ -7276,6 +7362,7 @@
         window.loadFieldScore = loadFieldScore;
         window.loadFieldWind = loadFieldWind;
         window.loadFieldHumidity = loadFieldHumidity;
+        window.loadFieldPrecipitation = loadFieldPrecipitation;
     </script>
 
     <!-- PWA Service Worker Registration -->
@@ -7354,7 +7441,7 @@
             { id: 'accuracy',     kw: ['精度','正確','当たる','信頼','どのくらい正しい','予報の精度','外れる'] },
             { id: 'disclaimer',   kw: ['免責','責任','保証','波浪','出漁判断','安全','海の安全'] },
             { id: 'emagram',      kw: ['エマグラム','上空','高層','大気','層厚','逆転層'] },
-            { id: 'contour',      kw: ['等値線','等温線','等湿線','等圧線','解析マップ','島内全域'] },
+            { id: 'contour',      kw: ['等値線','等温線','等湿線','等圧線','解析マップ','島内全域','島内分布','分布図','分布タブ','降水量分布','降水量レイヤー','降水レイヤー','降水の分布','雨の分布'] },
             { id: 'record',       kw: ['記録','乾燥記録','干せた','干せなかった','完全乾燥','中止','結果を登録','実績'] },
             { id: 'filter',       kw: ['絞り込み','エリア','地区','部落','仙法志','鴛泊','鬼脇','沓形','絞込','フィルタ'] },
             { id: 'map',          kw: ['地図','マップ','マーカー','ピン','◉','●','地図の見方'] },
@@ -7714,11 +7801,11 @@
         }
 
         function respondContour(text) {
-            setQuickReplies(['エマグラムとは？', '等値線の読み方を詳しく', '使い方を教えて']);
+            setQuickReplies(['降水量分布とは？', '等値線の読み方を詳しく', '使い方を教えて']);
             if (text && isDetail(text)) {
-                return '🌪️ 等値線解析（初心者向け解説）\n\n等値線とは「同じ値の場所を結んだ線」です。\n天気予報の等圧線と同じ考え方です。\n\n──────────\n🌡️ 等温線（気温分布）\n線が密集 → 場所によって気温差が大きい\n暖かい側・冷たい側がひと目でわかります。\n\n💧 等湿線（湿度分布）\n島のどこが湿っているか、乾いているかがわかります。\n湿度が低いエリア（70〜80%台）の干場が有利。\n\n💨 風向・風速場\n矢印の向きが風向、長さが風速を表します。\n山の風下側（山が風をブロックする側）は\n風が弱く乾燥しにくいことがわかります。\n\n💡 利尻島での使い方\n利尻山が「風の仕切り」になるため、\n風向によって島の東側と西側で気象が大きく変わります。\nこの差を等値線で視覚的に確認できます。';
+                return '🗺️ 島内分布タブ（初心者向け解説）\n\n利尻島全体の気象を49地点のグリッドで可視化するタブです。\n\n──────────\n🌿 乾燥スコア分布\n今日、島のどこが干せるか一目でわかります。\n緑=良好・黄=注意・赤=不可。\n\n💨 風速分布\n利尻山を中心に、東側・西側で風速が大きく変わります。\n矢印の色と大きさで確認できます。\n\n💧 湿度分布\n山の風上側（湿った風が当たる側）は湿度が高くなりがちです。\n\n🌡️ 気温分布\n海岸・高地・山腹で気温差を比較できます。\n\n🌧️ 降水量分布（時間雨量）\n島全体のどこで雨が降っているかがわかります。\n緑●=0mm（干せる）→ 橙●=小雨 → 赤●=雨 → 濃赤●=強雨\n1mmでも降っていると昆布干しには不適です。\n\n「時刻」チップで1時間ごとに切り替えられます（スコアは除く）。';
             }
-            return '🌪️ 等値線解析\n\n利尻島全体の気象分布を解析するツールです。\n等温線・等湿線・等圧線・風向風速場・降水量分布を表示。\n\n「等値線の読み方を詳しく教えて」で初心者向け解説します。';
+            return '🗺️ 島内分布タブ\n\n利尻島全体の気象を49地点で可視化するタブです。\n\n表示できる分布：\n🌿 乾燥スコア / 💨 風速 / 💧 湿度\n🌡️ 気温 / 🌧️ 降水量（時間雨量）\n\n🌧️ 降水量分布では島全体の雨の降り具合がひと目でわかります。\n1mmでも降っていると昆布干しには不適（緑●=0mm/安全）。\n\n「詳しく教えて」で各レイヤーの見方を説明します。';
         }
 
         function respondHumidity(text) {
@@ -8073,6 +8160,7 @@
         <div id="chatQuickReplies"></div>
         <div id="chatInputRow">
             <input type="text" id="chatTextInput" placeholder="質問を入力..." autocomplete="off"
+                   maxlength="200" aria-label="チャット入力"
                    onkeydown="if(event.key==='Enter')submitChatMessage()">
             <button type="button" id="chatSendBtn" onclick="submitChatMessage()">送信</button>
         </div>
