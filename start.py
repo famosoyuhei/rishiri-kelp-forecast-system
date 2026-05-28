@@ -1157,7 +1157,7 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
         score += 15
     elif precipitation < 0.5:
         score += 5   # 微量雨：乾燥困難
-    # precipitation >= 0.5 は加点なし
+    # precipitation >= 0.5 は加点なし（最終ゲートで圧縮される）
 
     # --- 気温: アレニウス近似で細粒度化 (K2) ---
     # 10°C上昇で乾燥速度定数 k が1.5倍。25°Cを基準に連続スコア化。
@@ -1214,6 +1214,16 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
     # フィールド分析では _fetch_elevations_batch() で一括取得済みの値が渡される
     if elevation > 100:
         score += int(elevation / 100) * 2
+
+    # --- 最終降水ゲート（実測根拠による強制圧縮） ---
+    # calculate_enhanced_drying_score は気温・風・日射で points を積み上げるが、
+    # 雨天時は他の条件が良くても昆布乾燥は不可能。
+    # 実測21件: 0.5mm以上は全件乾燥失敗 → 最大8点に強制圧縮（「不可」帯）
+    # 0〜0.5mm未満（微量）: 最大30点に圧縮（「要注意」帯）
+    if precipitation >= 0.5:
+        score = min(score, 8)
+    elif precipitation > 0:
+        score = min(score, 30)
 
     return max(0, min(100, score))
 
