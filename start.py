@@ -974,10 +974,8 @@ def get_forecast():
             max_cape = max(cape_values) if cape_values else None
             cape_risk = assess_cape_risk(max_cape)
 
-            # --- CAPE ペナルティをスコアに反映 ---
-            score = max(0, min(100, score + cape_risk['score_penalty']))
-
-            # --- フェーンボーナス: stage_analysis の overall_score に加算 ---
+            # --- フェーンボーナス: stage_analysis のみ ───────────────────────
+            # drying_score への適用は _apply_local_risk_adjustments() で統一実施。
             foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
             foehn_bonus = min(15, foehn_hours * 3)  # 最大+15点
             if foehn_hours > 0:
@@ -985,22 +983,15 @@ def get_forecast():
                     100, stage_analysis['overall_score'] + foehn_bonus
                 )
 
-            # --- 霧リスク: 作業時間帯の fog_risk 集計 ---
-            fog_hours_high = sum(1 for h in hourly_data if h.get('fog_risk') == 'high')
-            if fog_hours_high >= 4:
-                fog_summary = 'high'
+            # --- 霧リスク: stage_analysis のみ ──────────────────────────────
+            fog_summary, _fog_note_fc = _compute_fog_from_hourly_flags(hourly_data)
+            _fog_sa_pen = {'high': -15, 'medium': -7, 'low': 0}[fog_summary]
+            if _fog_sa_pen < 0:
                 stage_analysis['overall_score'] = max(
-                    0, stage_analysis['overall_score'] - 15
+                    0, stage_analysis['overall_score'] + _fog_sa_pen
                 )
-            elif fog_hours_high >= 2:
-                fog_summary = 'medium'
-                stage_analysis['overall_score'] = max(
-                    0, stage_analysis['overall_score'] - 7
-                )
-            else:
-                fog_summary = 'low'
 
-            # --- SST & 霧リスク (W6) ---
+            # --- SST & 霧リスク: stage_analysis のみ ─────────────────────────
             sst_today = sst_list[i] if i < len(sst_list) else None
             sst_fog_risk = assess_sst_fog_risk(sst_today, temp_max)
             if sst_fog_risk in ('very_high', 'high'):
@@ -1008,44 +999,18 @@ def get_forecast():
                     0, stage_analysis['overall_score'] - 10
                 )
 
-            # ─── local_risk_adjustments: drying_score への追加補正 ───
-            # CAPE は L976 で score に適用済み。残り3要素（霧・フェーン・SST）を
-            # drying_score にも反映し、stage_analysis.overall_score との整合を高める。
-            # 係数は stage_analysis より控えめ（実測根拠が薄いため）。
-            #
-            # 現行 stage_analysis への適用済み係数（参考）:
-            #   fog:  medium -7 / high -15
-            #   foehn: +3/h max+15
-            #   SST:  high/very_high -10
-            #
-            # drying_score への新規適用係数（控えめ版）:
-            #   fog:  medium -5 / high -10
-            #   foehn: +2/h max+8
-            #   SST:  high/very_high -5
-            _fog_pen   = {'low': 0, 'medium': -5, 'high': -10}.get(fog_summary, 0)
-            _foehn_adj = min(8, foehn_hours * 2)
-            _sst_adj   = -5 if sst_fog_risk in ('very_high', 'high') else 0
-            _local_total = _fog_pen + _foehn_adj + _sst_adj
-            score = max(0, min(100, score + _local_total))
-
-            _risk_notes = []
-            if _fog_pen < 0:
-                _risk_notes.append(f'霧リスク({fog_summary}): {_fog_pen:+d}点')
-            if cape_risk['score_penalty'] < 0:
-                _risk_notes.append(f'CAPE対流リスク({cape_risk["risk"]}): {cape_risk["score_penalty"]:+d}点')
-            if _foehn_adj > 0:
-                _risk_notes.append(f'山背風フェーン({foehn_hours}時間): {_foehn_adj:+d}点')
-            if _sst_adj < 0:
-                _risk_notes.append(f'SST霧リスク({sst_fog_risk}): {_sst_adj:+d}点')
-
-            local_risk_adjustments = {
-                'fog_penalty':      _fog_pen,
-                'cape_penalty':     cape_risk['score_penalty'],
-                'foehn_adjustment': _foehn_adj,
-                'sst_fog_penalty':  _sst_adj,
-                'total_adjustment': _local_total + cape_risk['score_penalty'],
-                'notes':            _risk_notes,
-            }
+            # ─── 4補正を drying_score に一括適用（共通経路）─────────────────
+            # 係数は stage_analysis より控えめ（実測根拠が薄いため）:
+            #   fog: medium -5 / high -10   foehn: +2/h max+8   SST: -5
+            # 新補正追加時は _apply_local_risk_adjustments() だけを変更すること。
+            score, local_risk_adjustments = _apply_local_risk_adjustments(
+                score,
+                cape_risk    = cape_risk,
+                fog_summary  = fog_summary,
+                fog_note     = _fog_note_fc,
+                foehn_hours  = foehn_hours,
+                sst_fog_risk = sst_fog_risk,
+            )
 
             # --- ソルナー指数 (W9) ---
             try:
@@ -2557,6 +2522,185 @@ def _safe_sum(values) -> float | None:
     return sum(valid) if valid else None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ローカルリスク補正ヘルパー群
+#  ─────────────────────────────────────────────────────────────────────────────
+#  /api/forecast と _compute_score_field の両コードパスで呼ばれる。
+#  「新しい補正を追加するときはこのブロックだけ触れば良い」が設計原則。
+#  ▶ 片方の呼び出し側だけに補正を追加しないこと（スコア乖離の再発防止）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _compute_fog_from_hourly_flags(hourly_data: list) -> tuple[str, str]:
+    """
+    hourly_data の fog_risk フラグ集計から (fog_summary, fog_note) を返す。
+    /api/forecast 専用。fog_risk は露点 + 雲量 + 風速で判定済みの複合フラグ。
+
+    Returns
+    -------
+    fog_summary : 'low' / 'medium' / 'high'
+    fog_note    : ペナルティ説明文（ペナルティなしは空文字）
+    """
+    high_h = sum(1 for h in hourly_data if h.get('fog_risk') == 'high')
+    if high_h >= 4:
+        level = 'high'
+    elif high_h >= 2:
+        level = 'medium'
+    else:
+        level = 'low'
+    pen   = {'high': -10, 'medium': -5, 'low': 0}[level]
+    note  = f'霧リスク({level}): {pen:+d}点' if pen < 0 else ''
+    return level, note
+
+
+def _compute_fog_from_dewpoint(
+        temp_vals: list, dewpt_vals: list, humidity_min: float | None
+) -> tuple[str, str, str]:
+    """
+    露点降下量（temp - dewpoint）から (fog_summary, fog_note, method) を返す。
+    _compute_score_field 専用。露点データがなければ最低湿度で推定。
+
+    Returns
+    -------
+    fog_summary  : 'low' / 'medium' / 'high'
+    fog_note     : ペナルティ説明文（ペナルティなしは空文字）
+    method       : 'dewpoint_depression' or 'humidity_estimate'
+    """
+    _valid = _high = _med = 0
+    for _t, _d in zip(temp_vals or [], dewpt_vals or []):
+        if _t is not None and _d is not None:
+            _dep = _t - _d
+            _valid += 1
+            if _dep < 2.0:
+                _high += 1
+            elif _dep < 5.0:
+                _med  += 1
+
+    if _valid > 0:
+        method = 'dewpoint_depression'
+        if _high >= 4:
+            level = 'high'
+        elif _high >= 2:
+            level = 'medium'
+        elif _med >= 4:
+            level = 'medium'
+        else:
+            level = 'low'
+    else:
+        method = 'humidity_estimate'
+        if humidity_min is not None and humidity_min > 95:
+            level = 'high'
+        elif humidity_min is not None and humidity_min > 90:
+            level = 'medium'
+        else:
+            level = 'low'
+
+    pen = {'high': -10, 'medium': -5, 'low': 0}[level]
+    if pen < 0:
+        note = (
+            f'露点降下霧リスク({level}, 高リスク{_high}h): {pen:+d}点'
+            if method == 'dewpoint_depression'
+            else f'高湿度霧推定({level}): {pen:+d}点'
+        )
+    else:
+        note = ''
+    return level, note, method
+
+
+def _compute_foehn_hours(
+        wind_dir_raw: list, wind_spd_kmh_raw: list, mountain_az: float
+) -> int:
+    """
+    山背風フェーン時間数を算出。
+    wind_toward（wind_dir + 180°）と mountain_az の角度差 > 150° かつ風速 > 3 m/s。
+
+    Parameters
+    ----------
+    wind_dir_raw    : 風向リスト [°] (where wind comes FROM)
+    wind_spd_kmh_raw: 風速リスト [km/h]
+    mountain_az     : 観測点から利尻山頂への気象学的方位角 [°] (北=0, 時計回り)
+
+    Returns
+    -------
+    フェーン効果が発生した時間数 (int)
+    """
+    count = 0
+    for _wd, _wkm in zip(wind_dir_raw or [], wind_spd_kmh_raw or []):
+        if _wd is None or _wkm is None:
+            continue
+        _adiff = abs((_wd + 180) % 360 - mountain_az)
+        if _adiff > 180:
+            _adiff = 360 - _adiff
+        if _adiff > 150 and (_wkm / 3.6) > 3.0:
+            count += 1
+    return count
+
+
+def _apply_local_risk_adjustments(
+        score: float, *,
+        cape_risk:    dict,
+        fog_summary:  str,
+        foehn_hours:  int,
+        sst_fog_risk: str,
+        fog_note:     str   = '',
+        dewpt_method: str   = 'dewpoint_depression',
+) -> tuple[int, dict]:
+    """
+    4補正（CAPE・霧・フェーン・SST）をスコアに一括適用し dict を返す **唯一の場所**。
+
+    /api/forecast と _compute_score_field の両方がここを呼ぶ。
+    ▶ 新補正を追加するときはこの関数のシグネチャと本体だけを変更すること。
+    ▶ 呼び出し側 2 箇所のうち片方だけに直接書かないこと（スコア乖離の再発防止）。
+
+    Parameters
+    ----------
+    score        : 基礎スコア（precipitation gate 適用後、local risk 未適用）
+    cape_risk    : assess_cape_risk() の戻り値
+    fog_summary  : 'low' / 'medium' / 'high'
+    foehn_hours  : 山背風フェーン時間数
+    sst_fog_risk : assess_sst_fog_risk() の戻り値
+    fog_note     : 霧の説明文（空文字で自動生成）
+    dewpt_method : 'dewpoint_depression' or 'humidity_estimate'（UI 表示用）
+
+    Returns
+    -------
+    (new_score: int, local_risk_adjustments: dict)
+    """
+    # 1. CAPE ─────────────────────────────────────────────────────────────────
+    score = max(0, min(100, score + cape_risk['score_penalty']))
+
+    # 2. 霧 ───────────────────────────────────────────────────────────────────
+    _fog_pen = {'low': 0, 'medium': -5, 'high': -10}.get(fog_summary, 0)
+    score = max(0, min(100, score + _fog_pen))
+
+    # 3. フェーン + SST ─────────────────────────────────────────────────────
+    _foehn_adj = min(8, foehn_hours * 2)
+    _sst_adj   = -5 if sst_fog_risk in ('very_high', 'high') else 0
+    score = max(0, min(100, score + _foehn_adj + _sst_adj))
+
+    # notes 組み立て
+    notes = []
+    if _fog_pen < 0:
+        notes.append(fog_note or f'霧リスク({fog_summary}): {_fog_pen:+d}点')
+    if cape_risk['score_penalty'] < 0:
+        notes.append(f'CAPE対流リスク({cape_risk["risk"]}): {cape_risk["score_penalty"]:+d}点')
+    if _foehn_adj > 0:
+        notes.append(f'山背風フェーン({foehn_hours}時間): +{_foehn_adj}点')
+    if _sst_adj < 0:
+        notes.append(f'SST霧リスク({sst_fog_risk}): {_sst_adj:+d}点')
+
+    adj = {
+        'fog_penalty':      _fog_pen,
+        'cape_penalty':     cape_risk['score_penalty'],
+        'foehn_adjustment': _foehn_adj,
+        'sst_fog_penalty':  _sst_adj,
+        'total_adjustment': _fog_pen + cape_risk['score_penalty'] + _foehn_adj + _sst_adj,
+        'notes':            notes,
+        'method':           dewpt_method,
+    }
+
+    return int(max(0, min(100, score))), adj
+
+
 def _compute_score_field(day: int) -> dict:
     """
     Compute drying score for 6×8=48 representative grid points.
@@ -2642,102 +2786,40 @@ def _compute_score_field(day: int) -> dict:
         )
 
         # ─── local_risk_adjustments (field score 版) ───────────────────────────
-        # /api/forecast と同一の4補正（CAPE・霧・フェーン・SST）を適用。
-        # 適用順序も /api/forecast に準拠:
-        #   1. CAPE（対流不安定ペナルティ）
-        #   2. 霧リスク（露点降下法）
-        #   3. フェーン（山背風ボーナス）+ SST霧リスク
+        # _apply_local_risk_adjustments() を通じて /api/forecast と完全に同一の
+        # 4補正を適用する。入力値の算出のみがここの責務。
 
-        # ── 1. CAPE ──────────────────────────────────────────────────────────
-        _cape_vals_f  = win.get('cape', [])
-        _max_cape_f   = _safe_max(_cape_vals_f)
-        _cape_risk_f  = assess_cape_risk(_max_cape_f)
-        score = max(0, min(100, score + _cape_risk_f['score_penalty']))
+        # CAPE
+        _cape_risk_f = assess_cape_risk(_safe_max(win.get('cape', [])))
 
-        # ── 2. 霧リスク（露点降下法 / 湿度推定フォールバック）──────────────
-        # 露点データが取得できない場合は最低湿度による簡易推定にフォールバック。
-        _dewpt_method = 'humidity_estimate'
-        _fog_hours_high = 0
-        _fog_hours_med  = 0
-        _valid_dewpt_pairs = 0
-        if temp_avg is not None and dewpt_vals:
-            for _t, _d in zip(temp_vals, dewpt_vals):
-                if _t is not None and _d is not None:
-                    _dep = _t - _d
-                    _valid_dewpt_pairs += 1
-                    if _dep < 2.0:
-                        _fog_hours_high += 1
-                    elif _dep < 5.0:
-                        _fog_hours_med  += 1
-        if _valid_dewpt_pairs > 0:
-            _dewpt_method = 'dewpoint_depression'
-            if _fog_hours_high >= 4:
-                _ff_level, _ff_pen = 'high',   -10
-            elif _fog_hours_high >= 2:
-                _ff_level, _ff_pen = 'medium',  -5
-            elif _fog_hours_med  >= 4:
-                _ff_level, _ff_pen = 'medium',  -5
-            else:
-                _ff_level, _ff_pen = 'low',      0
-        else:
-            if humidity_min is not None and humidity_min > 95:
-                _ff_level, _ff_pen = 'high',   -10
-            elif humidity_min is not None and humidity_min > 90:
-                _ff_level, _ff_pen = 'medium', -5
-            else:
-                _ff_level, _ff_pen = 'low',     0
+        # 霧（露点降下法 / 湿度推定フォールバック）
+        _fog_sum_f, _fog_note_f, _dewpt_method = _compute_fog_from_dewpoint(
+            temp_vals, dewpt_vals, humidity_min
+        )
 
-        score = max(0, min(100, score + _ff_pen))
+        # フェーン（格子点→利尻山頂の方位角を動的計算）
+        _dlat_f = _SUMMIT_LAT - g['lat']
+        _dlon_f = _SUMMIT_LON - g['lon']
+        _maz_f  = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
+        _foehn_h = _compute_foehn_hours(
+            win.get('wind_direction_10m', []),
+            win.get('wind_speed_10m', []),
+            _maz_f,
+        )
 
-        # ── 3a. フェーン（山背風ボーナス）──────────────────────────────────
-        # 格子点から利尻山頂（R_1800_2392）への方位角（気象学的: 北=0°, 時計回り）
-        _dlat_f   = _SUMMIT_LAT - g['lat']
-        _dlon_f   = _SUMMIT_LON - g['lon']
-        _maz_f    = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
-        _wd_raw_f = win.get('wind_direction_10m', [])
-        _ws_raw_f = win.get('wind_speed_10m', [])   # km/h
-        _foehn_h  = 0
-        for _wd_f, _wkm_f in zip(_wd_raw_f, _ws_raw_f):
-            if _wd_f is None or _wkm_f is None:
-                continue
-            _adiff_f = abs((_wd_f + 180) % 360 - _maz_f)
-            if _adiff_f > 180:
-                _adiff_f = 360 - _adiff_f
-            if _adiff_f > 150 and (_wkm_f / 3.6) > 3.0:
-                _foehn_h += 1
-        _foehn_adj_f = min(8, _foehn_h * 2)
-
-        # ── 3b. SST 霧リスク ─────────────────────────────────────────────────
+        # SST（島共通）
         _sst_risk_f = assess_sst_fog_risk(_sst_today_field, temp_max)
-        _sst_adj_f  = -5 if _sst_risk_f in ('very_high', 'high') else 0
 
-        score = max(0, min(100, score + _foehn_adj_f + _sst_adj_f))
-
-        # ── notes 組み立て ───────────────────────────────────────────────────
-        _all_notes = []
-        if _ff_pen < 0:
-            if _dewpt_method == 'dewpoint_depression':
-                _all_notes.append(
-                    f'露点降下霧リスク({_ff_level}, 高リスク{_fog_hours_high}h): {_ff_pen:+d}点'
-                )
-            else:
-                _all_notes.append(f'高湿度霧推定({_ff_level}): {_ff_pen:+d}点')
-        if _cape_risk_f['score_penalty'] < 0:
-            _all_notes.append(f'CAPE対流リスク({_cape_risk_f["risk"]}): {_cape_risk_f["score_penalty"]:+d}点')
-        if _foehn_adj_f > 0:
-            _all_notes.append(f'山背風フェーン({_foehn_h}時間): +{_foehn_adj_f}点')
-        if _sst_adj_f < 0:
-            _all_notes.append(f'SST霧リスク({_sst_risk_f}): {_sst_adj_f:+d}点')
-
-        local_risk_adjustments = {
-            'fog_penalty':      _ff_pen,
-            'cape_penalty':     _cape_risk_f['score_penalty'],
-            'foehn_adjustment': _foehn_adj_f,
-            'sst_fog_penalty':  _sst_adj_f,
-            'total_adjustment': _ff_pen + _cape_risk_f['score_penalty'] + _foehn_adj_f + _sst_adj_f,
-            'notes':            _all_notes,
-            'method':           _dewpt_method,
-        }
+        # 4補正を一括適用（唯一の適用経路）
+        score, local_risk_adjustments = _apply_local_risk_adjustments(
+            score,
+            cape_risk    = _cape_risk_f,
+            fog_summary  = _fog_sum_f,
+            fog_note     = _fog_note_f,
+            foehn_hours  = _foehn_h,
+            sst_fog_risk = _sst_risk_f,
+            dewpt_method = _dewpt_method,
+        )
         # ────────────────────────────────────────────────────────────────────────
 
         cat = _score_category(score)
