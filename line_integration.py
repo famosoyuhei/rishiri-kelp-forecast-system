@@ -1130,8 +1130,8 @@ def parse_command(text: str) -> dict:
 _HELP_TEXT = """\
 【コマンド早見表】
 「今日」「明日」「今週」→ 干場の乾燥予報
-「H_XXXX_XXXX」など → 特定干場の予報
-「通知登録 H_XXXX_XXXX」→ 毎日通知をON
+「沓形」「鴛泊」など部落名 → その地区の予報
+Webアプリ「LINEで通知登録」→ 毎日通知をON
 「通知解除」→ 通知をOFF
 「記録」→ 乾燥記録を入力
 「沖止め」「沖止め 6/25」→ 沖止め日を登録（祭りなど事前禁漁日）
@@ -1162,9 +1162,7 @@ def _no_registration_hint() -> str:
         '【登録方法】\n'
         '① Webアプリで地図から干場を選択\n'
         '② 「LINEで通知登録」ボタンをタップ\n'
-        'https://rishiri-kelp-forecast-system.onrender.com/\n\n'
-        '干場IDがわかる場合は直接入力:\n'
-        '「通知登録 H_1631_1434」'
+        'https://rishiri-kelp-forecast-system.onrender.com/'
     )
 
 
@@ -1420,7 +1418,11 @@ def handle_area_query(area: str, day: int | None) -> str:
 def handle_subscribe(source_type: str, source_id: str, target: str,
                      nickname: str = '') -> str:
     if not target:
-        return '登録する干場IDまたは地区名を入力してください。\n例: 通知登録 H_1631_1434'
+        return (
+            '部落名で登録: 「通知登録 沓形」\n'
+            'またはWebアプリから「LINEで通知登録」\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/'
+        )
 
     # Spot ID registration
     if _SPOT_ID_RE.match(target):
@@ -1458,8 +1460,10 @@ def handle_subscribe(source_type: str, source_id: str, target: str,
     spots = find_spots_by_area(target)
     if not spots:
         return (
-            f'「{target}」に一致する地区・部落が見つかりません。\n'
-            '干場IDまたは正確な部落名を入力してください。\n例: 通知登録 H_1631_1434'
+            f'「{target}」に一致する部落が見つかりません。\n'
+            '正確な部落名で試してください（例: 通知登録 沓形）。\n'
+            'またはWebアプリから「LINEで通知登録」。\n'
+            'https://rishiri-kelp-forecast-system.onrender.com/'
         )
     spot_ids = [s['name'] for s in spots]
     sub = get_subscription(source_type, source_id)
@@ -1484,7 +1488,11 @@ def handle_unsubscribe(source_type: str, source_id: str) -> str:
     if not sub or not sub.get('notify_enabled'):
         return '通知はすでにOFFです。'
     upsert_subscription(source_type, source_id, {'notify_enabled': False})
-    return '通知をOFFにしました。再登録は「通知登録 <干場ID>」で行えます。'
+    return (
+        '通知をOFFにしました。\n'
+        '再登録はWebアプリの「LINEで通知登録」ボタンからどうぞ。\n'
+        'https://rishiri-kelp-forecast-system.onrender.com/'
+    )
 
 
 def handle_set_nogo(source_type: str, source_id: str, date_arg: 'str | None') -> str:
