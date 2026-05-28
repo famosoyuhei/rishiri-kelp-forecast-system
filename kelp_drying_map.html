@@ -1665,16 +1665,17 @@
                 <h3 id="selectedSpotName">干場を選択してください</h3>
                 <p id="selectedSpotLocation"></p>
                 <div id="lineRegisterBtnWrap" style="display:none; margin: 6px 0 6px;">
-                    <div style="display:flex; gap:6px; align-items:center; margin-bottom:5px;">
-                        <input id="lineRegisterNickInput" type="text" placeholder="呼び名（任意）"
-                               maxlength="20" autocomplete="off" aria-label="干場の呼び名"
-                               style="flex:1; padding:5px 9px; border:1px solid #ccc; border-radius:16px; font-size:0.8rem; outline:none;" />
+                    <input id="lineRegisterNickInput" type="text" placeholder="呼び名を入力（例: 浜の前）"
+                           maxlength="20" autocomplete="off" aria-label="干場の呼び名"
+                           style="width:100%; box-sizing:border-box; padding:6px 10px; border:1.5px solid #ccc; border-radius:16px; font-size:0.8rem; outline:none; margin-bottom:5px;" />
+                    <div id="lineRegisterNickHint" style="font-size:0.73rem; color:#e67e22; margin-bottom:5px; display:none;">
+                        ↑ 呼び名を入力するとボタンが有効になります
                     </div>
                     <a id="lineRegisterBtn"
                        href="#"
                        target="_blank"
                        rel="noopener"
-                       style="display:inline-flex; align-items:center; gap:6px; background:#06C755; color:white; text-decoration:none; padding:7px 14px; border-radius:20px; font-size:0.82rem; font-weight:600; box-shadow:0 2px 6px rgba(6,199,85,0.35);">
+                       style="display:inline-flex; align-items:center; gap:6px; background:#aaa; color:white; text-decoration:none; padding:7px 14px; border-radius:20px; font-size:0.82rem; font-weight:600; pointer-events:none; opacity:0.5;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.477 2 2 6.038 2 11.05c0 3.623 2.163 6.784 5.392 8.564L6.5 22l3.26-1.713A10.8 10.8 0 0012 20.1c5.523 0 10-4.038 10-9.05S17.523 2 12 2z"/></svg>
                         LINEで通知登録
                     </a>
@@ -2549,23 +2550,36 @@
             const lineWrap = document.getElementById('lineRegisterBtnWrap');
             const lineBtn = document.getElementById('lineRegisterBtn');
             const lineNickInput = document.getElementById('lineRegisterNickInput');
+            const lineNickHint = document.getElementById('lineRegisterNickHint');
             const isSpecial = spot.name.startsWith('A_') || spot.name.startsWith('R_');
             if (!isSpecial) {
-                // 呼び名入力欄をクリア
+                // 呼び名入力欄をクリアし、ボタンをリセット
                 lineNickInput.value = '';
+                lineNickHint.style.display = 'block'; // 空欄ヒントを表示
 
                 function _updateLineRegBtn() {
                     const nick = lineNickInput.value.trim();
-                    // 呼び名あり: 通知登録 + 呼び名を同時設定
-                    // 呼び名なし: 通知登録のみ（後から「干場登録 呼び名 ID」で追加可能）
-                    const lineText = nick
-                        ? `通知登録 ${spot.name} ${nick}`
-                        : `通知登録 ${spot.name}`;
-                    lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(lineText)}`;
+                    if (nick) {
+                        // 呼び名あり → ボタン有効化
+                        lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(`通知登録 ${spot.name} ${nick}`)}`;
+                        lineBtn.style.background = '#06C755';
+                        lineBtn.style.pointerEvents = 'auto';
+                        lineBtn.style.opacity = '1';
+                        lineBtn.style.boxShadow = '0 2px 6px rgba(6,199,85,0.35)';
+                        lineNickHint.style.display = 'none';
+                    } else {
+                        // 呼び名なし → ボタン無効化
+                        lineBtn.href = '#';
+                        lineBtn.style.background = '#aaa';
+                        lineBtn.style.pointerEvents = 'none';
+                        lineBtn.style.opacity = '0.5';
+                        lineBtn.style.boxShadow = 'none';
+                        lineNickHint.style.display = 'block';
+                    }
                 }
-                _updateLineRegBtn();
                 lineNickInput.removeEventListener('input', _updateLineRegBtn);
                 lineNickInput.addEventListener('input', _updateLineRegBtn);
+                _updateLineRegBtn();
                 lineWrap.style.display = 'block';
             } else {
                 lineWrap.style.display = 'none';
@@ -3709,25 +3723,25 @@
             modal.innerHTML = `
                 <div style="background:white; border-radius:16px; padding:24px; max-width:340px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
                     <div style="font-size:1.1rem; font-weight:700; margin-bottom:6px;">⭐ お気に入りに追加しました</div>
-                    <div style="font-size:0.82rem; color:#555; margin-bottom:16px;">
-                        LINEの通知リストにも追加できます。呼び名をつけると「浜の前」などで予報が届きます。
+                    <div style="font-size:0.82rem; color:#555; margin-bottom:14px;">
+                        LINEで呼び名をつけて通知登録すると「浜の前」などで予報が届きます。
                     </div>
-                    <div style="font-size:0.8rem; color:#888; margin-bottom:4px;">呼び名（任意）例: 浜の前、山の下</div>
-                    <input id="lineNicknameInput" type="text" placeholder="空欄でもOK"
-                        style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #ddd; border-radius:8px; font-size:1rem; margin-bottom:14px; outline:none;"
+                    <div style="font-size:0.8rem; color:#444; font-weight:600; margin-bottom:4px;">呼び名（必須）</div>
+                    <input id="lineNicknameInput" type="text" placeholder="例: 浜の前、山の下"
+                        style="width:100%; box-sizing:border-box; padding:10px 12px; border:1.5px solid #ddd; border-radius:8px; font-size:1rem; margin-bottom:6px; outline:none;"
                         maxlength="20" autocomplete="off" aria-label="干場の呼び名"
                     />
+                    <div id="lineNicknameHint" style="font-size:0.75rem; color:#e67e22; margin-bottom:10px;">
+                        ↑ 呼び名を入力するとボタンが有効になります
+                    </div>
                     <a id="lineNicknameRegBtn" href="#" target="_blank" rel="noopener"
-                        style="display:block; text-align:center; background:#06C755; color:white; text-decoration:none; padding:11px; border-radius:24px; font-size:0.95rem; font-weight:700; margin-bottom:10px;">
+                        style="display:block; text-align:center; background:#aaa; color:white; text-decoration:none; padding:11px; border-radius:24px; font-size:0.95rem; font-weight:700; margin-bottom:10px; pointer-events:none; opacity:0.5;">
                         📲 LINEで通知登録
                     </a>
                     <button onclick="document.getElementById('lineNicknameModal').remove()"
                         style="width:100%; padding:9px; background:#f5f5f5; border:none; border-radius:24px; font-size:0.9rem; color:#666; cursor:pointer;">
                         あとで登録する
                     </button>
-                    <div style="font-size:0.75rem; color:#aaa; margin-top:10px; text-align:center;">
-                        ${spotId}
-                    </div>
                 </div>
             `;
 
@@ -3735,17 +3749,25 @@
 
             const input = document.getElementById('lineNicknameInput');
             const btn = document.getElementById('lineNicknameRegBtn');
+            const hint = document.getElementById('lineNicknameHint');
 
             function updateLink() {
                 const nick = input.value.trim();
-                // 呼び名なしでも通知登録は可能。
-                // 呼び名あり: 「通知登録 H_XXXX_XXXX 呼び名」→ 通知ON + 呼び名を同時登録
-                // 呼び名なし: 「通知登録 H_XXXX_XXXX」→ 通知ONのみ
-                const lineText = nick
-                    ? `通知登録 ${spotId} ${nick}`
-                    : `通知登録 ${spotId}`;
-                btn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(lineText)}`;
-                btn.style.opacity = '1';
+                if (nick) {
+                    // 呼び名あり → ボタン有効化（通知登録 + 呼び名を同時設定）
+                    btn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(`通知登録 ${spotId} ${nick}`)}`;
+                    btn.style.background = '#06C755';
+                    btn.style.pointerEvents = 'auto';
+                    btn.style.opacity = '1';
+                    hint.style.display = 'none';
+                } else {
+                    // 呼び名なし → ボタン無効化
+                    btn.href = '#';
+                    btn.style.background = '#aaa';
+                    btn.style.pointerEvents = 'none';
+                    btn.style.opacity = '0.5';
+                    hint.style.display = 'block';
+                }
             }
             input.addEventListener('input', updateLink);
             updateLink();

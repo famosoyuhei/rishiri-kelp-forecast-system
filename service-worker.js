@@ -3,9 +3,9 @@
 
 // Production configuration
 // ★ v2.6.3: LINE通知登録フロー統合・沖止め説明修正・リッチメニュー干場登録ボタン追加
-const CACHE_NAME = 'rishiri-kelp-v2-6-3';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-3';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-3';
+const CACHE_NAME = 'rishiri-kelp-v2-6-4';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-4';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-4';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

@@ -1161,6 +1161,7 @@ Webアプリ「LINEで通知登録」→ 毎日通知をON
 「通知解除」→ 通知をOFF
 「記録」→ 乾燥記録を入力
 「沖止め」「沖止め 6/25」→ 沖止め日を登録（祭りなど事前禁漁日）
+「漁期開始 6/15」「漁期終了 9/5」→ 通知期間の設定（デフォルト 6/1〜9/30）
 「設定確認」→ 現在の設定一覧
 「ヘルプ」→ このメッセージ"""
 
@@ -1521,26 +1522,61 @@ def handle_unsubscribe(source_type: str, source_id: str) -> str:
     )
 
 
-def handle_set_nogo(source_type: str, source_id: str, date_arg: 'str | None') -> str:
-    now_jst = datetime.now(JST)
-    if date_arg is None:
-        target = (now_jst + timedelta(days=1)).strftime('%Y-%m-%d')
-    else:
-        target = _parse_date_arg(date_arg)
-        if target is None:
-            return '日付の形式が正しくありません。\n例: 「沖止め 6/25」「沖止め 2026/6/25」'
+def _register_nogo_date(source_type: str, source_id: str, target: str) -> str:
+    """Register *target* (YYYY-MM-DD) as a no-go date and return a confirmation message."""
     sub = get_subscription(source_type, source_id)
-    today_str = now_jst.strftime('%Y-%m-%d')
+    today_str = datetime.now(JST).strftime('%Y-%m-%d')
     nogo = [d for d in (sub.get('nogo_dates', []) if sub else []) if d >= today_str]
     if target not in nogo:
         nogo.append(target)
     upsert_subscription(source_type, source_id, {'nogo_dates': sorted(nogo)})
     dt = datetime.strptime(target, '%Y-%m-%d')
+    prev = dt - timedelta(days=1)
     return (
-        f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）を沖止め日に設定しました。\n'
-        'この日の通知はスキップします。\n'
+        f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）を沖止め日に設定しました。\n\n'
+        f'以下の通知をスキップします：\n'
+        f'・{prev.month}/{prev.day} 16:00 翌日予報\n'
+        f'・{dt.month}/{dt.day} 01:30 当日予報\n\n'
         '「設定確認」で一覧を確認できます。'
     )
+
+
+def handle_set_nogo(source_type: str, source_id: str, date_arg: 'str | None') -> str:
+    if date_arg is None:
+        # No date given — ask the user which date to register
+        try:
+            set_pending_action(source_type, source_id, {'type': 'nogo_date'})
+        except Exception:
+            logger.exception('handle_set_nogo: set_pending_action failed for %s:%s',
+                             source_type, source_id)
+        return (
+            '何日を沖止めにしますか？\n\n'
+            '例: 「6/25」「6月25日」「2026/6/25」\n\n'
+            '※沖止め日は通知がスキップされます。\n'
+            '「キャンセル」で中止。'
+        )
+    target = _parse_date_arg(date_arg)
+    if target is None:
+        return '日付の形式が正しくありません。\n例: 「沖止め 6/25」「沖止め 2026/6/25」'
+    return _register_nogo_date(source_type, source_id, target)
+
+
+def handle_nogo_date_flow(source_type: str, source_id: str, text: str) -> str:
+    """Process a date reply during the nogo_date pending flow."""
+    if text in ('キャンセル', 'cancel', 'Cancel', 'やめる', '中止'):
+        clear_pending_action(source_type, source_id)
+        return '沖止め登録をキャンセルしました。'
+    # Accept both "6/25" and "6月25日" formats
+    normalized = text.strip().replace('月', '/').replace('日', '')
+    target = _parse_date_arg(normalized)
+    if target is None:
+        return (
+            '日付が認識できませんでした。\n'
+            '例: 「6/25」「6月25日」「2026/6/25」\n'
+            '「キャンセル」で中止。'
+        )
+    clear_pending_action(source_type, source_id)
+    return _register_nogo_date(source_type, source_id, target)
 
 
 def handle_cancel_nogo(source_type: str, source_id: str) -> str:
@@ -1556,31 +1592,57 @@ def handle_cancel_nogo(source_type: str, source_id: str) -> str:
     return f'✓ {dt.month}/{dt.day}（{_WEEKDAY_JA[dt.weekday()]}）の沖止めを解除しました。'
 
 
+def _validate_season_date(date_arg: str, label: str) -> 'tuple[datetime | None, str]':
+    """
+    Parse and validate a season date argument.
+
+    Returns (dt, '') on success, or (None, error_message) on failure.
+    Accepts "6/15", "6月15日", "2026/6/15".
+    Rejects: unparseable input, months outside 6–9, dates in the past.
+    """
+    normalized = date_arg.strip().replace('月', '/').replace('日', '')
+    date_str = _parse_date_arg(normalized)
+    if date_str is None:
+        return None, f'日付の形式が正しくありません。\n例: 「{label} 6/15」'
+    dt = datetime.strptime(date_str, '%Y-%m-%d')
+    if dt.month < 6 or dt.month > 9:
+        return None, '漁期は6〜9月の範囲で設定してください。'
+    today = datetime.now(JST).date()
+    if dt.date() < today:
+        return None, f'すでに過去の日付（{dt.month}/{dt.day}）は設定できません。\n今日以降の日付を入力してください。'
+    return dt, ''
+
+
 def handle_set_season_start(source_type: str, source_id: str, date_arg: str) -> str:
     if not date_arg:
-        return '開始日を入力してください。\n例: 「漁期開始 6/15」'
-    date_str = _parse_date_arg(date_arg)
-    if date_str is None:
-        return '日付の形式が正しくありません。\n例: 「漁期開始 6/15」'
-    dt = datetime.strptime(date_str, '%Y-%m-%d')
+        return '開始日を入力してください。\n例: 「漁期開始 6/15」「漁期開始 6月15日」'
+    dt, err = _validate_season_date(date_arg, '漁期開始')
+    if err:
+        return err
     upsert_subscription(source_type, source_id, {'season_start': f'{dt.month:02d}-{dt.day:02d}'})
+    prev = dt - timedelta(days=1)
     return (
-        f'✓ 漁期開始日を {dt.month}/{dt.day} に設定しました。\n'
-        'この日より前の通知はスキップします。'
+        f'✓ 漁期開始日を {dt.month}/{dt.day} に設定しました。\n\n'
+        f'前日（{prev.month}/{prev.day}）16:00 の翌日予報から\n'
+        f'通知が始まります。\n'
+        f'（{prev.month}/{prev.day} 以前の通知はスキップ）\n\n'
+        '「設定確認」で確認できます。'
     )
 
 
 def handle_set_season_end(source_type: str, source_id: str, date_arg: str) -> str:
     if not date_arg:
-        return '終了日を入力してください。\n例: 「漁期終了 9/5」'
-    date_str = _parse_date_arg(date_arg)
-    if date_str is None:
-        return '日付の形式が正しくありません。\n例: 「漁期終了 9/5」'
-    dt = datetime.strptime(date_str, '%Y-%m-%d')
+        return '終了日を入力してください。\n例: 「漁期終了 9/5」「漁期終了 9月5日」'
+    dt, err = _validate_season_date(date_arg, '漁期終了')
+    if err:
+        return err
     upsert_subscription(source_type, source_id, {'season_end': f'{dt.month:02d}-{dt.day:02d}'})
     return (
-        f'✓ 漁期終了日を {dt.month}/{dt.day} に設定しました。\n'
-        'この日より後の通知はスキップします。'
+        f'✓ 漁期終了日を {dt.month}/{dt.day} に設定しました。\n\n'
+        f'当日（{dt.month}/{dt.day}）01:30 の早朝予報が\n'
+        f'最後の通知になります。\n'
+        f'（{dt.month}/{dt.day} 翌日以降の通知はスキップ）\n\n'
+        '「設定確認」で確認できます。'
     )
 
 
@@ -1778,7 +1840,6 @@ _FORECAST_QR_SKIP_KW = ('登録されていません', '見つかりません', 
 _HELP_QR = [
     {'label': '今日の予報', 'text': '今日'},
     {'label': '記録する',   'text': '記録'},
-    {'label': '沖止め',     'text': '沖止め'},
 ]
 
 
@@ -1829,14 +1890,14 @@ def process_event(event: dict) -> None:
         # User added the official account
         upsert_subscription(source_type, source_id, {'notify_enabled': True})
         if reply_token:
-            reply_text(reply_token, _HELP_TEXT)
+            reply_with_quick_reply(reply_token, _HELP_TEXT, _HELP_QR)
         return
 
     if event_type == 'join':
         # Bot joined a group/room
         upsert_subscription(source_type, source_id, {'notify_enabled': True})
         if reply_token:
-            reply_text(reply_token, _HELP_TEXT)
+            reply_with_quick_reply(reply_token, _HELP_TEXT, _HELP_QR)
         return
 
     if event_type == 'leave':
@@ -1865,6 +1926,8 @@ def process_event(event: dict) -> None:
             response = handle_help() + '\n\n「キャンセル」で現在の操作を中止できます。'
         elif pa.get('type') == 'select_spot':
             response = handle_select_spot_flow(source_type, source_id, text)
+        elif pa.get('type') == 'nogo_date':
+            response = handle_nogo_date_flow(source_type, source_id, text)
         else:
             response = handle_record_flow(source_type, source_id, text)
         if reply_token and response:

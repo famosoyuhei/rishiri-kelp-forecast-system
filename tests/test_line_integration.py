@@ -396,12 +396,16 @@ def test_parse_date_arg_invalid():
 # handle_set_nogo / handle_cancel_nogo
 # ---------------------------------------------------------------------------
 
-def test_handle_set_nogo_tomorrow(tmp_sub_file):
+def test_handle_set_nogo_no_date_asks_for_date(tmp_sub_file):
+    """日付なし「沖止め」は即登録せず、何日か尋ねるメッセージを返す。"""
     li.upsert_subscription("user", "U1", {"notify_enabled": True, "spots": ["H_1631_1434"]})
     result = li.handle_set_nogo("user", "U1", None)
-    assert "沖止め" in result or "✓" in result
+    assert "何日" in result, 'Should ask which date to set'
     sub = li.get_subscription("user", "U1")
-    assert len(sub.get("nogo_dates", [])) == 1
+    assert len(sub.get("nogo_dates", [])) == 0, 'Should NOT register any date yet'
+    # ペンディングが設定されていること
+    pa = li.get_pending_action("user", "U1")
+    assert pa is not None and pa["type"] == "nogo_date"
 
 
 def test_handle_set_nogo_specific_date(tmp_sub_file):
@@ -454,6 +458,68 @@ def test_handle_set_season_invalid_date(tmp_sub_file):
     li.upsert_subscription("user", "U1", {"notify_enabled": True})
     result = li.handle_set_season_start("user", "U1", "abc")
     assert "正しくありません" in result
+
+
+def test_handle_set_season_start_message_mentions_prev_day(tmp_sub_file):
+    """漁期開始の確認メッセージに前日16:00通知の記載がある。"""
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_start("user", "U1", "7/1")
+    assert "✓" in result
+    assert "16:00" in result  # 前日16:00通知について言及
+
+
+def test_handle_set_season_end_message_mentions_same_day(tmp_sub_file):
+    """漁期終了の確認メッセージに終了日01:30通知の記載がある。"""
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_end("user", "U1", "9/20")
+    assert "✓" in result
+    assert "01:30" in result  # 終了日01:30通知について言及
+
+
+def test_handle_set_season_start_rejects_outside_range(tmp_sub_file):
+    """6〜9月以外の月は拒否する。"""
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result_may = li.handle_set_season_start("user", "U1", "5/31")
+    assert "6〜9月" in result_may
+    result_oct = li.handle_set_season_end("user", "U1", "10/1")
+    assert "6〜9月" in result_oct
+
+
+def test_handle_set_season_end_rejects_outside_range(tmp_sub_file):
+    """season_end にも範囲外拒否が効く。"""
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_end("user", "U1", "10/5")
+    assert "6〜9月" in result
+
+
+def test_handle_set_season_rejects_past_date(tmp_sub_file, monkeypatch):
+    """過去の日付は設定できない。"""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+    # 今日を 2026-08-01 に固定し、6/15（過去）を拒否させる
+    class _FakeDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 1, 12, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, 'datetime', _FakeDT)
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_start("user", "U1", "6/15")
+    assert "過去" in result
+
+
+def test_handle_set_season_start_accepts_kanji_date(tmp_sub_file):
+    """「7月1日」形式でも設定できる。"""
+    li.upsert_subscription("user", "U1", {"notify_enabled": True})
+    result = li.handle_set_season_start("user", "U1", "7月1日")
+    assert "✓" in result
+    sub = li.get_subscription("user", "U1")
+    assert sub.get("season_start") == "07-01"
+
+
+def test_help_text_includes_season_command():
+    """ヘルプに漁期開始/終了コマンドが記載されている。"""
+    assert "漁期開始" in li._HELP_TEXT
+    assert "漁期終了" in li._HELP_TEXT
 
 
 # ---------------------------------------------------------------------------
@@ -1471,11 +1537,12 @@ def test_generate_rich_menu_image(tmp_path):
 # _HELP_QR and process_event help path
 # ---------------------------------------------------------------------------
 
-def test_help_qr_has_three_buttons():
-    """_HELP_QR contains exactly 3 quick-reply buttons."""
-    assert len(li._HELP_QR) == 3
+def test_help_qr_has_buttons():
+    """_HELP_QR has at least 1 button and does NOT include 沖止め (risk of accidental set)."""
+    assert len(li._HELP_QR) >= 1
     labels = [item['label'] for item in li._HELP_QR]
     assert '今日の予報' in labels
+    assert '沖止め' not in labels, '沖止めは誤操作リスクがあるため QR に含めない'
 
 
 def test_help_qr_buttons_have_text():
@@ -1506,10 +1573,96 @@ def test_process_event_help_uses_quick_reply(tmp_sub_file, monkeypatch):
     assert len(txt_calls) == 0, 'reply_text should not be called for help'
     sent_text, items = qr_calls[0]
     assert 'コマンド' in sent_text
-    assert len(items) == 3
+    assert len(items) == len(li._HELP_QR)
 
 
 def test_help_text_compact():
     """_HELP_TEXT is shorter than the old 21-line version (≤ 12 lines)."""
     lines = li._HELP_TEXT.strip().splitlines()
     assert len(lines) <= 12, f'_HELP_TEXT has {len(lines)} lines; expected ≤ 12'
+
+
+def test_process_event_follow_uses_quick_reply(tmp_sub_file, monkeypatch):
+    """follow イベント時に reply_with_quick_reply でヘルプ+QRを送る。"""
+    qr_calls = []
+    txt_calls = []
+
+    monkeypatch.setattr(li, 'reply_with_quick_reply',
+                        lambda token, text, items: qr_calls.append((text, items)))
+    monkeypatch.setattr(li, 'reply_text',
+                        lambda token, text: txt_calls.append(text))
+
+    event = {
+        'type': 'follow',
+        'source': {'type': 'user', 'userId': 'U_FOLLOW_TEST'},
+        'replyToken': 'TOKEN_FOLLOW',
+    }
+    li.process_event(event)
+
+    assert len(qr_calls) == 1, 'Expected exactly one quick-reply send on follow'
+    assert len(txt_calls) == 0, 'reply_text should not be called on follow'
+    sent_text, items = qr_calls[0]
+    assert 'コマンド' in sent_text
+    assert len(items) == len(li._HELP_QR)
+
+
+# ---------------------------------------------------------------------------
+# 沖止めフロー: 日付なし → 確認フロー → 登録 / キャンセル
+# ---------------------------------------------------------------------------
+
+def test_handle_set_nogo_no_date_sets_pending(tmp_sub_file):
+    """日付なし「沖止め」は即登録せず pending_action を設定して日付を尋ねる。"""
+    msg = li.handle_set_nogo('user', 'U_NOGO', None)
+    assert '何日' in msg
+    assert '「キャンセル」' in msg
+    # ペンディングが設定されていること
+    pa = li.get_pending_action('user', 'U_NOGO')
+    assert pa is not None
+    assert pa['type'] == 'nogo_date'
+    # 沖止め日は登録されていないこと
+    sub = li.get_subscription('user', 'U_NOGO')
+    assert not sub or not sub.get('nogo_dates')
+
+
+def test_handle_nogo_date_flow_valid_slash(tmp_sub_file):
+    """6/25 形式で日付を入力したら登録されペンディングが消える。"""
+    li.handle_set_nogo('user', 'U_NOGO2', None)  # ペンディングをセット
+    msg = li.handle_nogo_date_flow('user', 'U_NOGO2', '6/25')
+    assert '✓' in msg
+    assert '6/25' in msg or '6月25日' in msg or '6' in msg
+    pa = li.get_pending_action('user', 'U_NOGO2')
+    assert pa is None
+
+
+def test_handle_nogo_date_flow_valid_kanji(tmp_sub_file):
+    """「6月25日」形式でも正常に登録できる。"""
+    li.handle_set_nogo('user', 'U_NOGO3', None)
+    msg = li.handle_nogo_date_flow('user', 'U_NOGO3', '6月25日')
+    assert '✓' in msg
+    assert li.get_pending_action('user', 'U_NOGO3') is None
+
+
+def test_handle_nogo_date_flow_invalid_keeps_pending(tmp_sub_file):
+    """認識できない入力はペンディングを維持してエラーを返す。"""
+    li.handle_set_nogo('user', 'U_NOGO4', None)
+    msg = li.handle_nogo_date_flow('user', 'U_NOGO4', 'あした')
+    assert '認識できません' in msg or '形式' in msg
+    pa = li.get_pending_action('user', 'U_NOGO4')
+    assert pa is not None  # まだペンディング中
+
+
+def test_handle_nogo_date_flow_cancel(tmp_sub_file):
+    """「キャンセル」でペンディングを解除し日付を登録しない。"""
+    li.handle_set_nogo('user', 'U_NOGO5', None)
+    msg = li.handle_nogo_date_flow('user', 'U_NOGO5', 'キャンセル')
+    assert 'キャンセル' in msg
+    assert li.get_pending_action('user', 'U_NOGO5') is None
+    sub = li.get_subscription('user', 'U_NOGO5')
+    assert not sub or not sub.get('nogo_dates')
+
+
+def test_handle_set_nogo_with_date_registers_directly(tmp_sub_file):
+    """日付あり「沖止め 6/25」は即登録してペンディングを設定しない。"""
+    msg = li.handle_set_nogo('user', 'U_NOGO6', '6/25')
+    assert '✓' in msg
+    assert li.get_pending_action('user', 'U_NOGO6') is None

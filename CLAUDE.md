@@ -217,6 +217,136 @@ score = max(0, min(100, score))
 
 **calculate_enhanced_drying_score() の冒頭にはすでに防衛的クランプが実装済み** — 追加の補正を加えるときも同様に行うこと。
 
+---
+
+### LINE操作ルール集（line_integration.py を変更するとき必ず守ること）
+
+> **背景**: 漁師さんは干場IDを覚えられない。LINEの会話フローで一度でも「H_XXXX_XXXX を入力してください」と言ってしまうと信頼を失う。以下のルールはその再発を防ぐ。
+
+#### L1. 干場IDをユーザーに入力・コピーさせない絶対ルール
+
+ユーザーが **覚える・コピペする** 必要のある形でIDを提示してはいけない。
+
+```python
+# ❌ 禁止: IDをユーザーに打ち込ませる
+return '通知登録 H_1631_1434 のように入力してください'
+
+# ✅ 正しい: WebアプリのURLだけ案内する
+return f'Webアプリの地図から干場を選び、「LINEで通知登録」をタップしてください。\n{_APP_URL}'
+```
+
+確認コマンド:
+```bash
+grep -n "H_.*入力\|IDを入力\|IDをコピー\|干場IDを" line_integration.py kelp_drying_map.html
+```
+→ 0件でなければバグ。
+
+#### L2. 呼び名は必須・任意にしてはいけないルール
+
+Webアプリの「LINEで通知登録」ボタンは、**呼び名入力欄が空白のときは押せない**状態を維持すること。
+
+```javascript
+// ✅ 呼び名なし → ボタン無効（pointer-events:none）
+lineBtn.style.pointerEvents = nick ? 'auto' : 'none';
+lineBtn.style.opacity = nick ? '1' : '0.5';
+```
+
+変更時の確認:
+```bash
+grep -n "pointer-events.*none\|lineRegisterNickHint\|lineNicknameHint" kelp_drying_map.html
+# → 両ボタン（サイドパネル・★モーダル）の両方で none が設定されていること
+```
+
+#### L3. 沖止めは日付なしで即登録しないルール
+
+「沖止め」とだけ入力されたとき（日付なし）は **即登録せずに日付を確認する**。  
+ペンディングアクション `{'type': 'nogo_date'}` を設定し、「何日を沖止めにしますか？」と返す。
+
+```python
+# ❌ 禁止: 翌日を即登録
+target = (now_jst + timedelta(days=1)).strftime('%Y-%m-%d')
+
+# ✅ 正しい: ペンディングで確認
+set_pending_action(source_type, source_id, {'type': 'nogo_date'})
+return '何日を沖止めにしますか？\n例: 「6/25」「6月25日」\n「キャンセル」で中止。'
+```
+
+#### L4. 漁期設定は6〜9月・未来日付のみ許可するルール
+
+`handle_set_season_start()` / `handle_set_season_end()` は必ず `_validate_season_date()` を通すこと。  
+直接 `_parse_date_arg()` だけを呼んで検証を省略してはいけない。
+
+バリデーション内容:
+- 月が 6〜9 月の範囲内か
+- 日付（今年）が今日以降か（過去日付は拒否）
+- 漢字形式（`6月25日`）も受け付けるか（`replace('月','/')` 処理）
+
+#### L5. ペンディングアクションには必ずキャンセル対応するルール
+
+新しいペンディング型（`type`）を追加するときは以下を必ずセットで実装する：
+
+1. フロー関数内でキャンセルワード `('キャンセル', 'cancel', 'Cancel', 'やめる', '中止')` を先頭でチェック
+2. キャンセル時は `clear_pending_action()` を呼んでから確認メッセージを返す
+3. `process_event()` の pending routing ブロックに `elif pa.get('type') == '{新型}':` 分岐を追加
+4. `handle_help()` 呼び出し時のキャンセルヒント文言は既存の「キャンセルで中止できます」に統合されるので追加不要
+
+#### L6. 沖止め・漁期登録完了メッセージに通知スキップ日時を明記するルール
+
+登録完了メッセージには必ず **具体的な通知時刻** を記載する：
+
+| 機能 | 記載すべき内容 |
+|------|---------------|
+| 沖止め登録 | 前日 `M/D` 16:00 の翌日予報と、当日 `M/D` 01:30 の早朝予報がスキップされること |
+| 漁期開始設定 | 前日（`M/D`）16:00 の翌日予報から通知が始まること |
+| 漁期終了設定 | 終了日（`M/D`）01:30 の早朝予報が最後になること |
+
+#### L7. QRボタンに誤操作リスクのあるコマンドを含めないルール
+
+Quick Reply ボタンに登録する内容は「タップしただけで副作用が起きないもの」のみ。  
+状態を変更するコマンド（沖止め登録・漁期設定・通知解除等）は QR ボタンに入れてはいけない。
+
+```python
+# ❌ 禁止: タップするだけで翌日が沖止めになる
+_HELP_QR = [{'label': '沖止め', 'text': '沖止め'}]
+
+# ✅ 正しい: 予報確認など副作用なしのコマンドのみ
+_HELP_QR = [
+    {'label': '今日の予報', 'text': '今日'},
+    {'label': '記録する',   'text': '記録'},
+]
+```
+
+#### L8. フォローイベントはQR付きヘルプで迎えるルール
+
+`event_type == 'follow'` および `event_type == 'join'` の応答は  
+`reply_text()` ではなく `reply_with_quick_reply(token, _HELP_TEXT, _HELP_QR)` を使うこと。
+
+#### L9. LINE操作のレビューは社員14・15が担当するルール
+
+`line_integration.py` または `kelp_drying_map.html` のLINE登録ボタン周辺を変更したら、  
+フルレビュー時に必ず以下の2名を起動すること：
+
+- **社員14（📲 LINE通知配信・コマンド担当）**: `ai_review_agents/AGENT_line_operation.md`
+- **社員15（🌊 LINE登録UXフロー担当）**: `ai_review_agents/AGENT_line_ux_flow.md`
+
+クイックモード用コマンド（最低限これだけは常に実行）:
+```bash
+# L1: ID入力要求がないか
+grep -n "H_.*入力\|IDを入力" line_integration.py kelp_drying_map.html
+
+# L2: 呼び名必須ボタン制御
+grep -n "pointer-events.*none" kelp_drying_map.html | grep -i "register"
+
+# L3: 沖止め即登録がないか
+grep -n "date_arg is None" line_integration.py | head -5
+
+# L7: _HELP_QRに沖止めがないか
+grep -n "_HELP_QR\s*=" line_integration.py
+```
+→ L1: 0件 / L2: 2件以上 / L3: pending設定あり / L7: 沖止め0件 が正常。
+
+---
+
 #### ルール1: 正規定義元（Single Source of Truth）
 
 以下の値は **Pythonの関数が正規定義元** であり、JSはその値に必ず合わせること。
