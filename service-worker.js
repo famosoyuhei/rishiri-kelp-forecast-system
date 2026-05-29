@@ -2,10 +2,10 @@
 // Version 2.6.6 - favorites変数参照バグ修正・チャットボット更新
 
 // Production configuration
-// ★ v2.6.6: favorites変数参照バグ修正・チャットボットLINE通知説明に更新
-const CACHE_NAME = 'rishiri-kelp-v2-6-6';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-6';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-6';
+// ★ v2.6.7: ポップアップボタン→パネル自動スクロール修正（モバイル）
+const CACHE_NAME = 'rishiri-kelp-v2-6-7';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-7';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-7';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

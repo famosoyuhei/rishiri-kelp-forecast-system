@@ -2318,6 +2318,11 @@
             const panel = document.getElementById('forecastPanel');
             panel.classList.add('active');
 
+            // スマホではパネルが地図の下に表示されるため自動スクロール
+            if (window.innerWidth <= 768) {
+                setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+            }
+
             // ヘッダー更新
             document.getElementById('selectedSpotName').textContent = getSpotDisplayName(spot.name);
             document.getElementById('selectedSpotLocation').textContent = `${spot.town} ${spot.district} ${spot.buraku}`;
@@ -3465,13 +3470,21 @@
         function openLineRegistration(index) {
             selectSpot(index);
             setTimeout(() => {
+                const panel = document.getElementById('forecastPanel');
                 const wrap = document.getElementById('lineRegisterBtnWrap');
-                if (wrap && wrap.style.display !== 'none') {
-                    wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (!wrap || wrap.style.display === 'none') return;
+
+                // LINE登録欄はパネル上部にあるのでパネル先頭までスクロール
+                // スマホ: ページをスクロール / PC: パネルが右側に表示済みなので不要
+                if (window.innerWidth <= 768) {
+                    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                // スクロール完了後に入力欄にフォーカス
+                setTimeout(() => {
                     const nickInput = document.getElementById('lineRegisterNickInput');
                     if (nickInput) nickInput.focus();
-                }
-            }, 400);
+                }, 450);
+            }, 200);
         }
         window.openLineRegistration = openLineRegistration;
 
