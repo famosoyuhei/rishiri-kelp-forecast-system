@@ -122,7 +122,10 @@ def _sub_key(source_type: str, source_id: str) -> str:
 
 
 def _upstash_url() -> str:
-    return os.environ.get('UPSTASH_REDIS_REST_URL', '').rstrip('/')
+    url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    if url and not url.startswith('http'):
+        url = 'https://' + url
+    return url
 
 
 def _upstash_token() -> str:
@@ -2178,15 +2181,18 @@ def get_debug():
         return jsonify({'error': 'unauthorized'}), 403
 
     url = _upstash_url()
-    # Show only the domain (e.g. "xxxx.upstash.io") — never the token
     try:
         from urllib.parse import urlparse  # noqa: PLC0415
-        domain = urlparse(url).netloc or url[:40]
+        parsed = urlparse(url)
+        domain = parsed.netloc or url[:50]
+        scheme = parsed.scheme or '(missing — will be auto-fixed to https)'
     except Exception:
-        domain = url[:40]
+        domain = url[:50]
+        scheme = '(unknown)'
     result = {
         'upstash_url_set': bool(url),
         'upstash_url_domain': domain,
+        'upstash_url_scheme': scheme,
         'upstash_token_set': bool(_upstash_token()),
         'upstash_available': _upstash_available(),
     }
@@ -2195,17 +2201,29 @@ def get_debug():
         result['verdict'] = 'FAIL: Upstash env vars not set — data saving to local file (lost on redeploy)'
         return jsonify(result)
 
-    # Test write
+    # Test write — capture HTTP status and body for diagnosis
     test_key = 'line_debug_test'
     test_val = {'test': True, 'ts': str(__import__('datetime').datetime.utcnow())}
-    write_ok = _upstash_set(test_key, test_val)
+    try:
+        resp = _requests.post(
+            f'{url}/set/{test_key}',
+            headers={'Authorization': f'Bearer {_upstash_token()}'},
+            json=json.dumps(test_val, ensure_ascii=False),
+            timeout=8,
+        )
+        result['test_http_status'] = resp.status_code
+        result['test_http_body'] = resp.text[:200]
+        rjson = resp.json()
+        write_ok = rjson.get('result') == 'OK'
+    except Exception as e:
+        result['test_http_error'] = str(e)
+        write_ok = False
     result['test_write_ok'] = write_ok
 
     # Test read-back
     if write_ok:
         read_back = _upstash_get(test_key)
         result['test_read_ok'] = read_back == test_val
-        result['test_read_value'] = read_back
     else:
         result['test_read_ok'] = False
 
@@ -2219,7 +2237,7 @@ def get_debug():
     elif write_ok:
         result['verdict'] = 'WARN: write OK but read-back failed — possible encoding mismatch'
     else:
-        result['verdict'] = 'FAIL: Upstash write failed — check credentials'
+        result['verdict'] = 'FAIL: Upstash write failed — see test_http_status and test_http_body'
 
     return jsonify(result)
 
