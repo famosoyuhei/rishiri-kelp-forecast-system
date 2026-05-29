@@ -889,8 +889,69 @@ def handle_list_spots(source_type: str, source_id: str) -> str:
         if sid not in seen:
             lines.append(f'・{nick}')
     lines.append('\n「記録」で乾燥記録を入力できます。')
-    lines.append('呼び名設定: Webアプリから「LINEで通知登録」で自動設定')
+    lines.append('削除: 「干場削除 呼び名」で個別解除')
     return '\n'.join(lines)
+
+
+def handle_remove_spot(source_type: str, source_id: str, label: str) -> str:
+    """Remove a single registered spot by its nickname or spot_id.
+
+    If *label* is empty, show the list of registered spots with usage hint.
+    """
+    sub = get_subscription(source_type, source_id)
+
+    if not label:
+        choices = _collect_user_spots(source_type, source_id)
+        if not choices:
+            return '登録されている干場はありません。'
+        lines = ['削除したい干場の呼び名を送ってください。\n']
+        for c in choices:
+            lines.append(f'  ・{c["label"]}')
+        lines.append('\n例：「干場削除 浜の前」')
+        return '\n'.join(lines)
+
+    # ── 呼び名 or spot_id で検索 ──────────────────────────────────────
+    nicknames = dict(sub.get('spot_nicknames', {})) if sub else {}
+    spots = list(sub.get('spots', [])) if sub else []
+
+    # 1) 呼び名で検索
+    spot_id = nicknames.get(label)
+    if spot_id:
+        del nicknames[label]
+        if spot_id in spots:
+            spots.remove(spot_id)
+        upsert_subscription(source_type, source_id, {
+            'spot_nicknames': nicknames,
+            'spots': spots,
+        })
+        return (
+            f'✓ 「{label}」を登録から外しました。\n'
+            '「干場一覧」で残りの干場を確認できます。'
+        )
+
+    # 2) spot_id で直接検索（呼び名なしで登録した干場）
+    if label in spots:
+        spots.remove(label)
+        nicknames = {k: v for k, v in nicknames.items() if v != label}
+        upsert_subscription(source_type, source_id, {
+            'spot_nicknames': nicknames,
+            'spots': spots,
+        })
+        return (
+            f'✓ {label} を登録から外しました。\n'
+            '「干場一覧」で残りの干場を確認できます。'
+        )
+
+    # 見つからない場合
+    choices = _collect_user_spots(source_type, source_id)
+    if not choices:
+        return '登録されている干場はありません。'
+    labels = [c['label'] for c in choices]
+    return (
+        f'「{label}」が見つかりません。\n'
+        f'登録中: {", ".join(labels)}\n'
+        '呼び名を正確に入力してください。'
+    )
 
 
 def format_single_day(spot_name: str, fc: dict) -> str:
@@ -1109,6 +1170,12 @@ def parse_command(text: str) -> dict:
     if text in ('干場一覧', '登録干場', '干場リスト'):
         return {'cmd': 'list_spots'}
 
+    # Remove a single spot: "干場削除" (show list) or "干場削除 呼び名"
+    if text in ('干場削除', '干場 削除', '干場　削除'):
+        return {'cmd': 'remove_spot', 'label': ''}
+    if text.startswith('干場削除 ') or text.startswith('干場削除　'):
+        return {'cmd': 'remove_spot', 'label': text[4:].strip()}
+
     # 沖止め解除 — must come before '沖止め' prefix check and area fallback
     if text in ('沖止め解除', '沖止めを解除'):
         return {'cmd': 'cancel_nogo'}
@@ -1160,7 +1227,9 @@ _HELP_TEXT = """\
 「今日」「明日」「今週」→ 干場の乾燥予報
 「沓形」「鴛泊」など部落名 → その地区の予報
 Webアプリ「LINEで通知登録」→ 毎日通知をON
-「通知解除」→ 通知をOFF
+「干場一覧」→ 登録中の干場を確認
+「干場削除 呼び名」→ 干場を個別に解除
+「通知解除」→ 全通知をOFF
 「記録」→ 乾燥記録を入力
 「沖止め」「沖止め 6/25」→ 沖止め日を登録（祭りなど事前禁漁日）
 「漁期開始 6/15」「漁期終了 9/5」→ 通知期間の設定（デフォルト 6/1〜9/30）
@@ -1987,6 +2056,8 @@ def process_event(event: dict) -> None:
             source_type, source_id, cmd.get('nickname', ''), cmd.get('spot_id', ''))
     elif cmd['cmd'] == 'list_spots':
         response = handle_list_spots(source_type, source_id)
+    elif cmd['cmd'] == 'remove_spot':
+        response = handle_remove_spot(source_type, source_id, cmd.get('label', ''))
     elif cmd['cmd'] == 'set_nogo':
         response = handle_set_nogo(source_type, source_id, cmd.get('date'))
     elif cmd['cmd'] == 'cancel_nogo':

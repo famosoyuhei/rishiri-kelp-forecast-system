@@ -8,7 +8,7 @@
 
 **利尻島昆布干場予報システム** - 北海道利尻島の331箇所の昆布干場と3箇所の気象観測/基準点（計334地点）に対して、7日間の乾燥適性を科学的に予報するFlask製Webアプリケーション。
 
-- **バージョン**: v2.6.0 (2026年4月5日)
+- **バージョン**: v2.6.8 (2026年5月29日)
 - **実装率**: 99%
 - **主要言語**: Python (Flask), JavaScript, HTML/CSS
 - **メインファイル**: [start.py](start.py) (4,363行)
@@ -69,11 +69,11 @@ start.py (4,363行)
 ### フロントエンド
 
 ```
-kelp_drying_map.html (6,235行)
+kelp_drying_map.html (約7,100行)
 ├── 統合版メインUI (地図 + エマグラム + 等値線)
 ├── 334地点マーカー表示（331干場 + 3観測点）
 ├── 階層的フィルタリング (町→地区→部落)
-├── 通知システム（16:00 / 01:30 / 緊急アラート）
+├── LINE通知登録フロー（ポップアップ→サイドパネル→LINE）
 ├── チャットボット（ルールベース・干場アシスタント）
 ├── 昆布シーズン長期予報タブ
 └── PWA/オフライン機能
@@ -432,8 +432,8 @@ _compute_score_field   ─┘
 干場削除は以下のすべての条件をクリアする必要があります：
 
 1. 記録データが存在しない
-2. お気に入り登録されていない
-3. 通知設定で使用されていない
+2. （旧: お気に入り登録されていない → お気に入り機能は廃止済み）
+3. （旧: 通知設定で使用されていない → Web通知は廃止済み）
 4. 同時編集ロックがかかっていない（5分間）
 5. 機械学習の訓練データとして使用されていない
 
@@ -607,31 +607,28 @@ if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
 - オフライン時の仮保存と自動同期
 - 接続状態のリアルタイム表示
 
-### 6. 通知システム（v2.6.0）
+### 6. 通知システム（v2.6.8 時点: LINEに統一）
 
-Web Notifications APIを使用した多段階通知。
+> ⚠️ v2.6.5 でWeb Notifications API（アプリ内通知）は**完全廃止**。
+> 通知はすべてLINE公式アカウント経由に統一されました。
 
-| 通知種別 | 時刻 | 内容 |
-|---------|------|------|
-| 夕方通知 | 毎日16:00 JST | 翌日の乾燥予報 |
-| 早朝通知 | 毎日01:30 JST | 当日の乾燥予報 |
-| 緊急アラート | 随時（1時間ポーリング） | スコア急変時（30点以上の変化） |
+| 通知種別 | 時刻 | 配信手段 |
+|---------|------|----------|
+| 夕方通知 | 毎日16:00 JST | LINE Push（`line_integration.py`） |
+| 早朝通知 | 毎日01:30 JST | LINE Push（`line_integration.py`） |
+| 緊急アラート | 随時 | LINE Push（スコア急変時） |
 
-**主な機能：**
-- 免責事項への同意（初回のみ）
-- 干場ごとの通知ON/OFF切替
-- 通知音（Web Audio API）・バイブレーション設定
-- 通知履歴（最大50件、localStorage保存）
-- テスト送信ボタン
-- 沖止め日の設定（対象日の通知をスキップ）
-- シーズン範囲設定（6〜9月が既定）
+**ユーザーフロー：**
+1. アプリ地図で干場を選択 → ポップアップ「📲 LINE通知登録」ボタン
+2. サイドパネルへ自動スクロール → 呼び名を入力
+3. 「LINEで通知登録」ボタン → LINE OAへメッセージ送信 → 登録完了
 
-**重要：**
-- `shouldSendNotification(targetDate)` が全通知の統一ゲーティング関数
-- 夕方通知は `tomorrowUTC` を渡すことで翌日の沖止め日設定を反映
-- `notificationData` は `hoshibaNotificationData` キーでlocalStorage保存
+**LINE OA情報：**
+- ベーシックID: `@766cfpki`
+- 友達追加URL: `https://line.me/R/ti/p/%40766cfpki`
+- 登録データ永続化: Upstash Redis（`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` 環境変数）
 
-実装: [kelp_drying_map.html](kelp_drying_map.html) （`notificationData` 構造〜 `scheduleEarlyMorningNotification` 周辺）
+実装: [line_integration.py](line_integration.py)（通知配信）、[kelp_drying_map.html](kelp_drying_map.html)（LINE登録UI）
 
 ### 7. ルールベースチャットボット「干場アシスタント」（v2.6.0）
 
@@ -661,14 +658,15 @@ AIなし・無料のパターンマッチング型チャットボット。右下
 
 実装: [kelp_drying_map.html](kelp_drying_map.html) （`CHAT_PATTERNS` 配列〜`processMessage` 関数周辺）
 
-### 8. 干場ニックネーム機能（v2.6.0）
+### 8. 干場ニックネーム機能（v2.6.8）
 
-各ユーザーがお気に入り干場に独自の呼び名を設定できる。
+LINE通知登録時に各ユーザーが干場に呼び名をつけられる。
 
 **設計方針：**
-- **乾燥記録**: サーバー保存 → 全ユーザーで共有
-- **ニックネーム**: localStorage保存 → その端末のみに表示（他ユーザーに非表示）
-- UIに「この呼び名はこの端末だけに保存されます」と明記
+- **LINE通知登録時**: 呼び名（ニックネーム）を入力必須。LINEメッセージで `通知登録 {spotId} {nickname}` を送信
+- **呼び名保存先**: `line_subscriptions` の `spot_nicknames` フィールド（Upstash Redis）
+- **アプリ側ニックネーム**: localStorage保存 → その端末のみに表示（LINE登録とは独立）
+- **呼び名なしでは登録ボタンは無効**（`pointer-events:none`）← 必ず維持すること（CLAUDE.md L2ルール参照）
 
 ### 9. 昆布シーズン長期予報タブ（v2.6.0）
 
@@ -689,7 +687,7 @@ AIなし・無料のパターンマッチング型チャットボット。右下
 ### コーディング規約
 
 - start.pyが4,500行を超えたらモジュール分割を検討（現在4,363行）
-- kelp_drying_map.htmlが7,000行を超えたらJS分離を検討（現在6,235行）
+- kelp_drying_map.htmlが7,000行を超えたらJS分離を検討（現在約7,100行 — **要注意: すでに超過。次回大型機能追加時にJS分離を実施すること**）
 - 新規APIエンドポイントは必ずREADME.mdとsystem_specification.mdを更新
 - すべての時刻はJST（日本標準時）で統一
 
@@ -820,12 +818,35 @@ AIなし・無料のパターンマッチング型チャットボット。右下
 
 ---
 
-**最終更新**: 2026年4月5日
-**ドキュメントバージョン**: 2.2
+**最終更新**: 2026年5月29日
+**ドキュメントバージョン**: 2.3
 
 ---
 
 ## 更新履歴
+
+### v2.6.8 (2026年5月29日)
+- **大規模リファクタ**: お気に入り機能・Web Push通知システムを完全削除（LINE通知に一本化）
+  - `favorites` 変数・favoritesPanel・favoritesButton・WebPush 関連コード一式を kelp_drying_map.html から除去
+  - 干場削除の5条件から「お気に入り登録」「通知設定」の2条件を削除（実質3条件に簡略化）
+- **LINEリッチメニュー文字化け修正**: フォントに NotoSansJP Black weight + stroke を適用
+- **モバイルスクロール修正**: 干場タップ後に `selectSpot()` が自動スクロールしなかった問題を修正
+  - `panel.scrollIntoView({ behavior: 'smooth', block: 'start' })` を 768px 以下で適用
+  - `openLineRegistration()` も同様のスクロール処理を追加
+- **LINE予報への追加干場ヒント（Q1）**: `handle_today/tomorrow/weekly()` 応答末尾に `_ADD_SPOT_HINT` を追加
+- **一般タブ降水量行（Q2）**: `generateHourlyDetails()` の一般向けカテゴリに1時間刻み降水量行を追加（0mm=グレー/微量=水色/1mm以上=濃青/5mm以上=赤）
+- **友達追加誘導（Q3）**: lineRegisterBtnWrap 先頭に「まず友達追加が必要」ボックス＋直接リンクを追加
+  - LINE OA: `@766cfpki` / URL: `https://line.me/R/ti/p/%40766cfpki`
+- **Upstash Redis確認**: Render環境変数（`UPSTASH_REDIS_REST_URL`・`UPSTASH_REDIS_REST_TOKEN`）が設定済みであることを確認。`line_subscriptions` データはRedisに永続化されデプロイをまたいで保持される
+- Service Worker バージョン: `v2-6-8`
+
+### v2.6.2〜v2.6.7 (2026年5月25日〜28日)
+- **全CLIフルレビュー×2**: 13エージェントによる自動検出 → CRITICAL 5件・MAJOR 33件を修正
+- matplotlib完全削除・datetime JST統一・CORS本番制限・APIレート制限・CSV Injection対策
+- 島内分布タブ実装（5レイヤー: score/wind/humidity/temperature/precipitation）
+- 二重リング49点グリッド（山頂1点+内リング24点+外リング24点）
+- ローカルリスク補正の完全統一（CAPE/霧/フェーン/SST を2APIパスで同一計算）
+- 自然言語サマリーカード・全島部落ランキング・島内分布タブUI完成（グローバルベンチマーク対応）
 
 ### v2.6.0 (2026年4月5日)
 - アプリロゴ（app_icon.png）を全UIページ（メイン・ダッシュボード・モバイル）に統一追加

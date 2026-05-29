@@ -70,28 +70,89 @@
 
 ## 🗓️ 今週のスプリント状況
 
-**リリース目標日**: 2026年5月31日（あと3日）
+**リリース目標日**: 2026年5月31日（あと2日）
 
-### 今日やること（2026-05-28）
+### 2026-05-29 完了
+- [x] ~~お気に入り・Web通知の完全削除（v2.6.5）~~
+- [x] ~~LINEリッチメニュー文字化け修正~~
+- [x] ~~モバイルスクロール修正（v2.6.7）~~
+- [x] ~~LINE予報ヒント・降水量行・友達追加誘導（v2.6.8）~~
+- [x] ~~Upstash Redis設定確認~~
+- [x] ~~CLAUDE.md / AI_MEMORY.md 更新（ドキュメントv2.3）~~
+
+### 2026-05-28 完了
 - [x] ~~二重リング49点グリッドの実装・微調整~~（完了）
 - [x] ~~時刻選択UIのスコア時無効化~~（完了）
 - [x] ~~降水量レイヤー実装（島内分布タブ）~~（完了）
 - [x] ~~/full-review 実行 → CRITICAL 2件 + MAJOR 11件確認~~（完了）
 - [x] ~~CRITICAL修正（PNG生成 + パス統一）~~（完了）
 - [x] ~~MAJOR MA-1〜MA-5 修正（dashboard/shortwave/chatbot/HTTP207/scoreColor）~~（完了）
-
-### 今週やること
 - [x] ~~整合性3大予防ルール → CLAUDE.md 追記 + check_consistency.py 新規作成~~（完了）
-  - python check_consistency.py で22件全通過
-  - JMA警報通知のアイコンも logo.png → /static/icons/icon-192x192.png に統一
 - [x] ~~MINOR 12件全修正 + CLAUDE.md ミニルール集A〜H追記~~（完了）
+
+### 残タスク（5/31まで）
 - [ ] /quick-review で再チェック → CRITICAL/MAJOR 0件を確認
 - [ ] 漁師さんにURL＋RELEASE_GUIDE_FOR_FISHERMEN.mdを共有（5/31）
 - [ ] MA-10残件（XSSリスク低優先度）は5/31後でOK
+- [ ] kelp_drying_map.html 7,000行超過 → 次回大型機能追加時にJS分離
 
 ---
 
 ## 💬 セッションログ（新しい順）
+
+### 2026-05-29（v2.6.5〜v2.6.8: LINE一本化・モバイル修正・3機能追加）
+
+**実施内容**:
+
+#### v2.6.5: お気に入り・Web通知を完全削除（コミット ae613cb）
+- `favorites` 変数・favoritesPanel・favoritesButton・Web Push Notification 関連を kelp_drying_map.html から全除去
+- LINEリッチメニュー文字化け修正（NotoSansJP Black weight + stroke）
+- SW v2-6-4 → v2-6-5
+
+#### v2.6.7: モバイルスクロール修正（コミット ba7b644）
+- 「7日間予報を表示」「LINE通知」ボタンを押してもパネルが見えなかった問題を修正
+- 根本原因: モバイルのflex-direction:columnレイアウトではパネルが地図の下（画面外）に配置される
+- 修正: `selectSpot()` に `panel.scrollIntoView({ behavior:'smooth', block:'start' })` を追加（768px以下のみ）
+- `openLineRegistration()` も同様のスクロール処理を追加し、nickInput.focus() を350ms遅延実行
+- SW v2-6-6 → v2-6-7
+
+#### v2.6.8: LINE予報ヒント・降水量行・友達追加誘導（コミット 58c4814）
+**Q1: LINE予報に追加干場ヒント** (`line_integration.py`)
+- 新定数 `_ADD_SPOT_HINT = '📍 他の干場も追加したい場合はリッチメニュー「干場登録」からどうぞ。'`
+- `handle_today()`, `handle_tomorrow()`, `handle_weekly()` の応答末尾に追加
+- `handle_record_start()` にも「他の干場を追加したい場合は〜」ヒントを追加
+
+**Q2: 一般タブ降水量行** (`kelp_drying_map.html`)
+- `generateHourlyDetails()` の一般向けカテゴリ末尾に1時間刻み降水量行を追加
+- 配色: 0mm=グレー / 0mm超=水色 / ≥1mm=濃青太字 / ≥5mm=赤背景太字
+- データは `hour.precipitation ?? 0` で既存の hourly_details から取得（追加API不要）
+
+**Q3: LINE友達追加誘導** (`kelp_drying_map.html`)
+- `lineRegisterBtnWrap` の先頭に緑枠ボックスを追加
+  - 内容: 「まずLINEで友達追加が必要です」＋「利尻昆布干場予報を友達追加する →」リンク
+  - LINE OA: `@766cfpki` / URL: `https://line.me/R/ti/p/%40766cfpki`
+- SWバージョン: v2-6-7 → v2-6-8
+
+**Upstash Redis確認**:
+- Render環境変数 `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` 設定済みを確認
+- `load_subscriptions()` はUpstash優先、失敗時にローカルJSONフォールバック
+- `save_subscriptions()` も同様の優先順位
+- Redisキー: `line_subscriptions`
+- **注意**: Renderの無料プランのファイルシステムはデプロイ毎にリセットされるため、ローカルJSONフォールバックにデータが入った状態でデプロイすると消える。Upstashに書かれたデータは永続
+
+**既知の問題（引き続き未解決）**:
+- 問題#2: `/api/line/status` に認証なし（誰でも確認可能）
+- 問題#3: flask-limiterのインメモリストレージ（Render再起動でリセット）
+- 問題#10: imageDiv.innerHTML に data.message 直接inject（低優先度）
+
+**CLAUDE.md更新内容**:
+- バージョン: v2.6.0 → v2.6.8 (2026年5月29日)
+- kelp_drying_map.html 行数: 6,235 → 約7,100行（7,000行超過のため次回大型機能追加時にJS分離）
+- Section 6: Web通知 → LINE通知に完全書き換え
+- ドキュメントバージョン: 2.2 → 2.3
+- v2.6.8 / v2.6.2〜v2.6.7 のchangelogエントリを追加
+
+---
 
 ### 2026-05-28（島内分布グリッド: 二重リング + 利尻山頂）
 **実施内容**: `_build_rishiri_grid()` を適応型48点リングから固定49点（山頂+二重リング）に刷新。
