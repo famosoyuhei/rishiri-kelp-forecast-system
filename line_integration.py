@@ -163,16 +163,18 @@ def _upstash_get(key: str):
 
 
 def _upstash_set(key: str, value) -> bool:
-    """SET a value in Upstash Redis. Value is stored as a JSON string."""
+    """SET a value in Upstash Redis.
+
+    Upstash REST /set/{key} expects a JSON string literal as the body.
+    We pre-encode `value` to a JSON string, then pass that string to
+    requests `json=` so requests wraps it in JSON quotes → body is a
+    JSON string literal containing the serialised dict.
+    """
     try:
-        body = json.dumps(value, ensure_ascii=False)
         resp = _requests.post(
             f'{_upstash_url()}/set/{key}',
-            headers={
-                'Authorization': f'Bearer {_upstash_token()}',
-                'Content-Type': 'application/json',
-            },
-            data=body.encode('utf-8'),
+            headers={'Authorization': f'Bearer {_upstash_token()}'},
+            json=json.dumps(value, ensure_ascii=False),
             timeout=8,
         )
         logger.info('Upstash SET %s → HTTP %s body=%s', key, resp.status_code, resp.text[:100])
@@ -2175,8 +2177,16 @@ def get_debug():
     if secret and provided != secret:
         return jsonify({'error': 'unauthorized'}), 403
 
+    url = _upstash_url()
+    # Show only the domain (e.g. "xxxx.upstash.io") — never the token
+    try:
+        from urllib.parse import urlparse  # noqa: PLC0415
+        domain = urlparse(url).netloc or url[:40]
+    except Exception:
+        domain = url[:40]
     result = {
-        'upstash_url_set': bool(_upstash_url()),
+        'upstash_url_set': bool(url),
+        'upstash_url_domain': domain,
         'upstash_token_set': bool(_upstash_token()),
         'upstash_available': _upstash_available(),
     }
