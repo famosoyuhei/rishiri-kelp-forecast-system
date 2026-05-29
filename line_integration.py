@@ -889,7 +889,7 @@ def handle_list_spots(source_type: str, source_id: str) -> str:
         if sid not in seen:
             lines.append(f'・{nick}')
     lines.append('\n「記録」で乾燥記録を入力できます。')
-    lines.append('削除: 「干場削除 呼び名」で個別解除')
+    lines.append('個別解除: 「登録解除 呼び名」')
     return '\n'.join(lines)
 
 
@@ -907,7 +907,7 @@ def handle_remove_spot(source_type: str, source_id: str, label: str) -> str:
         lines = ['削除したい干場の呼び名を送ってください。\n']
         for c in choices:
             lines.append(f'  ・{c["label"]}')
-        lines.append('\n例：「干場削除 浜の前」')
+        lines.append('\n例：「登録解除 浜の前」')
         return '\n'.join(lines)
 
     # ── 呼び名 or spot_id で検索 ──────────────────────────────────────
@@ -1170,10 +1170,11 @@ def parse_command(text: str) -> dict:
     if text in ('干場一覧', '登録干場', '干場リスト'):
         return {'cmd': 'list_spots'}
 
-    # Remove a single spot: "干場削除" (show list) or "干場削除 呼び名"
-    if text in ('干場削除', '干場 削除', '干場　削除'):
+    # Remove a single spot from notification list: "登録解除" or "登録解除 呼び名"
+    # NOTE: 「干場削除」はWebアプリで干場そのものを消す操作のため、ここでは使わない
+    if text in ('登録解除', '登録 解除'):
         return {'cmd': 'remove_spot', 'label': ''}
-    if text.startswith('干場削除 ') or text.startswith('干場削除　'):
+    if text.startswith('登録解除 ') or text.startswith('登録解除　'):
         return {'cmd': 'remove_spot', 'label': text[4:].strip()}
 
     # 沖止め解除 — must come before '沖止め' prefix check and area fallback
@@ -1228,7 +1229,7 @@ _HELP_TEXT = """\
 「沓形」「鴛泊」など部落名 → その地区の予報
 Webアプリ「LINEで通知登録」→ 毎日通知をON
 「干場一覧」→ 登録中の干場を確認
-「干場削除 呼び名」→ 干場を個別に解除
+「登録解除 呼び名」→ 干場を個別に解除
 「通知解除」→ 全通知をOFF
 「記録」→ 乾燥記録を入力
 「沖止め」「沖止め 6/25」→ 沖止め日を登録（祭りなど事前禁漁日）
