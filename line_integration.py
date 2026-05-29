@@ -2183,7 +2183,10 @@ def generate_rich_menu_image(path: str) -> bool:
     ]
 
     # Font search paths — Japanese first, ASCII fallback last
+    # static/fonts/NotoSansJP.ttf はリポジトリに同梱済み（最優先）
+    _HERE = os.path.dirname(os.path.abspath(__file__))
     _FONT_PATHS = [
+        os.path.join(_HERE, 'static', 'fonts', 'NotoSansJP.ttf'),  # bundled ★
         'C:/Windows/Fonts/meiryo.ttc',
         'C:/Windows/Fonts/msgothic.ttc',
         'C:/Windows/Fonts/YuGothB.ttc',
