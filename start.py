@@ -530,7 +530,7 @@ def api_info():
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.6.2',
+        'version': '2.6.11',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -570,7 +570,7 @@ def api_info():
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'version': '2.6.2'}, 200
+    return {'status': 'healthy', 'version': '2.6.11'}, 200
 
 @app.route('/api/weather')
 def get_weather():
