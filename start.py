@@ -524,13 +524,18 @@ def serve_favicon():
     """Serve the favicon"""
     return send_file(os.path.join(BASE_DIR, 'favicon.svg'), mimetype='image/svg+xml')
 
+@app.route('/app_icon.png')
+def serve_app_icon():
+    """Serve the app logo used in all UI pages"""
+    return send_file(os.path.join(BASE_DIR, 'app_icon.png'), mimetype='image/png')
+
 @app.route('/api/info')
 def api_info():
     """API information and available endpoints"""
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.6.12',
+        'version': '2.6.14',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -570,7 +575,7 @@ def api_info():
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'version': '2.6.12'}, 200
+    return {'status': 'healthy', 'version': '2.6.14'}, 200
 
 @app.route('/api/weather')
 def get_weather():
@@ -686,9 +691,7 @@ def update_seasonal_outlook():
         # Only allow known fields
         allowed = {'season', 'updated', 'source', 'expertComment', 'enso', 'months'}
         cleaned = {k: v for k, v in data.items() if k in allowed}
-        from datetime import timezone, timedelta
-        jst = timezone(timedelta(hours=9))
-        cleaned['updated'] = datetime.now(jst).strftime('%Y-%m-%d')
+        cleaned['updated'] = datetime.now(JST).strftime('%Y-%m-%d')
         with open(SEASONAL_OUTLOOK_FILE, 'w', encoding='utf-8') as f:
             json.dump(cleaned, f, ensure_ascii=False, indent=2)
         return jsonify({'status': 'ok', 'updated': cleaned['updated']})
@@ -1122,12 +1125,10 @@ def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitatio
     score = 0
 
     # --- 降水量: 0mm絶対条件 (K8) ---
-    # 実測21件すべて0mm。0.5mmでも昆布は吸湿し乾燥失敗となる。
+    # 実測21件すべて0mm。微量雨でも昆布は吸湿し乾燥失敗となる。
     if precipitation == 0:
         score += 15
-    elif precipitation < 0.5:
-        score += 5   # 微量雨：乾燥困難
-    # precipitation >= 0.5 は加点なし（最終ゲートで圧縮される）
+    # precipitation > 0 は加点なし（最終ゲートで圧縮される）
 
     # --- 気温: アレニウス近似で細粒度化 (K2) ---
     # 10°C上昇で乾燥速度定数 k が1.5倍。25°Cを基準に連続スコア化。
@@ -1611,14 +1612,10 @@ def delete_spot():
     """
     干場を削除（制限付き削除）
 
-    削除不可条件（仕様書 lines 24-45）:
-    1. 記録データが存在する場合
-    2. お気に入り登録されている場合
-    3. 通知設定で使用されている場合
-    4. 同時編集が発生している場合（5分間ロック）
-    5. 機械学習の訓練データとして使用されている場合
-       - 条件1（記録データ存在）と実質的に同一
-       - hoshiba_records.csvに記録がある = 訓練データとして使用される
+    削除不可条件（3条件）:
+    1. 記録データが存在する場合（hoshiba_records.csv）
+    2. LINE通知に登録中のユーザーがいる場合（Upstash Redis）
+    3. 同時編集ロックがかかっている場合（edit_locks/, 5分間）
     """
     try:
         data = request.get_json()
@@ -2176,11 +2173,9 @@ def _field_cache_get(key: str):
 
 
 def _field_cache_set(key: str, data, ttl: int = _FIELD_CACHE_TTL):
-    from datetime import datetime, timezone, timedelta
-    jst = timezone(timedelta(hours=9))
     _analysis_field_cache[key] = {
         'data': data,
-        'expires': datetime.now(jst) + timedelta(seconds=ttl),
+        'expires': datetime.now(JST) + timedelta(seconds=ttl),
     }
 
 
@@ -2786,7 +2781,7 @@ def _compute_score_field(day: int) -> dict:
     → 初回レスポンス約401秒 のタイムアウト問題が発生していた。
 
     【修正後】
-    wind/humidity/solar/temperature と同じく _build_rishiri_grid() の48点グリッドを使用。
+    wind/humidity/solar/temperature と同じく _build_rishiri_grid() の49点グリッドを使用。
     島内分布の面表示として十分な近似。個別干場の精密予報は /api/forecast を使うこと。
 
     【風速スコア修正済み（v2.6.1相当）】
@@ -2799,7 +2794,7 @@ def _compute_score_field(day: int) -> dict:
     """
     target_date = _field_target_date(day)
 
-    grid = _build_rishiri_grid()   # 6×8=48点（CSV座標から自動導出）
+    grid = _build_rishiri_grid()   # 1+24+24=49点（山頂1 + 内リング24 + 外リング24）
     lats = [g['lat'] for g in grid]
     lons = [g['lon'] for g in grid]
 
@@ -3274,9 +3269,7 @@ def get_analysis_field():
         day  : 0=今日, 1=明日, ..., 6 (default 0)
         hour : 4|7|10|13|16 (JST) — score以外で必須。未指定時は10。
     """
-    from datetime import datetime, timezone, timedelta
-    jst = timezone(timedelta(hours=9))
-    now_jst = datetime.now(jst)
+    now_jst = datetime.now(JST)
 
     field_type = request.args.get('type', 'score')
     try:

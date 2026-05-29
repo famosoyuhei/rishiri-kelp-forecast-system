@@ -3,9 +3,9 @@
 
 // Production configuration
 // ★ v2.6.12: Upstash診断エンドポイント・詳細ログ追加
-const CACHE_NAME = 'rishiri-kelp-v2-6-12';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-12';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-12';
+const CACHE_NAME = 'rishiri-kelp-v2-6-15';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-15';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-15';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

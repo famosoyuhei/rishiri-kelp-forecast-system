@@ -975,7 +975,7 @@
     <!-- App Header with Logo -->
     <header class="app-header">
         <div class="app-brand">
-            <img src="/static/img/logo.png" class="app-logo" alt="利尻干場予報">
+            <img src="/app_icon.png" class="app-logo" alt="利尻干場予報">
             <div class="app-title-wrap">
                 <div class="app-title">利尻干場予報</div>
                 <div class="app-subtitle">Hoshiba Forecast · Rishiri</div>
@@ -1445,7 +1445,7 @@
                 <h3 id="selectedSpotName">干場を選択してください</h3>
                 <p id="selectedSpotLocation"></p>
                 <div id="lineRegisterBtnWrap" style="display:none; margin: 6px 0 6px;">
-                    <!-- ① LINEを未追加の方への誘導（LINE OA @766cfpki） -->
+                    <!-- ① LINEを未追加の方への誘導（LINE OA ID = LINE_OA_ID 定数と一致させること） -->
                     <div style="font-size:0.73rem; color:#555; background:#f0faf4; border:1px solid #b2dfca; border-radius:8px; padding:6px 10px; margin-bottom:7px; line-height:1.6;">
                         📲 まずLINEで<strong>友達追加</strong>が必要です。<br>
                         <a id="lineAddFriendLink"
@@ -1548,6 +1548,15 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // XSSエスケープ（CSVデータ・ユーザー入力をinnerHTMLに挿入する前に必ず使う）
+        const _esc = s => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+        // LINE公式アカウントID（変更時はここだけ更新する）
+        // 静的リンク（lineAddFriendLink）も同じIDを使用しているため合わせて更新すること
+        const LINE_OA_ID = '@766cfpki';
+
         // 利尻島の中心座標
         const RISHIRI_CENTER = [45.178269, 141.228528];
 
@@ -1976,8 +1985,8 @@
                 marker.bindPopup(`
                     <div style="text-align: center; padding: 8px 4px; min-width: 220px;">
                         <strong style="font-size:1rem;">${getSpotDisplayName(spot.name)}</strong><br>
-                        ${spotNicknames[spot.name] ? `<small style="color:#999">${spot.name}</small><br>` : ''}
-                        <span style="color: #666; font-size:0.85rem;">${spot.town} ${spot.district}</span>
+                        ${spotNicknames[spot.name] ? `<small style="color:#999">${_esc(spot.name)}</small><br>` : ''}
+                        <span style="color: #666; font-size:0.85rem;">${_esc(spot.town)} ${_esc(spot.district)}</span>
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px;">
                             <button onclick="selectSpot(${index})" style="
                                 background: #667eea; color: white; border: none;
@@ -2259,17 +2268,17 @@
 
             if (currentFilters.town) {
                 html += '<span class="breadcrumb-separator"> > </span>';
-                html += `<span class="breadcrumb-item" onclick="filterToTown('${currentFilters.town}')">${currentFilters.town}</span>`;
+                html += `<span class="breadcrumb-item" onclick="filterToTown('${_esc(currentFilters.town)}')">${_esc(currentFilters.town)}</span>`;
             }
 
             if (currentFilters.district) {
                 html += '<span class="breadcrumb-separator"> > </span>';
-                html += `<span class="breadcrumb-item" onclick="filterToDistrict('${currentFilters.town}', '${currentFilters.district}')">${currentFilters.district}</span>`;
+                html += `<span class="breadcrumb-item" onclick="filterToDistrict('${_esc(currentFilters.town)}', '${_esc(currentFilters.district)}')">${_esc(currentFilters.district)}</span>`;
             }
 
             if (currentFilters.buraku) {
                 html += '<span class="breadcrumb-separator"> > </span>';
-                html += `<span class="breadcrumb-item">${currentFilters.buraku}</span>`;
+                html += `<span class="breadcrumb-item">${_esc(currentFilters.buraku)}</span>`;
             }
 
             breadcrumb.innerHTML = html;
@@ -2353,7 +2362,7 @@
                     const nick = lineNickInput.value.trim();
                     if (nick) {
                         // 呼び名あり → ボタン有効化
-                        lineBtn.href = `https://line.me/R/oaMessage/@766cfpki/?${encodeURIComponent(`通知登録 ${spot.name} ${nick}`)}`;
+                        lineBtn.href = `https://line.me/R/oaMessage/${LINE_OA_ID}/?${encodeURIComponent(`通知登録 ${spot.name} ${nick}`)}`;
                         lineBtn.style.background = '#06C755';
                         lineBtn.style.pointerEvents = 'auto';
                         lineBtn.style.opacity = '1';
@@ -2439,7 +2448,7 @@
             const targets = sameVillage.sort((a, b) => dist(a) - dist(b)).slice(0, 8);
 
             // ローディング表示
-            rankEl.innerHTML = `<div style="padding:8px 0;font-size:0.83rem;color:#666;">📊 ${selectedSpot.buraku} の今日のランキングを取得中…</div>`;
+            rankEl.innerHTML = `<div style="padding:8px 0;font-size:0.83rem;color:#666;">📊 ${_esc(selectedSpot.buraku)} の今日のランキングを取得中…</div>`;
 
             // 並列で今日の予報を取得
             const results = await Promise.allSettled(
@@ -2480,8 +2489,8 @@
                          onclick="selectSpot(hoshibaSpots.findIndex(s=>s.name==='${spot.name}'))">
                         <span style="font-size:1.1rem;min-width:28px;">${medal}</span>
                         <div style="flex:1;min-width:0;">
-                            <div style="font-size:0.85rem;font-weight:${isSelected?'700':'500'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${displayName}</div>
-                            <div style="font-size:0.75rem;color:#6b7280;">${summaryShort}</div>
+                            <div style="font-size:0.85rem;font-weight:${isSelected?'700':'500'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(displayName)}</div>
+                            <div style="font-size:0.75rem;color:#6b7280;">${_esc(summaryShort)}</div>
                         </div>
                         <span style="font-size:0.9rem;font-weight:700;color:${scoreColor(score)};white-space:nowrap;">${score}<small style="font-weight:400;color:#9ca3af;">/100</small></span>
                     </div>`;
@@ -2489,7 +2498,7 @@
 
             rankEl.innerHTML = `
                 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;background:#fafafa;">
-                    <div style="font-size:0.83rem;font-weight:600;color:#374151;margin-bottom:8px;">📍 ${selectedSpot.buraku} の今日のランキング（${ranked.length}件）</div>
+                    <div style="font-size:0.83rem;font-weight:600;color:#374151;margin-bottom:8px;">📍 ${_esc(selectedSpot.buraku)} の今日のランキング（${ranked.length}件）</div>
                     ${rows}
                     <div style="font-size:0.72rem;color:#9ca3af;margin-top:6px;">※ タップで干場を切り替えられます</div>
                 </div>`;
@@ -2623,8 +2632,8 @@
                         <span style="font-size:1.05rem;min-width:28px;">${medal}</span>
                         <div style="flex:1;min-width:0;">
                             <div style="font-size:0.86rem;font-weight:${isCur ? '700' : '500'};">
-                                ${buraku}${winBadge}
-                                <span style="font-size:0.73rem;color:#9ca3af;">${district}／${town}</span>
+                                ${_esc(buraku)}${winBadge}
+                                <span style="font-size:0.73rem;color:#9ca3af;">${_esc(district)}／${_esc(town)}</span>
                                 ${isCur ? '<span style="font-size:0.72rem;color:#667eea;">← 現在地</span>' : ''}
                             </div>
                             <div style="font-size:0.75rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${short}</div>
@@ -3981,8 +3990,7 @@
                     if (!data.hasWarnings || data.warnings.length === 0) {
                         detailDiv.innerHTML = '<p style="color:#888;">現在、警報・注意報の発表はありません。</p>';
                     } else {
-                        // XSS対策: JMA外部APIデータのテキストをエスケープして注入
-                        const _esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                        // XSS対策: グローバル _esc を使用（JMA外部APIデータ）
                         detailDiv.innerHTML = data.warnings.map(area =>
                             `<div style="margin-bottom:10px;">
                                 <strong style="color:#b71c1c;">${_esc(area.area)}</strong><br>
@@ -4342,7 +4350,7 @@
             if (!container) return;
 
             document.getElementById('recordSpotInfo').innerHTML =
-                `<strong>${spot.name}</strong><br><small>${spot.town} ${spot.district}</small>`;
+                `<strong>${_esc(spot.name)}</strong><br><small>${_esc(spot.town)} ${_esc(spot.district)}</small>`;
 
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('recordDate').value = today;
@@ -6286,15 +6294,13 @@
         // ----------------------------------------
         // UI ヘルパー
         // ----------------------------------------
-        function escHtml(s) {
-            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        }
+        // escHtml は廃止 → グローバル _esc（null対応・"エスケープ付き）を使用
 
         function addMessage(text, role) {
             const box = document.getElementById('chatMessages');
             const div = document.createElement('div');
             div.className = 'chat-bubble ' + role;
-            div.innerHTML = escHtml(text).replace(/\n/g,'<br>');
+            div.innerHTML = _esc(text).replace(/\n/g,'<br>');
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
@@ -6317,7 +6323,7 @@
         function setQuickReplies(labels) {
             const div = document.getElementById('chatQuickReplies');
             div.innerHTML = labels.map(l =>
-                `<button type="button" class="chat-qr-btn" onclick="window.sendChatQuickReply(${JSON.stringify(l)})">${escHtml(l)}</button>`
+                `<button type="button" class="chat-qr-btn" onclick="window.sendChatQuickReply(${JSON.stringify(l)})">${_esc(l)}</button>`
             ).join('');
         }
 
@@ -6498,7 +6504,7 @@
 
         function respondHowto() {
             setQuickReplies(QR_HOWTO);
-            return '📱 アプリの基本的な使い方\n\n① 地図の◉をタップ\n　→ その干場の7日間の乾燥予報を表示\n\n② ★でお気に入り登録\n　→ 毎日16:00（翌日予報）・01:30（当日予報）に通知\n\n③ エリア絞込タブ\n　→ 町・地区・部落で干場を絞り込める\n\n④ 干場管理\n　→ 新しい干場の追加・削除\n\n「○○（部落名）では何日干せますか？」のように聞くと予報もお答えします。';
+            return '📱 アプリの基本的な使い方\n\n① 地図の◉をタップ\n　→ その干場の7日間の乾燥予報を表示\n\n② 「📲 LINE通知登録」をタップ\n　→ 呼び名を入力してLINEで登録すると毎日通知\n\n③ エリア絞込タブ\n　→ 町・地区・部落で干場を絞り込める\n\n④ 干場管理\n　→ 新しい干場の追加・削除\n\n「○○（部落名）では何日干せますか？」のように聞くと予報もお答えします。';
         }
 
         function respondConditions() {
@@ -6512,8 +6518,8 @@
         }
 
         function respondNotification() {
-            setQuickReplies(['お気に入りとは？', '沖止め日設定とは？', '使い方を教えて']);
-            return '🔔 通知の設定手順\n\n① 左サイドバーの「🔔 通知設定」を開く\n② 「通知を有効にする」をONにする\n③ ブラウザの通知許可ダイアログで「許可」を選ぶ\n④ 干場を★お気に入りに追加すると通知対象になる\n\n通知タイミング：\n・毎日16:00：翌日の乾燥予報\n・毎日01:30：当日の最新予報\n・緊急アラート：スコアが30点以上急変した場合\n・気象警報：利尻島に警報発表時（即時）';
+            setQuickReplies(['LINE通知登録', '沖止め日設定とは？', '使い方を教えて']);
+            return '🔔 通知の設定手順\n\n① 地図で干場のマーカーをタップ\n② 「📲 LINE通知登録」をタップ\n③ 呼び名を入力してボタンをタップ\n④ LINEが開くので送信\n\n通知タイミング：\n・毎日16:00：翌日の乾燥予報\n・毎日01:30：当日の最新予報\n\nLINEのご利用には友達追加が必要です。';
         }
 
         function respondAddSpot() {

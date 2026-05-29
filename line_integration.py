@@ -1815,7 +1815,8 @@ def notify_all(kind: str) -> dict:
     Push forecast notifications to all enabled subscribers.
 
     Args:
-        kind: 'evening' (翌日予報) or 'morning' (当日予報)
+        kind: 'evening' (翌日予報・毎日16:00) or 'morning' (当日予報・毎日01:30)
+              ※ 緊急アラート（スコア急変）は未実装。将来 'urgent' を追加予定。
 
     Returns:
         dict with sent_count, failed_count, skipped_count
