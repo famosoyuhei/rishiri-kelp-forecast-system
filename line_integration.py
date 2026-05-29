@@ -166,23 +166,25 @@ def _upstash_get(key: str):
 
 
 def _upstash_set(key: str, value) -> bool:
-    """SET a value in Upstash Redis.
+    """SET a value in Upstash Redis via the pipeline endpoint.
 
-    Upstash REST /set/{key} expects a JSON string literal as the body.
-    We pre-encode `value` to a JSON string, then pass that string to
-    requests `json=` so requests wraps it in JSON quotes → body is a
-    JSON string literal containing the serialised dict.
+    Using /pipeline with [["SET", key, json_string]] avoids any
+    ambiguity about how Upstash interprets the request body encoding.
+    The value is explicitly a JSON-encoded string passed as a Redis arg.
     """
     try:
         resp = _requests.post(
-            f'{_upstash_url()}/set/{key}',
-            headers={'Authorization': f'Bearer {_upstash_token()}'},
-            json=json.dumps(value, ensure_ascii=False),
+            f'{_upstash_url()}/pipeline',
+            headers={
+                'Authorization': f'Bearer {_upstash_token()}',
+                'Content-Type': 'application/json',
+            },
+            json=[['SET', key, json.dumps(value, ensure_ascii=False)]],
             timeout=8,
         )
-        logger.info('Upstash SET %s → HTTP %s body=%s', key, resp.status_code, resp.text[:100])
+        logger.info('Upstash SET(pipeline) %s → HTTP %s body=%s', key, resp.status_code, resp.text[:120])
         result = resp.json()
-        ok = result.get('result') == 'OK'
+        ok = isinstance(result, list) and len(result) > 0 and result[0].get('result') == 'OK'
         if not ok:
             logger.error('Upstash SET returned non-OK: %s', result)
         return ok
@@ -2201,20 +2203,24 @@ def get_debug():
         result['verdict'] = 'FAIL: Upstash env vars not set — data saving to local file (lost on redeploy)'
         return jsonify(result)
 
-    # Test write — capture HTTP status and body for diagnosis
+    # Test write via pipeline (same path as _upstash_set)
     test_key = 'line_debug_test'
     test_val = {'test': True, 'ts': str(__import__('datetime').datetime.utcnow())}
     try:
         resp = _requests.post(
-            f'{url}/set/{test_key}',
-            headers={'Authorization': f'Bearer {_upstash_token()}'},
-            json=json.dumps(test_val, ensure_ascii=False),
+            f'{url}/pipeline',
+            headers={
+                'Authorization': f'Bearer {_upstash_token()}',
+                'Content-Type': 'application/json',
+            },
+            json=[['SET', test_key, json.dumps(test_val, ensure_ascii=False)]],
             timeout=8,
         )
         result['test_http_status'] = resp.status_code
         result['test_http_body'] = resp.text[:200]
         rjson = resp.json()
-        write_ok = rjson.get('result') == 'OK'
+        write_ok = (isinstance(rjson, list) and len(rjson) > 0
+                    and rjson[0].get('result') == 'OK')
     except Exception as e:
         result['test_http_error'] = str(e)
         write_ok = False
