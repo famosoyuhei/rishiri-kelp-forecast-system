@@ -5136,9 +5136,8 @@
 
         function _restoreSpotMarkers() {
             allMarkers.forEach(m => {
-                const isFav = favorites.includes(m.index);
                 m.marker.setStyle({
-                    fillColor: isFav ? '#28a745' : '#667eea',
+                    fillColor: '#667eea',
                     opacity: 1,
                     fillOpacity: 0.8,
                 });
@@ -6165,7 +6164,7 @@
             { id: 'notification', kw: ['通知','お知らせ','プッシュ','アラート','通知設定','通知したい','知らせて','メール'] },
             { id: 'add_spot',     kw: ['干場を追加','干場追加','新しい干場','地点を追加','場所を追加','追加したい','追加方法'] },
             { id: 'delete_spot',  kw: ['干場を削除','削除','消したい','消す'] },
-            { id: 'favorites',    kw: ['お気に入り','おきにいり','ブックマーク','★','お気に入りとは','スター'] },
+            { id: 'line_notify',  kw: ['お気に入り','おきにいり','ブックマーク','★','お気に入りとは','スター','LINE通知','ライン通知','通知登録'] },
             { id: 'nickname',     kw: ['ニックネーム','呼び名','名前を変え','名前をつけ','別名','愛称'] },
             { id: 'weather_now',  kw: ['今の天気','現在の天気','今天気','気温は','今の気温','現在気温'] },
             { id: 'warning',      kw: ['警報','注意報','気象警報','大雨','暴風','暴風雪','波浪警報'] },
@@ -6287,13 +6286,6 @@
         }
 
         function getRepSpot() {
-            // お気に入りがあればその先頭、なければ島中心近くのスポット
-            if (typeof favorites !== 'undefined' && favorites.length > 0) {
-                const name = favorites[0];
-                const spots = (typeof hoshibaSpots !== 'undefined') ? hoshibaSpots : [];
-                const found = spots.find(s => s.name === name);
-                if (found) return found;
-            }
             // デフォルト：沓形アメダス付近
             return { lat: 45.1783, lon: 141.1383, name: '島中心部' };
         }
@@ -6427,7 +6419,7 @@
                 case 'notification': return respondNotification();
                 case 'add_spot':     return respondAddSpot();
                 case 'delete_spot':  return respondDeleteSpot();
-                case 'favorites':    return respondFavorites();
+                case 'line_notify':  return respondLineNotify();
                 case 'nickname':     return respondNickname();
                 case 'weather_now':  return await respondWeatherNow();
                 case 'warning':      return await respondWarning();
@@ -6482,7 +6474,7 @@
         }
 
         function respondAddSpot() {
-            setQuickReplies(['干場を削除したい', 'お気に入りとは？', '使い方を教えて']);
+            setQuickReplies(['干場を削除したい', 'LINE通知登録', '使い方を教えて']);
             return '➕ 干場の追加方法\n\n① 左サイドバーの「干場管理」を開く\n② 「➕ 新しい干場を追加」をタップ\n③ 地図上の追加したい場所をタップ\n\n座標から自動的に干場名（H_XXXX_XXXX形式）が付きます。追加した干場はCSV・KML・JSファイルに自動同期されます。';
         }
 
@@ -6491,14 +6483,14 @@
             return '🗑️ 干場の削除について\n\n削除は以下の5条件をすべて満たす場合のみ可能です：\n\n① 乾燥記録データがない\n② お気に入りに登録されていない\n③ 通知設定で使用されていない\n④ 同時編集ロック中でない（5分間）\n⑤ 学習データとして使用されていない\n\n条件を満たす場合、干場選択後に「削除」ボタンが表示されます。';
         }
 
-        function respondFavorites() {
-            setQuickReplies(['通知の設定', '呼び名をつけたい', '使い方を教えて']);
-            return '⭐ お気に入り機能\n\n干場をタップ → 「★ お気に入りに追加」をタップするだけです。\n\nお気に入り登録のメリット：\n・通知の対象になる（16:00・01:30・緊急アラート）\n・サイドバーのお気に入り一覧で素早くアクセス\n・複数登録できます（登録数の上限なし）';
+        function respondLineNotify() {
+            setQuickReplies(['呼び名をつけたい', '使い方を教えて']);
+            return '📲 LINE通知登録について\n\n干場ごとにLINEで予報通知を受け取れます。\n\n登録方法：\n① 地図で干場をタップ\n② 吹き出しの「📲 LINE通知登録」をタップ\n③ 呼び名を入力してボタンをタップ\n④ LINEが開くので送信するだけ\n\n通知タイミング：前日16:00（翌日予報）・当日01:30（当日予報）\n\n登録はLINE公式アカウント「利尻昆布干場予報」から行えます。';
         }
 
         function respondNickname() {
-            setQuickReplies(['お気に入りとは？', '使い方を教えて']);
-            return '✏️ 呼び名（ニックネーム）機能\n\nお気に入りに登録した干場に、自分だけの呼び名をつけられます。\n\n設定方法：\n① お気に入り一覧を開く\n② 干場名の横の「✏️」をタップ\n③ 好きな名前を入力して保存\n\n⚠️ 呼び名はこの端末だけに保存されます。他のユーザーには表示されません（乾燥記録は全員で共有）。';
+            setQuickReplies(['LINE通知登録', '使い方を教えて']);
+            return '✏️ 呼び名（ニックネーム）機能\n\nLINE通知登録のとき、干場に自分だけの呼び名をつけられます。\n\n設定方法：\n① 地図で干場をタップ\n② 吹き出しの「📲 LINE通知登録」をタップ\n③ 呼び名を入力してから登録ボタンをタップ\n\nLINEで通知が届くとき、登録した呼び名で表示されます。\n⚠️ 呼び名はこの端末だけに保存されます。';
         }
 
         function respondTerrain() {
