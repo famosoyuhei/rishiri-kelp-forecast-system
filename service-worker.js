@@ -1,11 +1,11 @@
 // Service Worker for Rishiri Kelp Forecast System - Offline Functionality
-// Version 2.6.3 - LINE UX改善・干場登録フロー統合・ID排除
+// Version 2.6.5 - お気に入り機能廃止・Web通知をLINEに統一
 
 // Production configuration
-// ★ v2.6.3: LINE通知登録フロー統合・沖止め説明修正・リッチメニュー干場登録ボタン追加
-const CACHE_NAME = 'rishiri-kelp-v2-6-4';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-4';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-4';
+// ★ v2.6.5: お気に入り廃止・ポップアップをLINE通知登録ボタンに統一・Web通知システム全削除
+const CACHE_NAME = 'rishiri-kelp-v2-6-5';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-5';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-5';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;
