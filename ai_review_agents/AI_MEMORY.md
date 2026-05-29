@@ -79,6 +79,9 @@
 - [x] ~~LINE予報ヒント・降水量行・友達追加誘導（v2.6.8）~~
 - [x] ~~Upstash Redis設定確認~~
 - [x] ~~CLAUDE.md / AI_MEMORY.md 更新（ドキュメントv2.3）~~
+- [x] ~~UptimeRobotでRenderスリープ防止（monitor #803177862）~~
+- [x] ~~`登録解除 呼び名` コマンド追加（v2.6.9）~~
+- [x] ~~干場削除にLINE登録チェック追加・ブロック理由一括表示（v2.6.10〜11）~~
 
 ### 2026-05-28 完了
 - [x] ~~二重リング49点グリッドの実装・微調整~~（完了）
@@ -99,6 +102,39 @@
 ---
 
 ## 💬 セッションログ（新しい順）
+
+### 2026-05-29（v2.6.9〜v2.6.11: 登録解除コマンド・削除ブロック改善）
+
+**実施内容**:
+
+#### v2.6.9: `登録解除 呼び名` コマンド追加（コミット 5a8afa2）
+- 「干場削除」はWebアプリの物理削除と混同するため「登録解除」に命名
+- `parse_command`: `登録解除` / `登録解除 呼び名` を `remove_spot` コマンドにマッピング
+- `handle_remove_spot()`: 呼び名 or spot_id で検索し spot_nicknames + spots から削除
+- `handle_list_spots()`: 末尾に「個別解除: 登録解除 呼び名」ヒントを追加
+- `_HELP_TEXT`: 「干場一覧」「登録解除 呼び名」を追記
+- `handle_register_spot_nickname()`: 登録完了メッセージに undo hint（`登録解除 {nickname}`）を追記
+
+#### v2.6.10: LINE登録済み干場の削除ブロック（コミット 0b18158 / d9c196a）
+- `delete_spot()` の旧2（お気に入り）・旧3（Web Push通知）を整理
+- LINE購読チェック追加: Upstash Redis から `load_subscriptions()` を呼び出し、
+  `spots` or `spot_nicknames.values()` に対象干場があれば 403 を返す
+- エラーメッセージは「なぜ削除できないか」のみ。登録者特定・解除依頼の文言は不採用
+
+#### v2.6.11: 削除ブロック理由の一括表示（コミット 72b666f）
+- 早期リターンをやめ `block_reasons = []` に全理由を収集してから一括 403 を返す
+- 記録あり＋LINE登録ありの両該当時も一度のメッセージで全理由を表示
+
+**干場削除の現行条件（3条件）**:
+1. 乾燥記録がない（`hoshiba_records.csv`）
+2. LINE通知登録ユーザーがいない（Upstash Redis）
+3. 同時編集ロックがかかっていない（5分、`edit_locks/`）
+
+**UptimeRobot設定（monitor #803177862）**:
+- `https://rishiri-kelp-forecast-system.onrender.com/health` を5分おきにping
+- Renderフリープランのスリープ→LINEのreplyToken失効問題を解消
+
+---
 
 ### 2026-05-29（v2.6.5〜v2.6.8: LINE一本化・モバイル修正・3機能追加）
 
