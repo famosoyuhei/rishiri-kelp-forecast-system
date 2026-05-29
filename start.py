@@ -1679,7 +1679,7 @@ def delete_spot():
                 if name in registered or name in nicknames.values():
                     return jsonify({
                         "status": "error",
-                        "message": "この干場はLINE通知に登録しているユーザーがいるため削除できません。登録者が「登録解除 呼び名」でLINEから解除してから再度お試しください。",
+                        "message": "この干場はLINE通知に登録しているユーザーがいるため削除できません。",
                         "restriction_type": "line_subscribed"
                     }), 403
         except Exception:
