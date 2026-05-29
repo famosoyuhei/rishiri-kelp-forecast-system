@@ -1664,44 +1664,26 @@ def delete_spot():
             # 記録ファイルが存在しない場合は問題なし
             pass
 
-        # 制限2: お気に入り登録チェック
-        try:
-            import json
-            with open(USER_FAVORITES_FILE, 'r', encoding='utf-8') as f:
-                favorites_data = json.load(f)
-                # 全ユーザーのお気に入りをチェック
-                for user_id, user_favorites in favorites_data.items():
-                    if name in user_favorites:
-                        return jsonify({
-                            "status": "error",
-                            "message": "この干場はお気に入りに登録されているため削除できません。先にお気に入りから外してください。",
-                            "restriction_type": "in_favorites"
-                        }), 403
-        except FileNotFoundError:
-            # お気に入りファイルが存在しない場合は問題なし
-            pass
-        except json.JSONDecodeError:
-            # JSONが不正な場合は警告してスキップ
-            pass
+        # 制限2: お気に入り登録チェック（v2.6.5でお気に入り機能廃止済み・条件は削除）
 
-        # 制限3: 通知設定使用チェック
+        # 制限3: LINE通知登録チェック（v2.6.5以降、通知はLINEに一本化）
+        # Upstash Redis から全購読者を取得し、この干場を登録中のユーザーがいれば削除不可
         try:
-            import json
-            with open(NOTIFICATION_FILE, 'r', encoding='utf-8') as f:
-                notification_data = json.load(f)
-                # 全ユーザーの通知設定をチェック
-                for user_id, user_config in notification_data.items():
-                    if 'spots' in user_config and name in user_config['spots']:
-                        return jsonify({
-                            "status": "error",
-                            "message": "この干場は通知設定で使用されているため削除できません。先に通知設定から外してください。",
-                            "restriction_type": "in_notifications"
-                        }), 403
-        except FileNotFoundError:
-            # 通知ファイルが存在しない場合は問題なし
-            pass
-        except json.JSONDecodeError:
-            # JSONが不正な場合は警告してスキップ
+            from line_integration import load_subscriptions
+            subs = load_subscriptions()
+            for _sub_key, sub in subs.items():
+                if not sub.get('notify_enabled'):
+                    continue
+                registered = sub.get('spots', [])
+                nicknames = sub.get('spot_nicknames', {})
+                if name in registered or name in nicknames.values():
+                    return jsonify({
+                        "status": "error",
+                        "message": "この干場はLINE通知に登録しているユーザーがいるため削除できません。登録者が「登録解除 呼び名」でLINEから解除してから再度お試しください。",
+                        "restriction_type": "line_subscribed"
+                    }), 403
+        except Exception:
+            # LINE連携未設定・Upstash接続失敗時は安全側に倒してスキップ
             pass
 
         # 制限4: 同時編集ロックチェック（簡易版）

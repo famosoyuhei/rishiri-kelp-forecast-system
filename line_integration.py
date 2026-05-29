@@ -840,16 +840,18 @@ def handle_register_spot_nickname(source_type: str, source_id: str,
             'notify_enabled': True,
         })
 
+    _undo_hint = f'\n\n解除するときは「登録解除 {nickname}」と送ってください。'
+
     if newly_added and old_nick:
         msg = (
             f'✓ 呼び名を「{old_nick}」→「{nickname}」に変更し、\n'
             '通知リストに追加しました！\n'
-            '毎日16:00と01:30に乾燥予報をお届けします。'
+            f'毎日16:00と01:30に乾燥予報をお届けします。{_undo_hint}'
         )
     elif newly_added:
         msg = (
             f'✓ 「{nickname}」を通知リストに追加しました！\n'
-            '毎日16:00と01:30に乾燥予報をお届けします。'
+            f'毎日16:00と01:30に乾燥予報をお届けします。{_undo_hint}'
         )
     elif old_nick:
         msg = f'✓ 呼び名を「{old_nick}」→「{nickname}」に変更しました。'
