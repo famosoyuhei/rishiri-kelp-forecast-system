@@ -2202,6 +2202,13 @@ def generate_rich_menu_image(path: str) -> bool:
             try:
                 f = ImageFont.truetype(fp, size)
                 logger.debug('Rich menu font loaded: %s @ %d', fp, size)
+                # バリアブルフォント: Black(900)を指定して極太に
+                for axes_val in ([900.0], [700.0]):
+                    try:
+                        f.set_variation_by_axes(axes_val)
+                        break
+                    except Exception:
+                        pass
                 return f
             except Exception:
                 continue
@@ -2210,19 +2217,22 @@ def generate_rich_menu_image(path: str) -> bool:
         except Exception:
             return ImageFont.load_default()
 
-    font_large = _try_font(160)   # top line (大)
-    font_small = _try_font(90)    # bottom line (小)
+    font_large = _try_font(220)   # top line — 太字・大きめ
+    font_small = _try_font(140)   # bottom line
 
     img = Image.new('RGB', (W, H), '#0f172a')
     draw = ImageDraw.Draw(img)
 
     def _draw_centered(text: str, font, cx: int, cy: int) -> None:
-        """Draw *text* centered at (cx, cy)."""
+        """Draw *text* centered at (cx, cy) with dark stroke for depth."""
         try:
             bbox = draw.textbbox((0, 0), text, font=font)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.text((cx - tw // 2, cy - th // 2), text,
-                      fill='#ffffff', font=font)
+            x = cx - tw // 2 - bbox[0]
+            y = cy - th // 2 - bbox[1]
+            # ストローク（影）で白文字の縁取り → 視認性UP
+            draw.text((x, y), text, fill='#ffffff', font=font,
+                      stroke_width=8, stroke_fill='#0a0a1a')
         except Exception as exc:
             logger.debug('_draw_centered failed for %r: %s', text, exc)
 
@@ -2236,15 +2246,14 @@ def generate_rich_menu_image(path: str) -> bool:
 
         # Button background
         try:
-            draw.rounded_rectangle([x1, y1, x2, y2], radius=24,
-                                   fill=color, outline='#e2e8f0', width=4)
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=40,
+                                   fill=color, outline='#e2e8f0', width=6)
         except AttributeError:
-            draw.rectangle([x1, y1, x2, y2], fill=color, outline='#e2e8f0', width=4)
+            draw.rectangle([x1, y1, x2, y2], fill=color, outline='#e2e8f0', width=6)
 
-        # Two-line text: line1 upper, line2 lower
-        gap = 20   # pixels between the two lines
-        _draw_centered(line1, font_large, cx, cy - 60)
-        _draw_centered(line2, font_small,  cx, cy + 80)
+        # Two-line text: line1 upper (大), line2 lower (小)
+        _draw_centered(line1, font_large, cx, cy - 85)
+        _draw_centered(line2, font_small,  cx, cy + 125)
 
     import os as _os
     _os.makedirs(_os.path.dirname(path), exist_ok=True)
