@@ -2152,10 +2152,11 @@ def generate_rich_menu_image(path: str) -> bool:
     """
     Generate a 2500×1686 rich menu PNG with 6 colored button areas.
 
-    Attempts to render Japanese labels using:
-    1. Windows Japanese fonts (meiryo / msgothic / YuGothB)
-    2. Linux Noto Sans CJK (Render/Debian)
-    3. Pillow built-in fallback (ASCII labels only)
+    Renders Japanese labels only (no emoji) for maximum compatibility.
+    Font search order:
+      1. Windows Japanese fonts (local dev)
+      2. Linux Noto Sans CJK (Render/Debian — installed via apt-get)
+      3. Pillow built-in bitmap fallback (ASCII short labels)
 
     Returns True on success.
     """
@@ -2169,18 +2170,20 @@ def generate_rich_menu_image(path: str) -> bool:
     BW, BH = W // 3, H // 2
     BORDER = 8
 
-    # Button definitions: (col, row, bg_color, emoji, ja_label, ascii_fallback)
+    # Button definitions: (col, row, bg_color, line1, line2)
+    # Two-line layout: short top line (大) + detail bottom line (小)
+    # 絵文字は除外 — Pillow on Linux ではカラー絵文字フォントが不安定
     BTNS = [
-        (0, 0, '#1d4ed8', '☀️', '今日の予報', 'TODAY'),
-        (1, 0, '#0369a1', '📅', '明日の予報', 'TMRW'),
-        (2, 0, '#0e7490', '📊', '今週の予報', 'WEEK'),
-        (0, 1, '#15803d', '📝', '干し記録',    'REC'),
-        (1, 1, '#7c3aed', '📍', '干場登録',    'REG'),
-        (2, 1, '#0d9488', '🌐', 'アプリを開く', 'APP'),
+        (0, 0, '#1d4ed8', '今日',     '予報'),
+        (1, 0, '#0369a1', '明日',     '予報'),
+        (2, 0, '#0e7490', '今週',     '予報'),
+        (0, 1, '#15803d', '干し',     '記録'),
+        (1, 1, '#7c3aed', '干場',     '登録'),
+        (2, 1, '#0d9488', 'アプリ',   'を開く'),
     ]
 
-    # Font search order: prefer Japanese fonts
-    _FONT_PATHS_LARGE = [
+    # Font search paths — Japanese first, ASCII fallback last
+    _FONT_PATHS = [
         'C:/Windows/Fonts/meiryo.ttc',
         'C:/Windows/Fonts/msgothic.ttc',
         'C:/Windows/Fonts/YuGothB.ttc',
@@ -2192,9 +2195,11 @@ def generate_rich_menu_image(path: str) -> bool:
     ]
 
     def _try_font(size: int):
-        for fp in _FONT_PATHS_LARGE:
+        for fp in _FONT_PATHS:
             try:
-                return ImageFont.truetype(fp, size)
+                f = ImageFont.truetype(fp, size)
+                logger.debug('Rich menu font loaded: %s @ %d', fp, size)
+                return f
             except Exception:
                 continue
         try:
@@ -2202,69 +2207,47 @@ def generate_rich_menu_image(path: str) -> bool:
         except Exception:
             return ImageFont.load_default()
 
-    font_emoji = _try_font(120)   # emoji / large text
-    font_label = _try_font(72)    # Japanese label below emoji
-    font_ascii = _try_font(60)    # ASCII fallback
+    font_large = _try_font(160)   # top line (大)
+    font_small = _try_font(90)    # bottom line (小)
 
-    img = Image.new('RGB', (W, H), '#0f172a')   # dark slate background
+    img = Image.new('RGB', (W, H), '#0f172a')
     draw = ImageDraw.Draw(img)
 
-    for col, row, color, emoji, ja_label, ascii_label in BTNS:
+    def _draw_centered(text: str, font, cx: int, cy: int) -> None:
+        """Draw *text* centered at (cx, cy)."""
+        try:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            draw.text((cx - tw // 2, cy - th // 2), text,
+                      fill='#ffffff', font=font)
+        except Exception as exc:
+            logger.debug('_draw_centered failed for %r: %s', text, exc)
+
+    for col, row, color, line1, line2 in BTNS:
         x1 = col * BW + BORDER
         y1 = row * BH + BORDER
         x2 = (col + 1) * BW - BORDER
         y2 = (row + 1) * BH - BORDER
-        bw = x2 - x1
-        bh = y2 - y1
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
 
         # Button background
         try:
-            draw.rounded_rectangle([x1, y1, x2, y2], radius=20,
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=24,
                                    fill=color, outline='#e2e8f0', width=4)
         except AttributeError:
             draw.rectangle([x1, y1, x2, y2], fill=color, outline='#e2e8f0', width=4)
 
-        # Emoji — upper half of button
-        try:
-            bbox = draw.textbbox((0, 0), emoji, font=font_emoji)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            draw.text(
-                (x1 + (bw - tw) // 2, y1 + bh // 4 - th // 2),
-                emoji, fill='#ffffff', font=font_emoji,
-            )
-        except Exception:
-            pass
-
-        # Japanese label — lower half of button
-        rendered = False
-        try:
-            bbox = draw.textbbox((0, 0), ja_label, font=font_label)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            if tw < bw * 0.9:           # fits in button width
-                draw.text(
-                    (x1 + (bw - tw) // 2, y1 + bh * 3 // 4 - th // 2),
-                    ja_label, fill='#ffffff', font=font_label,
-                )
-                rendered = True
-        except Exception:
-            pass
-
-        if not rendered:
-            # ASCII fallback
-            try:
-                bbox = draw.textbbox((0, 0), ascii_label, font=font_ascii)
-                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                draw.text(
-                    (x1 + (bw - tw) // 2, y1 + bh * 3 // 4 - th // 2),
-                    ascii_label, fill='#ffffff', font=font_ascii,
-                )
-            except Exception:
-                pass
+        # Two-line text: line1 upper, line2 lower
+        gap = 20   # pixels between the two lines
+        _draw_centered(line1, font_large, cx, cy - 60)
+        _draw_centered(line2, font_small,  cx, cy + 80)
 
     import os as _os
     _os.makedirs(_os.path.dirname(path), exist_ok=True)
     try:
         img.save(path, 'PNG', optimize=True)
+        logger.info('generate_rich_menu_image saved to %s', path)
         return True
     except Exception as e:
         logger.error('generate_rich_menu_image save failed: %s', e)
