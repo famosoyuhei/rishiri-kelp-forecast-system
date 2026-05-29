@@ -1587,10 +1587,11 @@ def handle_subscribe(source_type: str, source_id: str, target: str,
                 'spot_nicknames': {**cleaned, nickname: target}
             })
         display = nickname or _auto_display_name(spot)
+        undo = f'\n\n解除するときは「登録解除 {display}」と送ってください。' if display else ''
         return {
             'text': (
                 f'✓ 「{display}」を通知リストに追加しました！\n'
-                '毎日16:00と01:30に乾燥予報をお届けします。'
+                f'毎日16:00と01:30に乾燥予報をお届けします。{undo}'
             ),
             'quick_reply': _REGISTER_QR,
         }
