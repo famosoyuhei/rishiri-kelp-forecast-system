@@ -1650,24 +1650,20 @@ def delete_spot():
         if name not in df["name"].values:
             return jsonify({"status": "error", "message": "指定された干場が見つかりません"}), 404
 
-        # 制限1 & 5: 記録データ存在チェック（機械学習訓練データとしても使用）
-        # hoshiba_records.csvに記録がある = 二重フィードバックループ（ループ2）の訓練データ
+        # 制限1 & 5 / 制限3: 全ブロック理由を先にまとめて収集し、一括で返す
+        block_reasons = []
+
+        # 制限1: 記録データ存在チェック（機械学習訓練データとしても使用）
         try:
             records_df = pd.read_csv(RECORD_FILE)
             if name in records_df["name"].values:
-                return jsonify({
-                    "status": "error",
-                    "message": "この干場には記録があるため削除できません",
-                    "restriction_type": "has_records"
-                }), 403
+                block_reasons.append("乾燥記録がある")
         except FileNotFoundError:
-            # 記録ファイルが存在しない場合は問題なし
             pass
 
         # 制限2: お気に入り登録チェック（v2.6.5でお気に入り機能廃止済み・条件は削除）
 
         # 制限3: LINE通知登録チェック（v2.6.5以降、通知はLINEに一本化）
-        # Upstash Redis から全購読者を取得し、この干場を登録中のユーザーがいれば削除不可
         try:
             from line_integration import load_subscriptions
             subs = load_subscriptions()
@@ -1677,14 +1673,20 @@ def delete_spot():
                 registered = sub.get('spots', [])
                 nicknames = sub.get('spot_nicknames', {})
                 if name in registered or name in nicknames.values():
-                    return jsonify({
-                        "status": "error",
-                        "message": "この干場はLINE通知に登録しているユーザーがいるため削除できません。",
-                        "restriction_type": "line_subscribed"
-                    }), 403
+                    block_reasons.append("LINE通知に登録しているユーザーがいる")
+                    break
         except Exception:
             # LINE連携未設定・Upstash接続失敗時は安全側に倒してスキップ
             pass
+
+        if block_reasons:
+            reason_text = "・" + "\n・".join(block_reasons)
+            return jsonify({
+                "status": "error",
+                "message": f"この干場は削除できません。\n\n理由：\n{reason_text}",
+                "restriction_type": "blocked",
+                "block_reasons": block_reasons,
+            }), 403
 
         # 制限4: 同時編集ロックチェック（簡易版）
         import os
