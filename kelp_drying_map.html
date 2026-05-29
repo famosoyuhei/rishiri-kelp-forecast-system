@@ -1445,6 +1445,17 @@
                 <h3 id="selectedSpotName">干場を選択してください</h3>
                 <p id="selectedSpotLocation"></p>
                 <div id="lineRegisterBtnWrap" style="display:none; margin: 6px 0 6px;">
+                    <!-- ① LINEを未追加の方への誘導（LINE OA @766cfpki） -->
+                    <div style="font-size:0.73rem; color:#555; background:#f0faf4; border:1px solid #b2dfca; border-radius:8px; padding:6px 10px; margin-bottom:7px; line-height:1.6;">
+                        📲 まずLINEで<strong>友達追加</strong>が必要です。<br>
+                        <a id="lineAddFriendLink"
+                           href="https://line.me/R/ti/p/%40766cfpki"
+                           target="_blank" rel="noopener"
+                           style="color:#06C755; font-weight:700; text-decoration:underline;">
+                            「利尻昆布干場予報」を友達追加する →
+                        </a>
+                    </div>
+                    <!-- ② 呼び名入力→登録ボタン -->
                     <input id="lineRegisterNickInput" type="text" placeholder="呼び名を入力（例: 浜の前）"
                            maxlength="20" autocomplete="off" aria-label="干場の呼び名"
                            style="width:100%; box-sizing:border-box; padding:6px 10px; border:1.5px solid #ccc; border-radius:16px; font-size:0.8rem; outline:none; margin-bottom:5px;" />
@@ -2936,6 +2947,25 @@
             hourlyData.forEach(hour => {
                 if (hour.temperature !== null) {
                     html += `<td>${hour.solar_radiation ? Math.round(hour.solar_radiation) : '--'}</td>`;
+                }
+            });
+
+            html += `
+                                </tr>
+                                <tr class="general-row">
+                                    <td class="time-cell">🌧️ 降水量(mm)</td>
+            `;
+
+            // 降水量行（0mm=透明、>0mm=青〜赤でカラーコード）
+            hourlyData.forEach(hour => {
+                if (hour.temperature !== null) {
+                    const p = hour.precipitation ?? 0;
+                    let style = '';
+                    if (p >= 5)       style = 'background:#fce4ec;color:#b71c1c;font-weight:700;';
+                    else if (p >= 1)  style = 'background:#e3f2fd;color:#1565c0;font-weight:600;';
+                    else if (p > 0)   style = 'background:#f3f8ff;color:#1976d2;';
+                    const disp = p > 0 ? p.toFixed(1) : '<span style="color:#bbb">0</span>';
+                    html += `<td style="${style}">${disp}</td>`;
                 }
             });
 
@@ -6874,15 +6904,23 @@
     </div>
     <script>
     (function() {
-      if (sessionStorage.getItem('lineBannerDismissed')) return;
       fetch('/api/line/status')
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
-          if (!data || !data.line_enabled || !data.line_add_friend_url) return;
-          var a = document.getElementById('line-add-friend-link');
-          if (a) a.href = data.line_add_friend_url;
-          var banner = document.getElementById('line-banner');
-          if (banner) banner.style.display = 'block';
+          if (!data) return;
+          // サイドパネルの友達追加リンクをenv varのURLで上書き（設定済みの場合）
+          if (data.line_add_friend_url) {
+            var sideLink = document.getElementById('lineAddFriendLink');
+            if (sideLink) sideLink.href = data.line_add_friend_url;
+          }
+          // LINE通知バナー表示（セッション中に閉じていなければ）
+          if (!sessionStorage.getItem('lineBannerDismissed') &&
+              data.line_enabled && data.line_add_friend_url) {
+            var bannerLink = document.getElementById('line-add-friend-link');
+            if (bannerLink) bannerLink.href = data.line_add_friend_url;
+            var banner = document.getElementById('line-banner');
+            if (banner) banner.style.display = 'block';
+          }
         })
         .catch(function() { /* サーバー未起動時などは無視 */ });
     })();

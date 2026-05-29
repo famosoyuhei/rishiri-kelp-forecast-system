@@ -2,10 +2,10 @@
 // Version 2.6.6 - favorites変数参照バグ修正・チャットボット更新
 
 // Production configuration
-// ★ v2.6.7: ポップアップボタン→パネル自動スクロール修正（モバイル）
-const CACHE_NAME = 'rishiri-kelp-v2-6-7';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-7';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-7';
+// ★ v2.6.8: LINE予報に追加干場ヒント・一般タブ降水量行・友達追加誘導
+const CACHE_NAME = 'rishiri-kelp-v2-6-8';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-8';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-8';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

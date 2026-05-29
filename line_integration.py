@@ -622,10 +622,12 @@ def handle_record_start(source_type: str, source_id: str) -> str:
         lines.append('\n登録済み干場:')
         for nick, sid in list(nicknames.items())[:8]:
             lines.append(f'  {nick}（{sid}）')
+        lines.append('\n他の干場を追加したい場合は「干場登録」をタップ')
     elif registered_spots:
         lines.append('\n通知登録済み干場:')
         for sid in registered_spots[:5]:
             lines.append(f'  {sid}')
+        lines.append('\n他の干場を追加したい場合は「干場登録」をタップ')
     else:
         lines.append('\n干場IDを直接入力（例: H_1631_1434）または')
         lines.append('「干場登録 ニックネーム H_ID」で名前を登録できます。')
@@ -1348,6 +1350,9 @@ def handle_select_spot_flow(source_type: str, source_id: str, text: str):
     )
 
 
+_ADD_SPOT_HINT = '📍 他の干場も追加したい場合はリッチメニュー「干場登録」からどうぞ。'
+
+
 def handle_today(source_type: str, source_id: str) -> str:
     spots = _get_sub_spots(source_type, source_id)
     if not spots:
@@ -1360,6 +1365,7 @@ def handle_today(source_type: str, source_id: str) -> str:
             msgs.append(format_single_day(display, forecasts[0]))
         else:
             msgs.append(f'{display}: 予報取得失敗')
+    msgs.append(_ADD_SPOT_HINT)
     return '\n\n'.join(msgs)
 
 
@@ -1375,6 +1381,7 @@ def handle_tomorrow(source_type: str, source_id: str) -> str:
             msgs.append(format_single_day(display, forecasts[1]))
         else:
             msgs.append(f'{display}: 予報取得失敗')
+    msgs.append(_ADD_SPOT_HINT)
     return '\n\n'.join(msgs)
 
 
@@ -1390,6 +1397,7 @@ def handle_weekly(source_type: str, source_id: str) -> str:
             msgs.append(format_weekly_summary(display, forecasts))
         else:
             msgs.append(f'{display}: 予報取得失敗')
+    msgs.append(_ADD_SPOT_HINT)
     return '\n\n'.join(msgs)
 
 
