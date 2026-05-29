@@ -139,31 +139,48 @@ def _upstash_get(key: str):
         resp = _requests.get(
             f'{_upstash_url()}/get/{key}',
             headers={'Authorization': f'Bearer {_upstash_token()}'},
-            timeout=5,
+            timeout=8,
         )
+        logger.info('Upstash GET %s → HTTP %s', key, resp.status_code)
+        if resp.status_code != 200:
+            logger.error('Upstash GET non-200: %s %s', resp.status_code, resp.text[:200])
+            return None
         data = resp.json()
         raw = data.get('result')
         if raw is None:
+            logger.info('Upstash GET %s → key not found (null)', key)
             return None
-        return json.loads(raw)
+        if isinstance(raw, (dict, list)):
+            # Upstash returned already-parsed JSON — return directly
+            logger.info('Upstash GET %s → dict/list result, %d top-level keys', key, len(raw))
+            return raw
+        parsed = json.loads(raw)
+        logger.info('Upstash GET %s → string result, %d top-level keys', key, len(parsed) if isinstance(parsed, dict) else -1)
+        return parsed
     except Exception as e:
         logger.error('Upstash GET failed: %s', e)
         return None
 
 
 def _upstash_set(key: str, value) -> bool:
-    """SET a value in Upstash Redis. Value is JSON-encoded."""
+    """SET a value in Upstash Redis. Value is stored as a JSON string."""
     try:
+        body = json.dumps(value, ensure_ascii=False)
         resp = _requests.post(
             f'{_upstash_url()}/set/{key}',
             headers={
                 'Authorization': f'Bearer {_upstash_token()}',
                 'Content-Type': 'application/json',
             },
-            json=json.dumps(value, ensure_ascii=False),
-            timeout=5,
+            data=body.encode('utf-8'),
+            timeout=8,
         )
-        return resp.json().get('result') == 'OK'
+        logger.info('Upstash SET %s → HTTP %s body=%s', key, resp.status_code, resp.text[:100])
+        result = resp.json()
+        ok = result.get('result') == 'OK'
+        if not ok:
+            logger.error('Upstash SET returned non-OK: %s', result)
+        return ok
     except Exception as e:
         logger.error('Upstash SET failed: %s', e)
         return False
@@ -171,10 +188,14 @@ def _upstash_set(key: str, value) -> bool:
 
 def load_subscriptions() -> dict:
     if _upstash_available():
+        logger.info('load_subscriptions: Upstash available, fetching key=%s', _UPSTASH_REDIS_KEY)
         data = _upstash_get(_UPSTASH_REDIS_KEY)
         if data is not None:
+            logger.info('load_subscriptions: loaded %d entries from Upstash', len(data))
             return data
-        # Fall through to local file on cache miss
+        logger.warning('load_subscriptions: Upstash returned None, falling back to local file')
+    else:
+        logger.warning('load_subscriptions: Upstash NOT available (env vars missing?), using local file')
     if not os.path.exists(SUBSCRIPTIONS_FILE):
         return {}
     try:
@@ -187,11 +208,15 @@ def load_subscriptions() -> dict:
 
 def save_subscriptions(subs: dict) -> None:
     if _upstash_available():
+        logger.info('save_subscriptions: saving %d entries to Upstash', len(subs))
         ok = _upstash_set(_UPSTASH_REDIS_KEY, subs)
         if not ok:
-            logger.error('Upstash save failed; falling back to local file')
+            logger.error('save_subscriptions: Upstash save FAILED, falling back to local file')
         else:
+            logger.info('save_subscriptions: Upstash save OK')
             return
+    else:
+        logger.warning('save_subscriptions: Upstash NOT available, saving to local file (will be lost on redeploy!)')
     try:
         with open(SUBSCRIPTIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(subs, f, ensure_ascii=False, indent=2)
@@ -2134,8 +2159,59 @@ def get_status():
         'line_add_friend_url': cfg['add_friend_url'],
         'total_subscriptions': len(subs),
         'active_subscriptions': enabled_count,
+        'upstash_available': _upstash_available(),
         'status': 'ok' if cfg['enabled'] else 'disabled',
     })
+
+
+def get_debug():
+    """Diagnostic endpoint — tests Upstash read/write and returns details.
+    Protected by LINE_ADMIN_NOTIFY_SECRET via caller."""
+    from flask import request, jsonify  # noqa: PLC0415
+
+    # Auth guard
+    secret = _cfg().get('admin_secret', '')
+    provided = request.headers.get('X-Notify-Secret') or (request.json or {}).get('secret', '')
+    if secret and provided != secret:
+        return jsonify({'error': 'unauthorized'}), 403
+
+    result = {
+        'upstash_url_set': bool(_upstash_url()),
+        'upstash_token_set': bool(_upstash_token()),
+        'upstash_available': _upstash_available(),
+    }
+
+    if not _upstash_available():
+        result['verdict'] = 'FAIL: Upstash env vars not set — data saving to local file (lost on redeploy)'
+        return jsonify(result)
+
+    # Test write
+    test_key = 'line_debug_test'
+    test_val = {'test': True, 'ts': str(__import__('datetime').datetime.utcnow())}
+    write_ok = _upstash_set(test_key, test_val)
+    result['test_write_ok'] = write_ok
+
+    # Test read-back
+    if write_ok:
+        read_back = _upstash_get(test_key)
+        result['test_read_ok'] = read_back == test_val
+        result['test_read_value'] = read_back
+    else:
+        result['test_read_ok'] = False
+
+    # Read actual subscriptions key
+    raw_subs = _upstash_get(_UPSTASH_REDIS_KEY)
+    result['subscriptions_key_found'] = raw_subs is not None
+    result['subscriptions_count'] = len(raw_subs) if isinstance(raw_subs, dict) else 0
+
+    if write_ok and result.get('test_read_ok'):
+        result['verdict'] = 'OK: Upstash read/write working'
+    elif write_ok:
+        result['verdict'] = 'WARN: write OK but read-back failed — possible encoding mismatch'
+    else:
+        result['verdict'] = 'FAIL: Upstash write failed — check credentials'
+
+    return jsonify(result)
 
 
 def handle_notify():

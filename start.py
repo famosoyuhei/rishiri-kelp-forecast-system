@@ -530,7 +530,7 @@ def api_info():
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.6.11',
+        'version': '2.6.12',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -570,7 +570,7 @@ def api_info():
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'version': '2.6.11'}, 200
+    return {'status': 'healthy', 'version': '2.6.12'}, 200
 
 @app.route('/api/weather')
 def get_weather():
@@ -5750,6 +5750,13 @@ def line_status():
     """Return LINE integration status. Never exposes secrets."""
     from line_integration import get_status
     return get_status()
+
+
+@app.route('/api/line/debug', methods=['GET', 'POST'])
+def line_debug():
+    """Upstash connectivity diagnostic. Requires X-Notify-Secret header."""
+    from line_integration import get_debug
+    return get_debug()
 
 
 @app.route('/api/line/notify', methods=['POST'])
