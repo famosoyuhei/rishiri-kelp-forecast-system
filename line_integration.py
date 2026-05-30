@@ -1257,6 +1257,35 @@ def parse_command(text: str) -> dict:
 # Command handlers
 # ---------------------------------------------------------------------------
 
+_WELCOME_TEXT = """\
+利尻島昆布干場予報へようこそ🌿
+
+干場ごとの乾燥適性を毎日お届けします。
+
+━━ 通知タイミング ━━
+🌇 毎日16:00 → 翌日の予報
+🌙 毎日01:30 → 当日の最新予報
+
+━━ 使い方 ━━
+① 下のリンクから地図を開く
+② 干場のマーカーをタップ
+③「LINE通知登録」→ 呼び名を入力
+④ LINEに送信 → 登録完了！
+
+🗺️ https://rishiri-kelp-forecast-system.onrender.com
+
+━━ コマンド一覧 ━━
+「今日」「明日」「今週」→ 乾燥予報
+「沓形」「鴛泊」など → 地区の予報
+「干場一覧」→ 登録中の干場
+「登録解除 呼び名」→ 個別解除
+「通知解除」→ 全解除
+「記録」→ 乾燥記録の入力
+「沖止め」「沖止め 6/25」→ 沖止め登録
+「漁期開始 6/15」「漁期終了 9/5」→ 通知期間の設定
+「設定確認」→ 現在の設定
+「ヘルプ」→ コマンド一覧を再表示"""
+
 _HELP_TEXT = """\
 【コマンド早見表】
 「今日」「明日」「今週」→ 干場の乾燥予報
@@ -2001,17 +2030,17 @@ def process_event(event: dict) -> None:
         return
 
     if event_type == 'follow':
-        # User added the official account
+        # User added the official account → 歓迎メッセージ（使い方込み）
         upsert_subscription(source_type, source_id, {'notify_enabled': True})
         if reply_token:
-            reply_with_quick_reply(reply_token, _HELP_TEXT, _HELP_QR)
+            reply_with_quick_reply(reply_token, _WELCOME_TEXT, _HELP_QR)
         return
 
     if event_type == 'join':
-        # Bot joined a group/room
+        # Bot joined a group/room → 歓迎メッセージ（使い方込み）
         upsert_subscription(source_type, source_id, {'notify_enabled': True})
         if reply_token:
-            reply_with_quick_reply(reply_token, _HELP_TEXT, _HELP_QR)
+            reply_with_quick_reply(reply_token, _WELCOME_TEXT, _HELP_QR)
         return
 
     if event_type == 'leave':
