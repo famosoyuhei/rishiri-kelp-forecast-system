@@ -1793,12 +1793,31 @@ def merge_records_with_spots(records_df, spots_df):
 # ── 予報精度フィードバック ──────────────────────────────────────────────────────
 FEEDBACK_FILE = os.path.join(BASE_DIR, "feedback_log.csv")
 FEEDBACK_COLUMNS = [
-    "date", "spot_name",
-    "actual_result", "actual_label",          # 実記録
-    "forecast_score", "forecast_suitability", "forecast_label",  # 予報
-    "judgment_correct",                        # 判定の正誤 (True/False)
-    "days_ahead",                              # 何日前の予報か
-    "recorded_at",
+    # ── キー ──────────────────────────────────────────────────────────────
+    "date",                     # 対象日 (YYYY-MM-DD)
+    "spot_name",                # 干場名
+    "days_ahead",               # 何日前に出した予報か (0=当日朝)
+    # ── 実測降水量（Open-Meteo Archive / 沓形局基準）────────────────────
+    "actual_precip_0416_mm",    # 04:00-16:00 実測降水量合計 (mm)
+    "actual_precip_total_mm",   # 全日 実測降水量合計 (mm)
+    "actual_rain_0416",         # 04:00-16:00 に降水あり (True/False)
+    # ── 予報降水量 ────────────────────────────────────────────────────────
+    "forecast_precip_mm",       # 予報降水量・全日 (mm)
+    "forecast_rain",            # 予報で降水あり (True/False)
+    # ── 降水予報正誤 ──────────────────────────────────────────────────────
+    "precip_forecast_correct",  # 降水有無の二値判定が合っていたか (True/False)
+    # ── 乾燥スコア系 ──────────────────────────────────────────────────────
+    "forecast_score",           # 予報乾燥スコア
+    "forecast_suitability",     # excellent/good/fair/poor
+    "forecast_label",           # 可/不可
+    # ── 干し記録（ユーザー入力、任意）────────────────────────────────────
+    "actual_result",            # 完全乾燥/概ね乾燥/不可 etc.
+    "actual_label",             # 可/不可
+    "judgment_correct",         # 乾燥可否の判定正誤 (True/False)
+    "has_drying_record",        # 干し記録があるか (True/False)
+    # ── メタデータ ────────────────────────────────────────────────────────
+    "data_source",              # openmeteo_archive / jma_realtime
+    "recorded_at",              # ログ追記日時
 ]
 
 def _result_to_label(result):
@@ -1857,10 +1876,11 @@ def _record_forecast_feedback(name, date_str, result):
                 except ValueError:
                     days_ahead = None
 
-                fc_score = fc_data.get('drying_score')
-                fc_suit = fc_data.get('suitability', '')
-                fc_label = _suitability_to_label(fc_suit)
-                correct = (actual_label == fc_label)
+                fc_score  = fc_data.get('drying_score')
+                fc_suit   = fc_data.get('suitability', '')
+                fc_precip = fc_data.get('precipitation') or 0.0
+                fc_label  = _suitability_to_label(fc_suit)
+                correct   = (actual_label == fc_label)
 
                 # 同一 date + spot_name + days_ahead の行は上書き（訂正対応）
                 mask = (
@@ -1869,22 +1889,27 @@ def _record_forecast_feedback(name, date_str, result):
                     (fb_df['days_ahead'] == days_ahead)
                 )
                 if mask.any():
-                    fb_df.loc[mask, 'actual_result']       = result
-                    fb_df.loc[mask, 'actual_label']        = actual_label
-                    fb_df.loc[mask, 'judgment_correct']    = correct
-                    fb_df.loc[mask, 'recorded_at']         = now_jst
+                    # 干し記録フィールドのみ更新（降水照合フィールドは _auto_compare が担当）
+                    fb_df.loc[mask, 'actual_result']    = result
+                    fb_df.loc[mask, 'actual_label']     = actual_label
+                    fb_df.loc[mask, 'judgment_correct'] = correct
+                    fb_df.loc[mask, 'has_drying_record'] = True
+                    fb_df.loc[mask, 'recorded_at']      = now_jst
                 else:
                     new_rows.append({
-                        'date':                 date_str,
-                        'spot_name':            name,
-                        'actual_result':        result,
-                        'actual_label':         actual_label,
-                        'forecast_score':       fc_score,
-                        'forecast_suitability': fc_suit,
-                        'forecast_label':       fc_label,
-                        'judgment_correct':     correct,
-                        'days_ahead':           days_ahead,
-                        'recorded_at':          now_jst,
+                        'date':                  date_str,
+                        'spot_name':             name,
+                        'days_ahead':            days_ahead,
+                        'actual_result':         result,
+                        'actual_label':          actual_label,
+                        'forecast_score':        fc_score,
+                        'forecast_suitability':  fc_suit,
+                        'forecast_precip_mm':    fc_precip,
+                        'forecast_rain':         fc_precip > 0.0,
+                        'forecast_label':        fc_label,
+                        'judgment_correct':      correct,
+                        'has_drying_record':     True,
+                        'recorded_at':           now_jst,
                     })
             except Exception as e:
                 print(f'[feedback] parse error {fc_file}: {e}')
@@ -4406,6 +4431,44 @@ def get_forecast_accuracy():
                     }
         except Exception as _e:
             print(f'[accuracy] feedback_log read error: {_e}')
+        # ── 降水予報精度（feedback_log.csv の precip 列） ─────────────────────
+        precip_accuracy = {}
+        precip_overall  = None
+        try:
+            if os.path.exists(FEEDBACK_FILE):
+                fb_df_p = pd.read_csv(FEEDBACK_FILE)
+                if not fb_df_p.empty and 'precip_forecast_correct' in fb_df_p.columns:
+                    p_valid = fb_df_p.dropna(subset=['precip_forecast_correct',
+                                                      'actual_rain_0416', 'forecast_rain'])
+                    if not p_valid.empty:
+                        total_p  = len(p_valid)
+                        correct_p = int(p_valid['precip_forecast_correct'].sum())
+                        # 降水なし予報 → 実際も降水なし（最重要: 干せた日の裏付け）
+                        no_rain_fc   = p_valid[p_valid['forecast_rain'] == False]
+                        no_rain_ok   = int((no_rain_fc['actual_rain_0416'] == False).sum())
+                        # 降水あり予報 → 実際も降水あり
+                        rain_fc      = p_valid[p_valid['forecast_rain'] == True]
+                        rain_ok      = int((rain_fc['actual_rain_0416'] == True).sum())
+                        # 見逃し: 「降水なし予報」なのに実際は雨 → 昆布が濡れたリスク
+                        missed_rain  = int((no_rain_fc['actual_rain_0416'] == True).sum())
+                        # 空振り: 「降水あり予報」なのに晴れ → 干す機会を逃した
+                        false_alarm  = int((rain_fc['actual_rain_0416'] == False).sum())
+                        precip_overall = {
+                            'total':               total_p,
+                            'correct':             correct_p,
+                            'accuracy_pct':        round(correct_p / total_p * 100, 1),
+                            'no_rain_forecast_cnt':     len(no_rain_fc),
+                            'no_rain_confirmed_cnt':    no_rain_ok,
+                            'no_rain_precision_pct':    round(no_rain_ok / len(no_rain_fc) * 100, 1)
+                                                        if len(no_rain_fc) > 0 else None,
+                            'rain_forecast_cnt':        len(rain_fc),
+                            'rain_confirmed_cnt':       rain_ok,
+                            'missed_rain_cnt':          missed_rain,   # 危険: 昆布が濡れた可能性
+                            'false_alarm_cnt':          false_alarm,   # 機会損失: 晴れなのに干さなかった
+                            'window': '04:00-16:00 JST 実測（Open-Meteo Archive 沓形局）',
+                        }
+        except Exception as _pe:
+            print(f'[accuracy] precip feedback error: {_pe}')
         # ──────────────────────────────────────────────────────────────────────
 
         return jsonify({
@@ -4420,8 +4483,11 @@ def get_forecast_accuracy():
             },
             'judgment_accuracy_by_day': judgment_accuracy,
             'judgment_accuracy_overall': judgment_overall,
+            'precip_forecast_accuracy': precip_overall,   # 降水有無の二値予報精度（最重要）
             'data_source': '沓形アメダス(11151) vs 予報データ比較 + hoshiba_records.csv 実記録',
-            'methodology': '(1) 気温・湿度・風速のMAEによる数値精度スコア  (2) 干せた/干せないの判定正誤率（feedback_log.csv）',
+            'methodology': ('(1) 気温・湿度・風速のMAEによる数値精度スコア '
+                            '(2) 干せた/干せないの判定正誤率（feedback_log.csv）'
+                            '(3) 降水有無の二値予報精度（04:00-16:00 実測vs予報）'),
             'note': 'アメダスデータがない期間は仕様書の理論精度値を使用'
         })
 
@@ -4504,7 +4570,10 @@ def collect_amedas():
     for i in range(1, days + 1):
         target = (datetime.now(tz=JST) - timedelta(days=i)).strftime('%Y%m%d')
         ok = _collect_amedas_from_openmeteo(target)
-        results.append({'date': target, 'success': ok})
+        compared = 0
+        if ok:
+            compared = _auto_compare_precip_forecast(target)
+        results.append({'date': target, 'success': ok, 'feedback_rows': compared})
     return jsonify({'status': 'ok', 'results': results})
 
 
@@ -4520,7 +4589,180 @@ def _daily_amedas_collection():
             next_run = next_run + timedelta(days=1)
         time.sleep((next_run - now).total_seconds())
         yesterday = (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
-        _collect_amedas_from_openmeteo(yesterday)
+        ok = _collect_amedas_from_openmeteo(yesterday)
+        if ok:
+            _auto_compare_precip_forecast(yesterday)
+
+
+def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> int:
+    """実測降水量（04:00-16:00）と予報降水量を自動照合し feedback_log.csv に記録する。
+
+    毎日 _daily_amedas_collection() から呼ばれる（03:00 JST）。
+    手動で /api/collect_amedas?days=N を叩いた後にも自動実行される。
+
+    処理フロー:
+    1. amedas_data/amedas_{station_id}_{date_str}.json を読む
+    2. 04:00-16:00 JST の時間帯の降水量を合計する（昆布干し時間帯）
+    3. 対象日に予報を保存した全干場の forecast_history/ を走査
+    4. 予報降水量 vs 実測降水量（有雨/無雨）の正誤を判定
+    5. hoshiba_records.csv と照合して干し記録の有無を付加
+    6. feedback_log.csv を upsert（date + spot + days_ahead がキー）
+
+    Args:
+        date_str: 対象日 YYYYMMDD
+        station_id: アメダス局ID（デフォルト沓形 11151）
+    Returns:
+        新規または更新したフィードバック行数
+    """
+    import glob as _glob
+    import csv as _csv
+
+    amedas_path = os.path.join(AMEDAS_DATA_DIR, f'amedas_{station_id}_{date_str}.json')
+    if not os.path.exists(amedas_path):
+        print(f'[auto_compare] {amedas_path} not found, skip')
+        return 0
+
+    # ── 1. 実測降水量を抽出（04:00-16:00 JST = インデックス4-16） ──────────
+    try:
+        with open(amedas_path, 'r', encoding='utf-8') as f:
+            amedas = json.load(f)
+    except Exception as e:
+        print(f'[auto_compare] read error {amedas_path}: {e}')
+        return 0
+
+    hourly = amedas.get('hourly', [])
+    # "YYYY-MM-DDTHH:MM" 形式。04:00〜16:00 JST（時刻文字列のHH部分で判定）
+    precip_0416 = [
+        h.get('precipitation') or 0.0
+        for h in hourly
+        if h.get('time', '')[-5:] >= '04:00' and h.get('time', '')[-5:] <= '16:00'
+    ]
+    actual_precip_0416 = round(sum(precip_0416), 2)
+    actual_precip_total = amedas.get('daily_summary', {}).get('total_precipitation') or 0.0
+    actual_rain_0416 = actual_precip_0416 > 0.0
+
+    # ── 2. forecast_history/ を走査して対象日の予報ファイルを収集 ──────────
+    # パターン: forecast_history/{spot}/forecast_*_for_{date_str}.json
+    fc_pattern = os.path.join(FORECAST_HISTORY_DIR, '*',
+                              f'forecast_*_for_{date_str}.json')
+    fc_files = _glob.glob(fc_pattern)
+
+    if not fc_files:
+        print(f'[auto_compare] no forecast_history for {date_str}')
+        return 0
+
+    # ── 3. 干し記録（records）を事前に日付で絞り込む ─────────────────────
+    target_date_fmt = f'{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}'  # YYYY-MM-DD
+    records_on_date: dict[str, str] = {}  # spot_name → result
+    try:
+        if os.path.exists(RECORD_FILE):
+            with open(RECORD_FILE, 'r', encoding='utf-8') as rf:
+                for row in _csv.DictReader(rf):
+                    if row.get('date') == target_date_fmt and row.get('name'):
+                        records_on_date[row['name']] = row.get('result', '')
+    except Exception as re:
+        print(f'[auto_compare] records read error: {re}')
+
+    # ── 4. 既存 feedback_log を読み込む ──────────────────────────────────
+    if os.path.exists(FEEDBACK_FILE):
+        try:
+            fb_df = pd.read_csv(FEEDBACK_FILE)
+            for col in FEEDBACK_COLUMNS:
+                if col not in fb_df.columns:
+                    fb_df[col] = None
+        except Exception:
+            fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
+    else:
+        fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
+
+    # ── 5. 予報ファイルごとに照合 ─────────────────────────────────────────
+    now_jst = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    updated = 0
+    new_rows = []
+
+    for fc_file in fc_files:
+        try:
+            # spot_name はパスの親ディレクトリ名
+            spot_name = os.path.basename(os.path.dirname(fc_file))
+            with open(fc_file, 'r', encoding='utf-8') as f:
+                fc = json.load(f)
+
+            forecast_date_str = fc.get('forecast_date', '')
+            try:
+                fc_dt = datetime.strptime(forecast_date_str, '%Y%m%d')
+                tg_dt = datetime.strptime(date_str, '%Y%m%d')
+                days_ahead = (tg_dt - fc_dt).days
+            except ValueError:
+                days_ahead = None
+
+            fc_precip  = fc.get('precipitation') or 0.0
+            fc_rain    = fc_precip > 0.0
+            fc_score   = fc.get('drying_score')
+            fc_suit    = fc.get('suitability', '')
+            fc_label   = _suitability_to_label(fc_suit)
+            precip_ok  = (fc_rain == actual_rain_0416)
+
+            # 干し記録があれば付加
+            rec_result = records_on_date.get(spot_name)
+            actual_label   = _result_to_label(rec_result) if rec_result else None
+            judg_correct   = (actual_label == fc_label) if actual_label else None
+            has_record     = rec_result is not None
+
+            # upsert: (date, spot_name, days_ahead) が一致する行を更新
+            mask = (
+                (fb_df['date']      == target_date_fmt) &
+                (fb_df['spot_name'] == spot_name)       &
+                (fb_df['days_ahead'] == days_ahead)
+            )
+            if mask.any():
+                # 降水照合フィールドのみ上書き（干し記録は後から _record_forecast_feedback で上書き可）
+                fb_df.loc[mask, 'actual_precip_0416_mm']  = actual_precip_0416
+                fb_df.loc[mask, 'actual_precip_total_mm'] = actual_precip_total
+                fb_df.loc[mask, 'actual_rain_0416']       = actual_rain_0416
+                fb_df.loc[mask, 'forecast_precip_mm']     = fc_precip
+                fb_df.loc[mask, 'forecast_rain']          = fc_rain
+                fb_df.loc[mask, 'precip_forecast_correct'] = precip_ok
+                fb_df.loc[mask, 'data_source']            = 'openmeteo_archive'
+                fb_df.loc[mask, 'recorded_at']            = now_jst
+                if has_record:
+                    fb_df.loc[mask, 'actual_result']   = rec_result
+                    fb_df.loc[mask, 'actual_label']    = actual_label
+                    fb_df.loc[mask, 'judgment_correct'] = judg_correct
+                    fb_df.loc[mask, 'has_drying_record'] = True
+                updated += 1
+            else:
+                new_rows.append({
+                    'date':                  target_date_fmt,
+                    'spot_name':             spot_name,
+                    'days_ahead':            days_ahead,
+                    'actual_precip_0416_mm': actual_precip_0416,
+                    'actual_precip_total_mm': actual_precip_total,
+                    'actual_rain_0416':      actual_rain_0416,
+                    'forecast_precip_mm':    fc_precip,
+                    'forecast_rain':         fc_rain,
+                    'precip_forecast_correct': precip_ok,
+                    'forecast_score':        fc_score,
+                    'forecast_suitability':  fc_suit,
+                    'forecast_label':        fc_label,
+                    'actual_result':         rec_result,
+                    'actual_label':          actual_label,
+                    'judgment_correct':      judg_correct,
+                    'has_drying_record':     has_record,
+                    'data_source':           'openmeteo_archive',
+                    'recorded_at':           now_jst,
+                })
+
+        except Exception as fe:
+            print(f'[auto_compare] parse error {fc_file}: {fe}')
+
+    if new_rows:
+        fb_df = pd.concat([fb_df, pd.DataFrame(new_rows)], ignore_index=True)
+        updated += len(new_rows)
+
+    fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
+    print(f'[auto_compare] {date_str}: actual_precip_0416={actual_precip_0416}mm '
+          f'rain={actual_rain_0416} | {updated} rows written to feedback_log')
+    return updated
 
 
 def _fetch_jma_amedas_realtime() -> dict | None:
