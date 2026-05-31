@@ -6361,7 +6361,7 @@ def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
         )
         return resp.json().get('result') == 'OK'
     except Exception as e:
-        logger.warning('notify lock check failed (%s), defaulting to send', e)
+        app.logger.warning('notify lock check failed (%s), defaulting to send', e)
         return True  # on Redis error, attempt to send
 
 
@@ -6391,11 +6391,11 @@ def _scheduled_line_notify(kind: str, hour: int, minute: int) -> None:
             try:
                 from line_integration import notify_all
                 result = notify_all(kind)
-                logger.info('LINE %s notification result: %s', kind, result)
+                app.logger.info('LINE %s notification result: %s', kind, result)
             except Exception as exc:
-                logger.error('LINE %s notification failed: %s', kind, exc)
+                app.logger.error('LINE %s notification failed: %s', kind, exc)
         else:
-            logger.info(
+            app.logger.info(
                 'LINE %s notification already sent by another worker, skipping', kind
             )
 
@@ -6420,7 +6420,7 @@ def _start_background_threads():
     )
     t3.start()
 
-    logger.info(
+    app.logger.info(
         'Background threads started: amedas@03:00, line-evening@16:00, line-morning@01:30 JST'
     )
 
