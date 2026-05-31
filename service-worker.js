@@ -2,10 +2,10 @@
 // Version 2.6.6 - favorites変数参照バグ修正・チャットボット更新
 
 // Production configuration
-// ★ v2.6.12: Upstash診断エンドポイント・詳細ログ追加
-const CACHE_NAME = 'rishiri-kelp-v2-6-15';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-15';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-15';
+// ★ v2.6.15: JMA降水ナウキャスト(hrpns) /api/nowcast/precip エンドポイント追加
+const CACHE_NAME = 'rishiri-kelp-v2-6-16';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-16';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-16';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;

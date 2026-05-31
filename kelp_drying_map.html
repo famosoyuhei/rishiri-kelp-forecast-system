@@ -2401,37 +2401,67 @@
         }
 
         // ── JMAリアルタイムアメダス実測値バー ──────────────────────────────────
-        async function loadAmeDASRealtime() {
+        async function loadAmeDASRealtime(spotName) {
             const bar = document.getElementById('amedasRealtimeBar');
             if (!bar) return;
             try {
-                const res = await fetch('/api/amedas/realtime');
-                if (!res.ok) { bar.style.display = 'none'; return; }
-                const d = await res.json();
-                if (!d.stations) { bar.style.display = 'none'; return; }
+                // AMEDAS（沓形実測）とナウキャスト（干場別250mメッシュ）を並列取得
+                const [amedasRes, nowcastRes] = await Promise.allSettled([
+                    fetch('/api/amedas/realtime'),
+                    spotName ? fetch('/api/nowcast/precip') : Promise.resolve(null),
+                ]);
 
-                const st = d.stations['11151'];  // 沓形（湿度・日照あり）
-                if (!st) { bar.style.display = 'none'; return; }
+                // ── AMEDAS 沓形実測 ──────────────────────────────────────
+                let amedasHtml = '';
+                let rainNow    = false;
+                let obsTime    = '';
+                if (amedasRes.status === 'fulfilled' && amedasRes.value?.ok) {
+                    const d  = await amedasRes.value.json();
+                    const st = d?.stations?.['11151'];
+                    if (st) {
+                        const precip1h = st.precip_1h_mm ?? 0;
+                        rainNow = precip1h > 0;
+                        const rainBadge = rainNow
+                            ? `<span style="background:#d32f2f;color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:700;">🌧 降雨中 ${precip1h}mm/h</span>`
+                            : `<span style="color:#2e7d32;margin-left:6px;">☀ 降水なし</span>`;
+                        obsTime = d.observed_at ? d.observed_at.slice(11,16) + ' UTC観測' : '';
+                        amedasHtml =
+                            `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">` +
+                            `<strong>📡 実測（沓形）</strong>${rainBadge}` +
+                            `<span style="margin-left:auto;color:#888;font-size:0.72rem;">${_esc(obsTime)}</span></div>` +
+                            `<div style="margin-top:2px;">` +
+                            (st.temp_c        != null ? `🌡 ${st.temp_c}℃　` : '') +
+                            (st.humidity_pct  != null ? `💧 ${st.humidity_pct}%　` : '') +
+                            (st.wind_speed_ms != null ? `💨 ${st.wind_speed_ms}m/s ${_esc(st.wind_dir ?? '')}　` : '') +
+                            (st.precip_10m_mm != null ? `🌂 10分 ${st.precip_10m_mm}mm` : '') +
+                            `</div>`;
+                    }
+                }
 
-                const precip1h = st.precip_1h_mm ?? 0;
-                const rainNow  = precip1h > 0;
-                const rainBadge = rainNow
-                    ? `<span style="background:#d32f2f;color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:700;">🌧 現在降雨中 ${precip1h}mm/h</span>`
-                    : `<span style="color:#2e7d32;margin-left:6px;">☀ 降水なし</span>`;
+                // ── 降水ナウキャスト（この干場の250mメッシュ） ───────────
+                let nowcastHtml = '';
+                if (spotName && nowcastRes.status === 'fulfilled' && nowcastRes.value?.ok) {
+                    const nc   = await nowcastRes.value.json();
+                    const mmh  = nc?.spots?.[spotName];
+                    if (mmh != null) {
+                        const ncRain = mmh > 0;
+                        const ncBadge = ncRain
+                            ? `<span style="background:#d32f2f;color:#fff;border-radius:4px;padding:1px 5px;font-weight:700;">${mmh}mm/h</span>`
+                            : `<span style="color:#2e7d32;">0mm/h</span>`;
+                        const ncTime = nc.observed_at ? nc.observed_at.slice(11,16) + ' UTC' : '';
+                        nowcastHtml =
+                            `<div style="margin-top:3px;border-top:1px solid #c5d8f0;padding-top:3px;">` +
+                            `<strong>🛰 ナウキャスト（この干場）</strong> ${ncBadge}` +
+                            `<span style="margin-left:6px;color:#888;font-size:0.72rem;">${_esc(ncTime)}</span>` +
+                            `</div>`;
+                        if (ncRain) rainNow = true;  // 干場で雨ならバー全体を赤枠に
+                    }
+                }
 
-                const obs = d.observed_at ? d.observed_at.slice(11,16) + ' JST観測' : '';
-                bar.innerHTML =
-                    `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">` +
-                    `<strong>📡 実測値（沓形）</strong>${rainBadge}` +
-                    `<span style="margin-left:auto;color:#888;font-size:0.72rem;">${_esc(obs)}</span></div>` +
-                    `<div style="margin-top:3px;">` +
-                    (st.temp_c       != null ? `🌡 ${st.temp_c}℃　` : '') +
-                    (st.humidity_pct != null ? `💧 ${st.humidity_pct}%　` : '') +
-                    (st.wind_speed_ms!= null ? `💨 ${st.wind_speed_ms}m/s ${_esc(st.wind_dir ?? '')}　` : '') +
-                    (st.precip_10m_mm!= null ? `🌂 10分降水 ${st.precip_10m_mm}mm` : '') +
-                    `</div>`;
+                if (!amedasHtml && !nowcastHtml) { bar.style.display = 'none'; return; }
+
+                bar.innerHTML     = amedasHtml + nowcastHtml;
                 bar.style.display = 'block';
-                // 現在降雨中ならバーを赤枠にして強調
                 bar.style.borderColor = rainNow ? '#d32f2f' : '#b3d1f0';
                 bar.style.background  = rainNow ? '#fff0f0' : '#f0f7ff';
             } catch(e) {
@@ -2446,7 +2476,7 @@
 
             forecastContent.innerHTML = '<div class="loading"><div class="spinner"></div>予報データを取得中...</div>';
             forecastTabs.style.display = 'none';
-            loadAmeDASRealtime();  // 実測値バーを非同期で更新（予報取得と並列）
+            loadAmeDASRealtime(spot?.name);  // 実測値+ナウキャストバーを非同期更新（予報取得と並列）
 
             try {
                 // Enhanced API call

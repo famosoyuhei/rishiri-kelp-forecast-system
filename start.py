@@ -59,6 +59,19 @@ _JMA_WIND_DIR = {
 _AMEDAS_RT_CACHE: dict = {'data': None, 'fetched_at': None}
 _AMEDAS_RT_CACHE_TTL = 600  # 10分（JMA更新間隔に合わせる）
 
+# ── JMA 高解像度降水ナウキャスト hrpns タイル ────────────────────────────────
+HRPNS_TIMES_URL  = 'https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json'
+HRPNS_TILE_URL   = 'https://www.jma.go.jp/bosai/jmatile/data/nowc/{bt}/none/{bt}/surf/hrpns/{z}/{x}/{y}.png'
+HRPNS_TILE_Z     = 10   # ~107m/pixel at 45°N — 250mメッシュの実解像度に十分
+# カラーパレット: 実タイル(20260531)のPLTE+tRNSから確認済み (idx0,1=透明)
+# idx 2=0.1-1mm/h  (#f2f2ff)  idx 3=1-5mm/h   (#a0d2ff)
+# idx 4=5-10mm/h   (#218cff)  idx 5=10-20mm/h  (#0041ff)
+# idx 6=20-30mm/h  (#faf500)  idx 7=30-50mm/h  (#ff9900)
+# idx 8=50-80mm/h  (#ff2800)  idx 9=80+mm/h    (#b40068)
+_HRPNS_PRECIP_MID = [0.0, 0.0, 0.5, 3.0, 7.5, 15.0, 25.0, 40.0, 65.0, 80.0]
+_NOWCAST_CACHE: dict = {'data': None, 'fetched_at': None}
+_NOWCAST_CACHE_TTL = 300   # 5分（ナウキャスト更新間隔）
+
 # ============================================================================
 # Theta-e Correction System (相当温位保存による気象補正)
 # ============================================================================
@@ -550,7 +563,7 @@ def api_info():
     return {
         'message': 'Rishiri Kelp Forecast System - Production Version',
         'status': 'ok',
-        'version': '2.6.14',
+        'version': '2.6.15',
         'api_endpoints': {
             'weather': '/api/weather',
             'forecast': '/api/forecast',
@@ -565,7 +578,9 @@ def api_info():
             'add_spot': '/add',
             'delete_spot': '/delete',
             'health': '/health',
-            'info': '/api/info'
+            'info': '/api/info',
+            'amedas_realtime': '/api/amedas/realtime',
+            'nowcast_precip': '/api/nowcast/precip',
         },
         'web_ui': {
             'main': '/',
@@ -590,7 +605,7 @@ def api_info():
 
 @app.route('/health')
 def health():
-    return {'status': 'healthy', 'version': '2.6.14'}, 200
+    return {'status': 'healthy', 'version': '2.6.15'}, 200
 
 @app.route('/api/weather')
 def get_weather():
@@ -4593,6 +4608,196 @@ def get_amedas_realtime():
     data = _fetch_jma_amedas_realtime()
     if data is None:
         return jsonify({'error': 'JMA AMeDAS data unavailable'}), 503
+    return jsonify(data)
+
+
+# ── 降水ナウキャスト ヘルパー関数 ───────────────────────────────────────────
+
+def _lat_lon_to_tile_pixel(lat: float, lon: float, z: int) -> tuple[int, int, int, int]:
+    """緯度経度をWebメルカトルのタイル座標(tx,ty)とピクセル座標(px,py)に変換。
+
+    Args:
+        lat: 緯度 (度)
+        lon: 経度 (度)
+        z:   ズームレベル
+    Returns:
+        (tx, ty, px, py) — タイルインデックスとタイル内ピクセル位置 (0-255)
+    """
+    n = 2 ** z
+    x_f = (lon + 180.0) / 360.0 * n
+    lr  = math.radians(lat)
+    y_f = (1.0 - math.log(math.tan(lr) + 1.0 / math.cos(lr)) / math.pi) / 2.0 * n
+    tx, ty = int(x_f), int(y_f)
+    px, py = int((x_f - tx) * 256), int((y_f - ty) * 256)
+    return tx, ty, px, py
+
+
+def _parse_hrpns_pixel(png_bytes: bytes | None, px: int, py: int) -> float:
+    """JMA hrpns PNGタイルのピクセル(px,py)から降水量(mm/h)を返す。
+
+    JMAタイル仕様:
+    - ファイルサイズ <= 500 bytes: 全透明(降水なし) → 0.0
+    - 4-bit indexed PNG (color_type=3, bit_depth=4): PLTEパレットでデコード
+    - 8-bit RGBA PNG (color_type=6): alpha=0 → 0.0、alpha>0 → 軽雨
+
+    パレットはJMA実タイル(2026-05-31)から確認済み (_HRPNS_PRECIP_MID 参照)。
+    フィルタータイプ: JMAはフィルター0(None)のみ使用 (再構築不要)。
+    """
+    import struct as _s
+    import zlib   as _z
+
+    if not png_bytes or len(png_bytes) <= 500:
+        return 0.0   # blank tile = no rain
+
+    pos  = 8         # PNG シグネチャをスキップ
+    idat = b''
+    plte, trns = [], []
+    w = h = bd = ct = 0
+
+    while pos < len(png_bytes) - 8:
+        try:
+            ln   = _s.unpack('>I', png_bytes[pos:pos+4])[0]
+            ctyp = png_bytes[pos+4:pos+8]
+            cd   = png_bytes[pos+8:pos+8+ln]
+        except Exception:
+            break
+        if ctyp == b'IHDR':
+            w, h, bd, ct = _s.unpack('>IIBB', cd[:10])
+        elif ctyp == b'PLTE':
+            plte = [(cd[i*3], cd[i*3+1], cd[i*3+2]) for i in range(ln // 3)]
+        elif ctyp == b'tRNS':
+            trns = list(cd)
+        elif ctyp == b'IDAT':
+            idat += cd
+        elif ctyp == b'IEND':
+            break
+        pos += 12 + ln
+
+    try:
+        raw = _z.decompress(idat)
+    except Exception:
+        return 0.0
+
+    try:
+        if ct == 3 and bd == 4:
+            # 4-bit indexed — 256px幅: bytes_per_row=128, row_stride=129 (filter+data)
+            bpr  = (w * 4 + 7) // 8          # = 128
+            base = py * (1 + bpr) + 1 + px // 2
+            byte = raw[base]
+            idx  = (byte >> 4) & 0xF if px % 2 == 0 else byte & 0xF
+            # tRNS[idx]==0 → 透明 → 降水なし
+            if trns and idx < len(trns) and trns[idx] == 0:
+                return 0.0
+            return _HRPNS_PRECIP_MID[idx] if idx < len(_HRPNS_PRECIP_MID) else 0.0
+
+        elif ct == 6:
+            # 8-bit RGBA — 空タイル(全透明)はすでに上のサイズチェックで捕捉済み
+            base = py * (1 + w * 4) + 1 + px * 4
+            a    = raw[base + 3]
+            return 0.0 if a == 0 else 0.5   # alpha>0 は少なくとも軽雨
+
+    except (IndexError, Exception):
+        pass
+    return 0.0
+
+
+def _fetch_nowcast_precip_rishiri() -> dict | None:
+    """利尻島全干場（334地点）の高解像度降水ナウキャスト(250mメッシュ)を一括取得。
+
+    JMA hrpnsタイルAPIを使用。z=10では利尻島全体が2枚のタイルに収まるため、
+    334地点すべてを2回のHTTPリクエストで処理できる（効率的）。
+
+    キャッシュ: 5分間有効 (_NOWCAST_CACHE)。
+    返り値: {'basetime': str, 'observed_at': str, 'spots': {name: mm/h},
+             'tiles_fetched': int, 'max_precip_mmh': float, 'any_rain': bool}
+    """
+    import urllib.request as _ur
+    import csv
+
+    # キャッシュチェック
+    now_ts = datetime.now(tz=JST).timestamp()
+    if (_NOWCAST_CACHE['data'] is not None and
+            _NOWCAST_CACHE['fetched_at'] is not None and
+            now_ts - _NOWCAST_CACHE['fetched_at'] < _NOWCAST_CACHE_TTL):
+        return _NOWCAST_CACHE['data']
+
+    try:
+        # 1. 最新バスタイムを取得
+        req = _ur.Request(HRPNS_TIMES_URL, headers={'User-Agent': 'rishiri-kelp/2.6'})
+        with _ur.urlopen(req, timeout=8) as r:
+            times_data = json.loads(r.read())
+        basetime = times_data[0]['basetime']   # 例: "20260531041000"
+        observed = (f"{basetime[:4]}-{basetime[4:6]}-{basetime[6:8]}"
+                    f"T{basetime[8:10]}:{basetime[10:12]}:{basetime[12:14]}Z")
+
+        # 2. 全干場の座標を読み込む
+        spots = []
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                try:
+                    spots.append({'name': row['name'],
+                                  'lat':  float(row['lat']),
+                                  'lon':  float(row['lon'])})
+                except (ValueError, KeyError):
+                    pass
+
+        # 3. 必要なタイルを判定してまとめて取得（利尻島全体 = 通常2タイル）
+        z = HRPNS_TILE_Z
+        tile_bytes: dict[tuple, bytes | None] = {}
+        spot_results: dict[str, float] = {}
+
+        for sp in spots:
+            tx, ty, px, py = _lat_lon_to_tile_pixel(sp['lat'], sp['lon'], z)
+            key = (tx, ty)
+            if key not in tile_bytes:
+                url = HRPNS_TILE_URL.format(bt=basetime, z=z, x=tx, y=ty)
+                try:
+                    req2 = _ur.Request(url, headers={'User-Agent': 'rishiri-kelp/2.6'})
+                    with _ur.urlopen(req2, timeout=8) as r2:
+                        tile_bytes[key] = r2.read()
+                except Exception as tile_err:
+                    print(f'[nowcast] tile fetch error {key}: {tile_err}')
+                    tile_bytes[key] = None
+            spot_results[sp['name']] = _parse_hrpns_pixel(tile_bytes[key], px, py)
+
+        max_precip = max(spot_results.values()) if spot_results else 0.0
+        result = {
+            'basetime':       basetime,
+            'observed_at':    observed,
+            'spots':          spot_results,
+            'tiles_fetched':  len(tile_bytes),
+            'max_precip_mmh': round(max_precip, 1),
+            'any_rain':       max_precip > 0.0,
+        }
+        _NOWCAST_CACHE['data']       = result
+        _NOWCAST_CACHE['fetched_at'] = now_ts
+        return result
+
+    except Exception as e:
+        print(f'[nowcast] error: {e}')
+        return None
+
+
+@app.route('/api/nowcast/precip')
+@limiter.limit('20 per minute')
+def get_nowcast_precip():
+    """高解像度降水ナウキャスト（250mメッシュ）— 利尻島全干場の降水量一括取得。
+
+    JMA高解像度降水ナウキャスト(hrpns)タイルAPIを使用し、
+    利尻島の334地点すべてに対して5分ごとの降水強度(mm/h)を返す。
+    タイル取得はz=10で2枚のみ（全334地点を2HTTPリクエストでカバー）。
+
+    Returns:
+        basetime:        観測基準時刻 (YYYYMMDDHHmmss UTC)
+        observed_at:     観測時刻 (ISO8601 UTC)
+        spots:           {地点名: 降水量mm/h} — 全334地点
+        tiles_fetched:   取得タイル枚数 (通常2)
+        max_precip_mmh:  全地点中の最大降水量 (mm/h)
+        any_rain:        1地点でも降水があればtrue
+    """
+    data = _fetch_nowcast_precip_rishiri()
+    if data is None:
+        return jsonify({'error': 'JMA nowcast data unavailable'}), 503
     return jsonify(data)
 
 
