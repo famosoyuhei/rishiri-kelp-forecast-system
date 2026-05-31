@@ -6337,13 +6337,92 @@ def calculate_solunar_score(target_date):
 
 import threading as _threading
 
+
+def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
+    """Redis NX lock via Upstash REST to prevent duplicate notifications
+    when Gunicorn runs multiple workers.
+
+    Returns True if this worker acquired the lock (first to run),
+    False if another worker already sent the notification.
+    Falls back to True (always sends) when Upstash is not configured.
+    """
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return True  # local dev / no Redis → always send
+    try:
+        import requests as _req
+        resp = _req.post(
+            f'{rest_url}/set/{key}',
+            headers={'Authorization': f'Bearer {token}',
+                     'Content-Type': 'application/json'},
+            json=['NX', 'EX', ttl, '1'],
+            timeout=3,
+        )
+        return resp.json().get('result') == 'OK'
+    except Exception as e:
+        logger.warning('notify lock check failed (%s), defaulting to send', e)
+        return True  # on Redis error, attempt to send
+
+
+def _scheduled_line_notify(kind: str, hour: int, minute: int) -> None:
+    """Background thread: fire LINE push notifications at a fixed daily JST time.
+
+    kind  : 'evening' (翌日予報) or 'morning' (当日予報)
+    hour  : JST hour  (16 for evening, 1 for morning)
+    minute: JST minute (0 for evening, 30 for morning)
+
+    Uses a Redis NX lock so only one Gunicorn worker sends per day,
+    even when --workers > 1.
+    """
+    import time
+    from datetime import timedelta
+    while True:
+        now = datetime.now(tz=JST)
+        next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if now >= next_run:
+            next_run += timedelta(days=1)
+        time.sleep((next_run - now).total_seconds())
+
+        date_str = datetime.now(tz=JST).strftime('%Y-%m-%d')
+        lock_key = f'line_notify_lock:{kind}:{date_str}'
+
+        if _try_acquire_notify_lock(lock_key):
+            try:
+                from line_integration import notify_all
+                result = notify_all(kind)
+                logger.info('LINE %s notification result: %s', kind, result)
+            except Exception as exc:
+                logger.error('LINE %s notification failed: %s', kind, exc)
+        else:
+            logger.info(
+                'LINE %s notification already sent by another worker, skipping', kind
+            )
+
+
 def _start_background_threads():
     """Start long-running background threads.  Called once from wsgi.py so the
     thread is NOT started when the module is merely imported (e.g. in tests or
     gunicorn worker forks before application code runs)."""
-    t = _threading.Thread(target=_daily_amedas_collection, daemon=True)
-    t.daemon = True
-    t.start()
+    # Nightly AMEDAS data collection at 03:00 JST
+    t1 = _threading.Thread(target=_daily_amedas_collection, daemon=True)
+    t1.start()
+
+    # LINE evening notification at 16:00 JST (翌日予報)
+    t2 = _threading.Thread(
+        target=_scheduled_line_notify, args=('evening', 16, 0), daemon=True
+    )
+    t2.start()
+
+    # LINE morning notification at 01:30 JST (当日予報)
+    t3 = _threading.Thread(
+        target=_scheduled_line_notify, args=('morning', 1, 30), daemon=True
+    )
+    t3.start()
+
+    logger.info(
+        'Background threads started: amedas@03:00, line-evening@16:00, line-morning@01:30 JST'
+    )
 
 # ============================================================================
 # LINE Messaging API endpoints (line_integration.py)
