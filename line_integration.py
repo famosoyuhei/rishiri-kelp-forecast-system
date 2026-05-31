@@ -661,8 +661,11 @@ def handle_record_start(source_type: str, source_id: str) -> str:
             lines.append(f'  {sid}')
         lines.append('\n他の干場を追加したい場合は「干場登録」をタップ')
     else:
-        lines.append('\n干場IDを直接入力（例: H_1631_1434）または')
-        lines.append('「干場登録 ニックネーム H_ID」で名前を登録できます。')
+        # L1ルール: ユーザーにH_XXXX_XXXX形式を入力させてはいけない。
+        # 干場未登録の場合はWebアプリへ誘導し、LINE登録後に呼び名で操作できることを案内する。
+        lines.append('\nまずWebアプリの地図から干場を選び「LINEで通知登録」してください。')
+        lines.append('登録後、呼び名（例: 浜の前）で記録できます。')
+        lines.append(f'{_APP_URL}')
     lines.append('\n「キャンセル」で中止')
 
     try:

@@ -2,7 +2,7 @@
   "name": "利尻島昆布干場予報システム",
   "short_name": "利尻昆布予報",
   "description": "利尻島の昆布漁師のための天気予報・海霧予測・漁期管理統合システム",
-  "version": "2.6.12",
+  "version": "2.6.15",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

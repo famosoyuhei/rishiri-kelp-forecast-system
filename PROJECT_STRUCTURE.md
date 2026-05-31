@@ -18,7 +18,6 @@ rishiri-kelp-forecast-system/
 ├── offline.html                     オフライン対応ページ
 │
 ├── all_spots_array.js               干場データ（334地点、4ファイル同期対象）
-├── rishiri_wind_names.js            利尻島伝統風名ライブラリ（16方位）
 ├── service-worker.js                PWA Service Worker
 ├── app_icon.png                     アプリロゴ
 │
@@ -46,7 +45,6 @@ rishiri-kelp-forecast-system/
 | `Procfile` | Render起動設定 |
 | `kelp_drying_map.html` | 統合版メインUI |
 | `all_spots_array.js` | 干場データ（JS配列形式） |
-| `rishiri_wind_names.js` | 伝統風名ライブラリ |
 | `service-worker.js` | PWA対応 |
 
 ### データファイル（必須）

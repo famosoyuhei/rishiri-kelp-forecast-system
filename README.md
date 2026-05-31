@@ -98,7 +98,6 @@ rishiri-kelp-forecast-system/
 ├── mobile_forecast_interface.html  モバイル版
 ├── offline.html                オフライン対応ページ
 ├── all_spots_array.js          干場データ（334地点）
-├── rishiri_wind_names.js       伝統風名ライブラリ（16方位）
 ├── service-worker.js           PWA Service Worker
 ├── app_icon.png                アプリロゴ
 │

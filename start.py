@@ -30,7 +30,15 @@ CORS(app, origins=[
 # M-3: APIレート制限（外部API呼び出しを誘発するエンドポイントを保護）
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-limiter = Limiter(get_remote_address, app=app, default_limits=[])
+# Use Upstash Redis as limiter backend (shared across Gunicorn workers).
+# Falls back to in-memory if env vars are not set (local dev).
+_limiter_storage_uri = 'memory://'
+_ul_rest   = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+_ul_token  = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+if _ul_rest and _ul_token:
+    _ul_host = _ul_rest.replace('https://', '').replace('http://', '')
+    _limiter_storage_uri = f'rediss://default:{_ul_token}@{_ul_host}:6379'
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri=_limiter_storage_uri)
 
 # Configuration — all paths are BASE_DIR-relative so the app works regardless of cwd
 CSV_FILE             = os.path.join(BASE_DIR, "hoshiba_spots.csv")
@@ -522,8 +530,10 @@ def serve_all_spots_js():
 
 @app.route('/rishiri_wind_names.js')
 def serve_wind_names_js():
-    """Serve the rishiri_wind_names.js file"""
-    return send_file(os.path.join(BASE_DIR, 'rishiri_wind_names.js'), mimetype='application/javascript')
+    """Traditional wind-name JS removed in v2.6.15. Return 410 Gone."""
+    return ('// rishiri_wind_names.js was removed in v2.6.15 '
+            '(traditional wind names replaced by windDisplay()).\n',
+            410, {'Content-Type': 'application/javascript'})
 
 @app.route('/manifest.json')
 def serve_manifest():
@@ -2216,10 +2226,64 @@ _analysis_field_cache: dict = {}
 _FIELD_CACHE_TTL = 3600  # 60 min TTL
 _ALLOWED_HOURS = [4, 7, 10, 13, 16]  # JST hours allowed for non-score field types
 
+# Redis helpers for field cache (Upstash REST API).
+# Falls back silently to in-memory when Upstash env vars are absent.
+_FC_KEY_PREFIX = 'fc:'
+
+
+def _fc_redis_get(key: str):
+    """Fetch JSON value from Upstash Redis via REST GET. Returns None on any error."""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return None
+    try:
+        resp = requests.get(
+            f'{rest_url}/get/{_FC_KEY_PREFIX}{key}',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=2,
+        )
+        result = resp.json().get('result')
+        if result is None:
+            return None
+        return json.loads(result)
+    except Exception:
+        return None
+
+
+def _fc_redis_set(key: str, data, ttl: int) -> bool:
+    """Store JSON value in Upstash Redis with EX TTL. Returns True on success."""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return False
+    try:
+        payload = json.dumps(data, ensure_ascii=False)
+        resp = requests.post(
+            f'{rest_url}/set/{_FC_KEY_PREFIX}{key}',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=['EX', ttl, payload],
+            timeout=2,
+        )
+        # Upstash REST SET with EX uses pipeline-style: POST /set/KEY ["EX", N, "value"]
+        return resp.status_code == 200
+    except Exception:
+        return False
+
 
 def _field_cache_get(key: str):
-    from datetime import datetime, timezone, timedelta
-    now = datetime.now(timezone(timedelta(hours=9)))
+    """Hybrid cache read: Redis primary → in-memory fallback."""
+    # 1. Try Redis (shared across workers)
+    redis_val = _fc_redis_get(key)
+    if redis_val is not None:
+        # Warm local memory cache for same-process subsequent calls
+        _analysis_field_cache[key] = {
+            'data': redis_val,
+            'expires': datetime.now(JST) + timedelta(seconds=_FIELD_CACHE_TTL),
+        }
+        return redis_val
+    # 2. Local in-memory fallback
+    now = datetime.now(JST)
     entry = _analysis_field_cache.get(key)
     if entry and now < entry['expires']:
         return entry['data']
@@ -2228,6 +2292,10 @@ def _field_cache_get(key: str):
 
 
 def _field_cache_set(key: str, data, ttl: int = _FIELD_CACHE_TTL):
+    """Hybrid cache write: Redis primary + in-memory."""
+    # 1. Write to Redis (best-effort; errors are swallowed)
+    _fc_redis_set(key, data, ttl)
+    # 2. Always write to local memory (fast same-process reads)
     _analysis_field_cache[key] = {
         'data': data,
         'expires': datetime.now(JST) + timedelta(seconds=ttl),
@@ -6290,7 +6358,10 @@ def line_webhook():
 
 @app.route('/api/line/status', methods=['GET'])
 def line_status():
-    """Return LINE integration status. Never exposes secrets."""
+    """Return LINE integration status. Requires X-Admin-Secret when env var is set."""
+    admin_secret = os.environ.get('LINE_ADMIN_NOTIFY_SECRET', '')
+    if admin_secret and request.headers.get('X-Admin-Secret') != admin_secret:
+        return jsonify({'status': 'unauthorized'}), 401
     from line_integration import get_status
     return get_status()
 

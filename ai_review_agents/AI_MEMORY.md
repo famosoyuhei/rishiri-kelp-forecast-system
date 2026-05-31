@@ -12,15 +12,15 @@
 | # | 重大度 | 担当社員 | 問題 | 発見日 | 状態 |
 |---|--------|---------|------|--------|------|
 | 1 | 🟡 MAJOR | 社員13 | `CORS(app, origins=[...])` にステージング環境URLがあれば追加が必要 | 2026-05-25 | 本番URL+localhostのみ設定済み。追加URLがあれば要対応 |
-| 2 | 🟡 MAJOR | 社員9 | LINE `/api/line/status` エンドポイントに認証なし（誰でもLINE接続状況を確認可能） | 2026-05-25 | 未修正 |
-| 3 | 🟡 MAJOR | 社員13 | `flask-limiter` のインメモリストレージ（Render再起動でリセット）。本番はRedis推奨 | 2026-05-25 | UserWarning出力中。機能は動作する |
-| 4 | 🟡 MINOR | 社員12 | `_FIELD_CACHE_TTL` がインメモリ（Workerプロセス間でキャッシュ共有不可） | 2026-05-25 | Redis移行推奨。現状は動作する |
+| 2 | 🟡 MAJOR | 社員9 | LINE `/api/line/status` エンドポイントに認証なし（誰でもLINE接続状況を確認可能） | 2026-05-25 | **✅修正済(2026-05-31)** `X-Admin-Secret` ヘッダー認証を追加。未設定時は開放（後方互換） |
+| 3 | 🟡 MAJOR | 社員13 | `flask-limiter` のインメモリストレージ（Render再起動でリセット）。本番はRedis推奨 | 2026-05-25 | **✅修正済(2026-05-31)** Upstash REST URLから `rediss://` URI を自動導出してRedis化。未設定時は `memory://` にフォールバック |
+| 4 | 🟡 MINOR | 社員12 | `_FIELD_CACHE_TTL` がインメモリ（Workerプロセス間でキャッシュ共有不可） | 2026-05-25 | **✅修正済(2026-05-31)** Upstash REST API でハイブリッドキャッシュ実装（Redis primary + インメモリ fallback） |
 | 5 | 🔴 CRITICAL | 社員7/12 | `static/icons/icon-192x192.png` / `badge-72x72.png` 欠損。通知アイコンが表示されない | 2026-05-28 | **✅修正済(2026-05-28)** Pillowで192×192/72×72 PNG生成。kelp_drying_map.html 3箇所+SW統一 |
 | 6 | 🟡 MAJOR | 社員5 | `dashboard.html:791` が廃止済み `/api/analysis/contours` を呼ぶ（410エラー） | 2026-05-28 | **✅修正済(2026-05-28)** `/api/analysis/field` に移行。ボタン刷新（等値線→分布図5種） |
 | 7 | 🟡 MAJOR | 社員11 | `/api/forecast` URLに `shortwave_radiation` 未含有（`direct_radiation` 使用中、fieldと不整合） | 2026-05-28 | **✅修正済(2026-05-28)** hourlyに `shortwave_radiation` 追加。solar_radiation は SW優先/DR fallback |
 | 8 | 🟡 MAJOR | 社員8 | 降水量レイヤー追加後、チャットボットに降水量レイヤーの説明が未追加 | 2026-05-28 | **✅修正済(2026-05-28)** PATTERNS contourにキーワード8個追加。respondContour()を全レイヤー説明に更新 |
 | 9 | 🟡 MAJOR | 社員6 | scoreColor閾値（70/50/30点）が `_score_color()`（80/50点）と不一致 | 2026-05-28 | **✅修正済(2026-05-28)** kelp_drying_map.html 2671/2808行 → 80/50の2閾値に統一 |
-| 10 | 🟡 MAJOR | 社員13 | `imageDiv.innerHTML` に `data.message` を直接inject（XSSリスク低いが原則違反） | 2026-05-28 | 未修正（低優先度: data.messageはサーバー生成文字列のみ） |
+| 10 | 🟡 MAJOR | 社員13 | `imageDiv.innerHTML` に `data.message` を直接inject（XSSリスク低いが原則違反） | 2026-05-28 | **✅修正済(2026-05-31)** `_esc(data.message)` に変更（ルールF準拠） |
 
 ---
 
@@ -65,6 +65,7 @@
 | 2026-05-25 | /full-review（13エージェント全員） | 社員1〜14 | 3件発見→**0件**（全修正） | 22件発見→**4件残**（低優先度のみ） | 47件検出（次バージョン対応） |
 | 2026-05-25 | /quick-review（高速5項目） | 統括社員 | **0件** ✅ Go判定 | - | - |
 | 2026-05-28 | /full-review（13エージェント全員） | 社員1〜13 | **2件**（通知アイコンPNG欠損）| **11件**（dashboard/SW/API/chat等） | 12件 → **全修正済(2026-05-28)** |
+| 2026-05-31 | /full-review（17エージェント全員） | 社員1〜17 | **0件** ✅ | **2件**（manifest.json version / LINE L1違反）→ **全修正済(2026-05-31)** | 2件（scoreColor同期・SW命名）→ **全修正済(2026-05-31)** |
 
 ---
 
@@ -94,14 +95,75 @@
 - [x] ~~MINOR 12件全修正 + CLAUDE.md ミニルール集A〜H追記~~（完了）
 
 ### 残タスク（5/31まで）
-- [ ] /quick-review で再チェック → CRITICAL/MAJOR 0件を確認
+- [x] ~~/full-review（17エージェント）実行 → CRITICAL 0件、MAJOR 2件修正済み（2026-05-31）~~
 - [ ] 漁師さんにURL＋RELEASE_GUIDE_FOR_FISHERMEN.mdを共有（5/31）
 - [ ] MA-10残件（XSSリスク低優先度）は5/31後でOK
 - [ ] kelp_drying_map.html 7,000行超過 → 次回大型機能追加時にJS分離
 
+### 2026-05-31 完了
+- [x] /full-review（17エージェント全員）実行
+- [x] MAJOR #1修正: manifest.json version "2.6.12" → "2.6.15"
+- [x] MAJOR #2修正: line_integration.py L664 L1ルール違反（干場ID直接入力誘導）→ Webアプリへの誘導に変更
+- [x] MINOR #1修正: kelp_drying_map.html scoreColor JS→Python _score_color() に16進値同期
+- [x] SW version v2-6-16 → v2-6-17 にバンプ（kelp_drying_map.html変更に伴う必須更新）
+- [x] 降水量実測比較ループ実装（v2.6.15）: _auto_compare_precip_forecast(), /api/nowcast/precip
+
 ---
 
 ## 💬 セッションログ（新しい順）
+
+### 2026-05-31（v2.6.15〜: 降水量実測比較ループ + フルレビュー修正）
+
+**実施内容**:
+
+#### v2.6.15: 降水量実測比較ループ実装
+- `_auto_compare_precip_forecast(date_str, station_id='11151')`: 毎朝03:00（AMEDAS収集後）に自動実行
+  - `amedas_data/amedas_11151_{date}.json` から04:00-16:00降水量を集計
+  - `forecast_history/*/forecast_*_for_{date}.json` を全干場でスキャン
+  - `hoshiba_records.csv` と照合して干し記録の有無を確認
+  - `feedback_log.csv` に upsert（キー: date + spot_name + days_ahead）
+- `FEEDBACK_COLUMNS` 拡張: `actual_precip_0416_mm`, `actual_rain_0416`, `precip_forecast_correct` 等を追加
+- `/api/validation/accuracy` に `precip_forecast_accuracy` ブロック追加: `no_rain_precision_pct`, `missed_rain_cnt`, `false_alarm_cnt`
+- `/api/collect_amedas` でも手動トリガー時に同期実行
+
+#### v2.6.15: JMA降水ナウキャスト（hrpns）追加
+- `GET /api/nowcast/precip`: 250mメッシュ、5分更新、利尻島全334干場対応
+- z=10で2タイル（913,367）（914,367）のみ取得 → 全干場カバー
+- PNG 4ビットインデックス形式を正確にデコード（実タイルで確認済み）
+- キャッシュTTL=300秒、レート制限20/分
+- `kelp_drying_map.html`: 「🛰 ナウキャスト（この干場）」行をAMEDASバーに追加
+- SW: v2-6-15 → v2-6-16
+
+#### フルレビュー（2026-05-31）修正 → v2.6.15パッチ
+- **MAJOR修正1**: `manifest.json` version "2.6.12" → "2.6.15"（ルールD）
+- **MAJOR修正2**: `line_integration.py` L664 L1ルール違反修正（「干場IDを直接入力」→ Webアプリ誘導）
+- **MINOR修正**: `kelp_drying_map.html` scoreColor 16進値をPython `_score_color()` に同期（ルール1）
+  - `#16a34a → #1f9d55`（緑）、`#ca8a04 → #c9a500`（アンバー）、`#dc2626 → #d64545`（赤）
+- SW: v2-6-16 → v2-6-17（kelp_drying_map.html変更に伴う必須バンプ）
+
+#### v2.6.15 継続修正（2026-05-31 セッション2）— 全残件完了
+- **伝統風名廃止**: `rishiri_wind_names.js` 物理削除。`/rishiri_wind_names.js` ルートを HTTP 410 Gone に変更
+- **windDisplay() 統合**: `_WIND_DIR_16`（16方位英略語）+ `_WIND_ARROWS`（8方向矢印）→ `windDisplay(deg)` で `"↙ NE"` 形式に統一
+  - kelp_drying_map.html 冒頭の旧 `RISHIRI_WIND_NAMES`/`getRishiriWindName()`/`getWindArrow()` 等 ~80行を削除
+  - 日次サマリーカード・時間別テーブル共に `windDisplay()` に統一
+- **#10 XSS修正**: `imageDiv.innerHTML` 内の `data.message` → `_esc(data.message)` に変更
+- **#2 `/api/line/status` 認証追加**: `LINE_ADMIN_NOTIFY_SECRET` が設定されている場合、`X-Admin-Secret` ヘッダー必須。不一致で HTTP 401
+- **#3 flask-limiter Redis化**: `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` から `rediss://` URI を自動導出。未設定時は `'memory://'` にフォールバック
+- **#4 `_field_cache_get/set` Redis化**: Upstash REST API を使ったハイブリッドキャッシュ実装
+  - `_fc_redis_get()` / `_fc_redis_set()`: REST GET/POST で JSON を EX TTL 付きで読み書き
+  - `_field_cache_get()`: Redis primary → インメモリ fallback（同一Worker内の高速再読み用）
+  - `_field_cache_set()`: Redis + インメモリに同時書き込み（best-effort）
+- **CLAUDE.md 更新**: Section 4「利尻島伝統風名システム」→「風向表示システム（v2.6.15〜）」
+- **SW**: v2-6-18 → v2-6-19（start.py + kelp_drying_map.html 変更に伴う必須バンプ）
+- **PROJECT_STRUCTURE.md / README.md**: `rishiri_wind_names.js` のエントリを削除
+
+**既知の問題（全て解決済み）**: なし
+
+**設計確認**:
+- 実測データ収集の「使命」: 毎日04:00-16:00の実測降水量 → 予報評価 → 干し記録照合 → 手がかり蓄積 ✅
+- 1kmメッシュ降水短時間予報（JMA HRPNS）は「機能重複」のため今は実装不要と確認 ✅
+
+---
 
 ### 2026-05-29（v2.6.9〜v2.6.11: 登録解除コマンド・削除ブロック改善）
 
