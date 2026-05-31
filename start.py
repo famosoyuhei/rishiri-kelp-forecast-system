@@ -44,6 +44,21 @@ AMEDAS_DATA_DIR      = os.path.join(BASE_DIR, "amedas_data")
 LOCK_DIR             = os.path.join(BASE_DIR, "edit_locks")
 os.makedirs(LOCK_DIR, exist_ok=True)
 
+# ── JMA アメダスリアルタイムAPI ─────────────────────────────────────────────
+JMA_AMEDAS_LATEST_URL = 'https://www.jma.go.jp/bosai/amedas/data/latest_time.txt'
+JMA_AMEDAS_MAP_URL    = 'https://www.jma.go.jp/bosai/amedas/data/map/{timestamp}.json'
+RISHIRI_AMEDAS_STATIONS = {
+    '11151': {'name': '沓形',        'lat': 45.1783, 'lon': 141.1383},
+    '11091': {'name': '本泊(利尻空港)', 'lat': 45.2417, 'lon': 141.1867},
+}
+# 16方位コード (0=無風, 1=NNE … 16=N)
+_JMA_WIND_DIR = {
+    0: '無風', 1: 'NNE', 2: 'NE', 3: 'ENE', 4: 'E', 5: 'ESE', 6: 'SE', 7: 'SSE',
+    8: 'S', 9: 'SSW', 10: 'SW', 11: 'WSW', 12: 'W', 13: 'WNW', 14: 'NW', 15: 'NNW', 16: 'N'
+}
+_AMEDAS_RT_CACHE: dict = {'data': None, 'fetched_at': None}
+_AMEDAS_RT_CACHE_TTL = 600  # 10分（JMA更新間隔に合わせる）
+
 # ============================================================================
 # Theta-e Correction System (相当温位保存による気象補正)
 # ============================================================================
@@ -4491,6 +4506,94 @@ def _daily_amedas_collection():
         time.sleep((next_run - now).total_seconds())
         yesterday = (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
         _collect_amedas_from_openmeteo(yesterday)
+
+
+def _fetch_jma_amedas_realtime() -> dict | None:
+    """JMA bosai APIから利尻島アメダスのリアルタイム気象データを取得。
+
+    取得項目: 10分降水量・1時間降水量・気温・湿度・風速・風向
+    キャッシュ: 10分間有効（JMAの更新間隔に合わせる）
+    返り値: {'observed_at': str, 'stations': {code: {...}}} または None
+    """
+    import urllib.request as _ur
+
+    # キャッシュチェック
+    now_ts = datetime.now(tz=JST).timestamp()
+    if (_AMEDAS_RT_CACHE['data'] is not None and
+            _AMEDAS_RT_CACHE['fetched_at'] is not None and
+            now_ts - _AMEDAS_RT_CACHE['fetched_at'] < _AMEDAS_RT_CACHE_TTL):
+        return _AMEDAS_RT_CACHE['data']
+
+    try:
+        # 1. 最新観測時刻を取得
+        with _ur.urlopen(JMA_AMEDAS_LATEST_URL, timeout=10) as r:
+            latest_str = r.read().decode().strip()   # 例: "2026-05-31T12:20:00+09:00"
+
+        # ISO文字列 → YYYYMMDDHHmmss
+        dt_clean = latest_str[:19].replace('-', '').replace('T', '').replace(':', '')
+        timestamp = dt_clean  # "20260531122000"
+
+        # 2. 全局マップデータを取得
+        map_url = JMA_AMEDAS_MAP_URL.format(timestamp=timestamp)
+        with _ur.urlopen(map_url, timeout=10) as r:
+            all_data = json.loads(r.read().decode())
+
+        # 3. 利尻島地点のみ抽出
+        def _v(field, d):
+            """[value, flag] 形式のリストから値を取り出す"""
+            v = d.get(field)
+            return v[0] if isinstance(v, list) and len(v) > 0 else None
+
+        stations_out = {}
+        for code, info in RISHIRI_AMEDAS_STATIONS.items():
+            d = all_data.get(code)
+            if d is None:
+                continue
+            wd_code = _v('windDirection', d)
+            stations_out[code] = {
+                'name':               info['name'],
+                'lat':                info['lat'],
+                'lon':                info['lon'],
+                'temp_c':             _v('temp', d),
+                'humidity_pct':       _v('humidity', d),
+                'wind_speed_ms':      _v('wind', d),
+                'wind_dir_code':      wd_code,
+                'wind_dir':           _JMA_WIND_DIR.get(wd_code) if wd_code is not None else None,
+                'precip_10m_mm':      _v('precipitation10m', d),
+                'precip_1h_mm':       _v('precipitation1h', d),
+                'precip_3h_mm':       _v('precipitation3h', d),
+                'precip_24h_mm':      _v('precipitation24h', d),
+                'sunshine_10m_min':   _v('sun10m', d),
+                'sunshine_1h_min':    _v('sun1h', d),
+            }
+
+        result = {'observed_at': latest_str, 'stations': stations_out}
+        _AMEDAS_RT_CACHE['data'] = result
+        _AMEDAS_RT_CACHE['fetched_at'] = now_ts
+        return result
+
+    except Exception as e:
+        print(f'[JMA amedas realtime] fetch error: {e}')
+        return None
+
+
+@app.route('/api/amedas/realtime')
+def get_amedas_realtime():
+    """利尻島アメダス（沓形・本泊）のリアルタイム気象データ。
+
+    JMA bosai APIから10分ごとに更新される実測値を返す。
+    降水量0mmの確認・予報検証・干し判断補助に使用。
+
+    Returns:
+        observed_at: 観測時刻 (ISO8601)
+        stations:
+          11151: 沓形 (気温・湿度・風速・風向・降水量10分/1h/3h/24h・日照)
+          11091: 本泊/利尻空港 (気温・風速・風向・降水量)
+    """
+    data = _fetch_jma_amedas_realtime()
+    if data is None:
+        return jsonify({'error': 'JMA AMeDAS data unavailable'}), 503
+    return jsonify(data)
 
 
 def generate_terrain_description(is_forest, is_coastal, elevation):
