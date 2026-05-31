@@ -1527,6 +1527,10 @@
 
             <!-- 旧等値線マップセクション (v2.6.1で廃止: 500hPa渦度・700hPa鉛直流はmatplotlib廃止により削除済み) -->
 
+            <!-- JMAリアルタイムアメダス実測値バー（干場選択時に更新） -->
+            <div id="amedasRealtimeBar" style="display:none; margin:6px 0 10px; padding:7px 12px; background:#f0f7ff; border:1px solid #b3d1f0; border-radius:8px; font-size:0.78rem; color:#1e3a5f; line-height:1.7;">
+            </div>
+
             <div id="forecastContent">
                 <div class="loading">
                     <div class="spinner"></div>
@@ -2396,6 +2400,45 @@
             startAutoUpdate();
         }
 
+        // ── JMAリアルタイムアメダス実測値バー ──────────────────────────────────
+        async function loadAmeDASRealtime() {
+            const bar = document.getElementById('amedasRealtimeBar');
+            if (!bar) return;
+            try {
+                const res = await fetch('/api/amedas/realtime');
+                if (!res.ok) { bar.style.display = 'none'; return; }
+                const d = await res.json();
+                if (!d.stations) { bar.style.display = 'none'; return; }
+
+                const st = d.stations['11151'];  // 沓形（湿度・日照あり）
+                if (!st) { bar.style.display = 'none'; return; }
+
+                const precip1h = st.precip_1h_mm ?? 0;
+                const rainNow  = precip1h > 0;
+                const rainBadge = rainNow
+                    ? `<span style="background:#d32f2f;color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:700;">🌧 現在降雨中 ${precip1h}mm/h</span>`
+                    : `<span style="color:#2e7d32;margin-left:6px;">☀ 降水なし</span>`;
+
+                const obs = d.observed_at ? d.observed_at.slice(11,16) + ' JST観測' : '';
+                bar.innerHTML =
+                    `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">` +
+                    `<strong>📡 実測値（沓形）</strong>${rainBadge}` +
+                    `<span style="margin-left:auto;color:#888;font-size:0.72rem;">${_esc(obs)}</span></div>` +
+                    `<div style="margin-top:3px;">` +
+                    (st.temp_c       != null ? `🌡 ${st.temp_c}℃　` : '') +
+                    (st.humidity_pct != null ? `💧 ${st.humidity_pct}%　` : '') +
+                    (st.wind_speed_ms!= null ? `💨 ${st.wind_speed_ms}m/s ${_esc(st.wind_dir ?? '')}　` : '') +
+                    (st.precip_10m_mm!= null ? `🌂 10分降水 ${st.precip_10m_mm}mm` : '') +
+                    `</div>`;
+                bar.style.display = 'block';
+                // 現在降雨中ならバーを赤枠にして強調
+                bar.style.borderColor = rainNow ? '#d32f2f' : '#b3d1f0';
+                bar.style.background  = rainNow ? '#fff0f0' : '#f0f7ff';
+            } catch(e) {
+                bar.style.display = 'none';
+            }
+        }
+
         // 予報データ取得と表示
         async function loadForecastData(spot) {
             const forecastContent = document.getElementById('forecastContent');
@@ -2403,6 +2446,7 @@
 
             forecastContent.innerHTML = '<div class="loading"><div class="spinner"></div>予報データを取得中...</div>';
             forecastTabs.style.display = 'none';
+            loadAmeDASRealtime();  // 実測値バーを非同期で更新（予報取得と並列）
 
             try {
                 // Enhanced API call
