@@ -6351,15 +6351,18 @@ def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
     if not rest_url or not token:
         return True  # local dev / no Redis → always send
     try:
-        import requests as _req
-        resp = _req.post(
-            f'{rest_url}/set/{key}',
+        # Upstash REST API: POST {base_url} with body ["SET", key, value, "NX", "EX", ttl]
+        # Returns {"result": "OK"} if key was set (NX succeeded),
+        #         {"result": null}  if key already existed (another worker was first).
+        resp = requests.post(
+            rest_url,
             headers={'Authorization': f'Bearer {token}',
                      'Content-Type': 'application/json'},
-            json=['NX', 'EX', ttl, '1'],
+            json=['SET', key, '1', 'NX', 'EX', str(ttl)],
             timeout=3,
         )
-        return resp.json().get('result') == 'OK'
+        result = resp.json().get('result')
+        return result == 'OK'
     except Exception as e:
         app.logger.warning('notify lock check failed (%s), defaulting to send', e)
         return True  # on Redis error, attempt to send

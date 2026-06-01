@@ -1918,7 +1918,7 @@ def notify_all(kind: str) -> dict:
         source_id = sub['source_id']
         source_type_sub = sub.get('source_type', 'user')
         msgs = []
-        for sid in spot_ids[:3]:  # max 3 spots per push to keep message short
+        for sid in spot_ids[:5]:  # max 5 spots per push（LINE 5000文字制限内）
             spot = find_spot_by_id(sid)
             if not spot:
                 continue
