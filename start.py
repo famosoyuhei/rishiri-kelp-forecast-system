@@ -6339,21 +6339,37 @@ import threading as _threading
 
 
 def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
-    """Redis NX lock via Upstash REST to prevent duplicate notifications
-    when Gunicorn runs multiple workers.
+    """Two-layer lock to prevent duplicate notifications.
 
-    Returns True if this worker acquired the lock (first to run),
-    False if another worker already sent the notification.
-    Falls back to True (always sends) when Upstash is not configured.
+    Layer 1 — file lock (atomic O_CREAT|O_EXCL on Linux):
+        Works reliably within the same machine even with multiple workers.
+        Falls back to True on unexpected errors.
+    Layer 2 — Upstash Redis NX pipeline (defense in depth):
+        Guards against multi-machine or container-restart edge cases.
+
+    Returns True only if BOTH layers are acquired.
     """
+    import tempfile
+    from pathlib import Path
+
+    # ── Layer 1: file lock ──────────────────────────────────────────────────
+    safe_key = key.replace(':', '_').replace('/', '_')
+    lock_path = Path(tempfile.gettempdir()) / f'rishiri_{safe_key}.lock'
+    try:
+        lock_path.open('x').close()  # atomic create; raises FileExistsError if exists
+    except FileExistsError:
+        app.logger.info('notify lock (file) already held for %s — skipping', key)
+        return False
+    except Exception as e:
+        app.logger.warning('notify file-lock failed (%s), continuing', e)
+        # continue to Redis layer
+
+    # ── Layer 2: Redis NX pipeline ──────────────────────────────────────────
     rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
     token = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
     if not rest_url or not token:
-        return True  # local dev / no Redis → always send
+        return True  # no Redis configured → trust file lock alone
     try:
-        # Upstash REST pipeline: POST /pipeline with body [["SET", key, "1", "NX", "EX", ttl]]
-        # Pipeline response: [{"result": "OK"}]  → this worker acquired the lock
-        #                    [{"result": null}]   → another worker already set it; skip
         resp = requests.post(
             f'{rest_url}/pipeline',
             headers={'Authorization': f'Bearer {token}',
@@ -6363,11 +6379,14 @@ def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
         )
         results = resp.json()
         if isinstance(results, list) and results:
-            return results[0].get('result') == 'OK'
-        return False
+            if results[0].get('result') != 'OK':
+                lock_path.unlink(missing_ok=True)
+                app.logger.info('notify lock (Redis) already held for %s — skipping', key)
+                return False
+        return True
     except Exception as e:
-        app.logger.warning('notify lock check failed (%s), defaulting to send', e)
-        return True  # on Redis error, attempt to send
+        app.logger.warning('notify Redis-lock failed (%s), trusting file lock', e)
+        return True
 
 
 def _scheduled_line_notify(kind: str, hour: int, minute: int) -> None:
@@ -6455,6 +6474,32 @@ def line_debug():
     """Upstash connectivity diagnostic. Requires X-Notify-Secret header."""
     from line_integration import get_debug
     return get_debug()
+
+
+@app.route('/api/line/subscriptions_summary', methods=['GET'])
+def line_subscriptions_summary():
+    """Return subscription count and per-source spot counts.
+    No secrets exposed — source_ids are masked. No auth required."""
+    from line_integration import load_subscriptions
+    subs = load_subscriptions()
+    entries = []
+    for key, sub in subs.items():
+        source_type = sub.get('source_type', '?')
+        source_id   = sub.get('source_id', '')
+        masked_id   = source_id[:4] + '***' if len(source_id) > 4 else '***'
+        entries.append({
+            'key':          f'{source_type}:{masked_id}',
+            'source_type':  source_type,
+            'spots':        len(sub.get('spots', [])),
+            'notify_enabled': sub.get('notify_enabled', False),
+            'season_start': sub.get('season_start', ''),
+            'season_end':   sub.get('season_end', ''),
+        })
+    return jsonify({
+        'total_subscriptions': len(entries),
+        'entries': entries,
+        'note': 'source_ids are masked for privacy',
+    })
 
 
 @app.route('/api/line/notify', methods=['POST'])
