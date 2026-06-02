@@ -1934,6 +1934,29 @@ def notify_all(kind: str) -> dict:
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
         full_msg = header + '\n\n'.join(msgs) + _NOTIFY_FOOTER
 
+        # Per-user dedup: even if notify_all() is called twice (e.g. two
+        # containers overlap during deploy), each user gets at most 1 message
+        # per kind per day.  Redis NX SET is atomic; second caller gets null.
+        dedup_key = f'notify_sent:{kind}:{target_date_str}:{source_id}'
+        if _upstash_available():
+            try:
+                resp = _requests.post(
+                    f'{_upstash_url()}/pipeline',
+                    headers={'Authorization': f'Bearer {_upstash_token()}',
+                             'Content-Type': 'application/json'},
+                    json=[['SET', dedup_key, '1', 'NX', 'EX', '86400']],
+                    timeout=3,
+                )
+                results = resp.json()
+                if isinstance(results, list) and results:
+                    if results[0].get('result') != 'OK':
+                        logger.info('notify_all: dedup skip %s kind=%s date=%s',
+                                    _mask_id(source_id), kind, target_date_str)
+                        skipped += 1
+                        continue
+            except Exception as _e:
+                logger.warning('notify_all: dedup check failed (%s), sending anyway', _e)
+
         if push_text(source_id, full_msg):
             sent += 1
             logger.info('Notified %s (%s spots)', _mask_id(source_id), len(msgs))
