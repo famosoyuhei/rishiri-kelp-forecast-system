@@ -6351,18 +6351,20 @@ def _try_acquire_notify_lock(key: str, ttl: int = 3600) -> bool:
     if not rest_url or not token:
         return True  # local dev / no Redis → always send
     try:
-        # Upstash REST API: POST {base_url} with body ["SET", key, value, "NX", "EX", ttl]
-        # Returns {"result": "OK"} if key was set (NX succeeded),
-        #         {"result": null}  if key already existed (another worker was first).
+        # Upstash REST pipeline: POST /pipeline with body [["SET", key, "1", "NX", "EX", ttl]]
+        # Pipeline response: [{"result": "OK"}]  → this worker acquired the lock
+        #                    [{"result": null}]   → another worker already set it; skip
         resp = requests.post(
-            rest_url,
+            f'{rest_url}/pipeline',
             headers={'Authorization': f'Bearer {token}',
                      'Content-Type': 'application/json'},
-            json=['SET', key, '1', 'NX', 'EX', str(ttl)],
+            json=[['SET', key, '1', 'NX', 'EX', str(ttl)]],
             timeout=3,
         )
-        result = resp.json().get('result')
-        return result == 'OK'
+        results = resp.json()
+        if isinstance(results, list) and results:
+            return results[0].get('result') == 'OK'
+        return False
     except Exception as e:
         app.logger.warning('notify lock check failed (%s), defaulting to send', e)
         return True  # on Redis error, attempt to send
