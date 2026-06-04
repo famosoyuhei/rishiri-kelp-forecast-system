@@ -1928,14 +1928,21 @@ def notify_all(kind: str) -> dict:
                 logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
                 continue
             display = _get_spot_label(source_type_sub, source_id, sid)
+            # Retry once on empty / short forecast (Open-Meteo intermittent failures)
             fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+            if not fcs or len(fcs) <= day_number:
+                logger.warning(
+                    'notify_all: forecast failed for %s (%.4f, %.4f) len=%d, retrying…',
+                    sid, spot['lat'], spot['lon'], len(fcs),
+                )
+                import time as _time; _time.sleep(2)
+                fcs = get_forecast_for_spot(spot['lat'], spot['lon'], timeout=15)
             if not fcs:
-                logger.warning('notify_all: forecast empty for %s (%.4f, %.4f) — Open-Meteo error?',
-                               sid, spot['lat'], spot['lon'])
+                logger.error('notify_all: forecast still empty after retry for %s — skipping', sid)
                 continue
             if len(fcs) <= day_number:
-                logger.warning('notify_all: forecast too short (%d days) for %s, need day_number=%d',
-                               len(fcs), sid, day_number)
+                logger.error('notify_all: forecast too short (%d days) for %s after retry — skipping',
+                             len(fcs), sid)
                 continue
             msgs.append(format_single_day(display, fcs[day_number]))
 
