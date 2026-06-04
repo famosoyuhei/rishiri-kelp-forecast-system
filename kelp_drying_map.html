@@ -1054,7 +1054,7 @@
             </div>
 
             <div class="filter-stats" id="filterStats">
-                表示中: 331箇所の干場
+                表示中: 読み込み中...
             </div>
         </div>
 
@@ -1549,7 +1549,7 @@
         let lastUpdateTime = null;
         const UPDATE_INTERVAL = 60 * 60 * 1000; // 1時間
 
-        // 干場データ（hoshiba_spots.csvから全331箇所）
+        // 干場データ（hoshiba_spots.csvから動的読み込み。件数はupdateStats()で自動更新）
         // データ一貫性のためall_spots_array.jsから読み込み
         /* const hoshibaSpots = [
             { name: "H_1021_2473", lat: 45.1021947, lon: 141.247311, town: "利尻富士町", district: "鬼脇", buraku: "野中" },
