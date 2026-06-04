@@ -914,11 +914,15 @@ def handle_list_spots(source_type: str, source_id: str) -> str:
     seen = set()
     for sid in registered:
         nick = id_to_nick.get(sid)
-        if nick:
+        spot = find_spot_by_id(sid)
+        if not spot:
+            # Spot no longer exists in CSV (deleted or renamed)
+            label = nick or sid
+            lines.append(f'・{label} ⚠️ 干場が見つかりません')
+        elif nick:
             lines.append(f'・{nick}')
         else:
-            spot = find_spot_by_id(sid)
-            auto = _auto_display_name(spot) if spot else sid
+            auto = _auto_display_name(spot)
             lines.append(f'・{auto}（呼び名未設定）')
         seen.add(sid)
     # Nicknames for spots not in registered list (edge case)
@@ -1921,11 +1925,19 @@ def notify_all(kind: str) -> dict:
         for sid in spot_ids[:5]:  # max 5 spots per push（LINE 5000文字制限内）
             spot = find_spot_by_id(sid)
             if not spot:
+                logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
                 continue
             display = _get_spot_label(source_type_sub, source_id, sid)
             fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-            if len(fcs) > day_number:
-                msgs.append(format_single_day(display, fcs[day_number]))
+            if not fcs:
+                logger.warning('notify_all: forecast empty for %s (%.4f, %.4f) — Open-Meteo error?',
+                               sid, spot['lat'], spot['lon'])
+                continue
+            if len(fcs) <= day_number:
+                logger.warning('notify_all: forecast too short (%d days) for %s, need day_number=%d',
+                               len(fcs), sid, day_number)
+                continue
+            msgs.append(format_single_day(display, fcs[day_number]))
 
         if not msgs:
             skipped += 1
