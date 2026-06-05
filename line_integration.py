@@ -2030,15 +2030,11 @@ def notify_all(kind: str) -> dict:
                     msgs.append(format_single_day(display, fcs[day_number]))
                 except Exception as _fmt_err:
                     logger.error('notify_all: format_single_day failed for %s: %s', sid, _fmt_err)
-                    fallback_word = '明日' if kind == 'evening' else '今日'
-                    msgs.append(f'【{display}】\n「{fallback_word}　{display}」と送ると予報を確認できます。')
             else:
-                # Forecast unavailable after 3 attempts.
-                # Guide the user to send "明日 {nickname}" or "今日 {nickname}"
-                # to fetch this spot's forecast on demand.
-                logger.error('notify_all: all 3 attempts failed for %s — using fallback text', sid)
-                fallback_word = '明日' if kind == 'evening' else '今日'
-                msgs.append(f'【{display}】\n「{fallback_word}　{display}」と送ると予報を確認できます。')
+                # All 3 attempts failed — skip this spot silently.
+                # Sending a notification full of error text is worse than skipping.
+                # The user can always send "明日 村谷さんの干場" on demand.
+                logger.error('notify_all: all 3 attempts failed for %s — skipping silently', sid)
 
         if not msgs:
             skipped += 1
