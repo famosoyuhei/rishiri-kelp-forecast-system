@@ -941,6 +941,34 @@ def handle_list_spots(source_type: str, source_id: str) -> str:
     return '\n'.join(lines)
 
 
+def _handle_forecast_diag(source_type: str, source_id: str) -> str:
+    """Diagnostic: test get_forecast_for_spot() for each registered spot.
+    Shows number of days returned and whether day[0] and day[1] are present.
+    Invoke by sending '予報診断' in LINE chat.
+    """
+    spots = _get_sub_spots(source_type, source_id)
+    if not spots:
+        return '干場が登録されていません。'
+    lines = ['【予報取得診断】']
+    for spot in spots:
+        display = _get_spot_label(source_type, source_id, spot['name'])
+        try:
+            fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+            n = len(fcs)
+            day0_ok = n > 0
+            day1_ok = n > 1
+            dates = [fc.get('date', '?') for fc in fcs[:3]]
+            status = '✅' if day1_ok else ('⚠️day[1]なし' if day0_ok else '❌データなし')
+            lines.append(
+                f'{status} {display}\n'
+                f'  取得日数={n} 日付={", ".join(dates)}'
+            )
+        except Exception as e:
+            lines.append(f'❌ {display}: 例外 {e}')
+    lines.append('\n取得日数が1以下の干場は16時通知に含まれません。')
+    return '\n'.join(lines)
+
+
 def handle_remove_spot(source_type: str, source_id: str, label: str) -> str:
     """Remove a single registered spot by its nickname or spot_id.
 
@@ -1184,6 +1212,10 @@ def parse_command(text: str) -> dict:
         {'cmd': 'unknown'}
     """
     text = text.strip()
+
+    # Forecast diagnostic (temporary debug command)
+    if text in ('予報診断', '診断'):
+        return {'cmd': 'forecast_diag'}
 
     # Help
     if text in ('ヘルプ', 'help', 'HELP', '?', '？', 'コマンド'):
@@ -2168,6 +2200,8 @@ def process_event(event: dict) -> None:
                 if len(fcs) > d:
                     msgs.append(format_single_day(display, fcs[d]))
             response = '\n\n'.join(msgs) if msgs else '予報取得失敗'
+    elif cmd['cmd'] == 'forecast_diag':
+        response = _handle_forecast_diag(source_type, source_id)
     elif cmd['cmd'] == 'spot':
         response = handle_spot_query(cmd['spot_id'])
     elif cmd['cmd'] == 'area':
