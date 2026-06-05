@@ -352,7 +352,7 @@ def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tup
     return score, 'poor'
 
 
-def get_forecast_for_spot(lat: float, lon: float, timeout: int = 25) -> list:
+def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
     """
     Fetch simplified 7-day drying forecast from Open-Meteo.
     Returns list of daily dicts with keys:
@@ -1930,21 +1930,6 @@ def notify_all(kind: str) -> dict:
     if kind not in ('evening', 'morning'):
         return {'error': 'kind must be evening or morning'}
 
-    # Warm up the outbound HTTP connection to Open-Meteo before processing spots.
-    # Render background threads wake from idle; the first TCP+TLS handshake can
-    # take several seconds, causing the first spot's request to time out while
-    # subsequent spots (reusing the connection) succeed.
-    try:
-        _requests.get(
-            'https://api.open-meteo.com/v1/forecast'
-            '?latitude=45.18&longitude=141.24&daily=precipitation_sum'
-            '&timezone=Asia%2FTokyo&forecast_days=1',
-            timeout=20,
-        )
-        logger.info('notify_all: Open-Meteo connection warmed up')
-    except Exception as _wu_err:
-        logger.warning('notify_all: warmup request failed (%s), continuing', _wu_err)
-
     # Season check: only notify during kelp drying season (June–September JST)
     JST = timezone(timedelta(hours=9))
     now_jst = datetime.now(JST)
@@ -2009,21 +1994,18 @@ def notify_all(kind: str) -> dict:
                 logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
                 continue
             display = _get_spot_label(source_type_sub, source_id, sid)
-            # Fetch forecast with up to 3 attempts.
-            # Warmup request (top of notify_all) pre-warms the TCP connection,
-            # so failures here are rare. If all attempts fail, skip silently —
-            # showing an error notice to a fisherman with 1 spot would be alarming.
+            # Fetch forecast; retry once on failure.
+            # Keep to 1 retry only — multiple retries across 4 spots can
+            # trigger Open-Meteo rate limits and break the entire notification.
             fcs = []
-            for _attempt, _tout in enumerate([25, 30, 35], 1):
-                try:
-                    fcs = get_forecast_for_spot(spot['lat'], spot['lon'], timeout=_tout)
-                    if fcs and len(fcs) > day_number:
-                        break  # success
-                    logger.warning('notify_all: attempt %d short for %s len=%d', _attempt, sid, len(fcs))
-                except Exception as _fc_err:
-                    logger.error('notify_all: attempt %d raised for %s: %s', _attempt, sid, _fc_err)
-                if _attempt < 3:
-                    import time as _time; _time.sleep(3)
+            try:
+                fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+                if not fcs or len(fcs) <= day_number:
+                    logger.warning('notify_all: forecast short for %s len=%d, retrying…', sid, len(fcs))
+                    import time as _time; _time.sleep(2)
+                    fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+            except Exception as _fc_err:
+                logger.error('notify_all: get_forecast_for_spot raised for %s: %s', sid, _fc_err)
 
             if fcs and len(fcs) > day_number:
                 try:
