@@ -1288,8 +1288,13 @@ def parse_command(text: str) -> dict:
     if _SPOT_ID_RE.match(text):
         return {'cmd': 'spot', 'spot_id': text}
 
-    # Area + optional day: "沓形 明日", "仙法志", "沓形 今日"
+    # "明日 村谷さんの干場" / "今日 Calmの干場" → registered spot by nickname + day
+    # Must come before the area+day check so day-first patterns are caught first.
     parts = text.split()
+    if len(parts) == 2 and parts[0] in _DAY_KEYWORDS and _DAY_KEYWORDS[parts[0]] is not None:
+        return {'cmd': 'day_spot', 'day': _DAY_KEYWORDS[parts[0]], 'label': parts[1]}
+
+    # Area + optional day: "沓形 明日", "仙法志", "沓形 今日"
     if len(parts) == 2 and parts[1] in _DAY_KEYWORDS:
         day = _DAY_KEYWORDS[parts[1]]
         return {'cmd': 'area', 'area': parts[0], 'day': day if day is not None else 0}
@@ -1302,6 +1307,28 @@ def parse_command(text: str) -> dict:
 # ---------------------------------------------------------------------------
 # Command handlers
 # ---------------------------------------------------------------------------
+
+
+def handle_day_spot(source_type: str, source_id: str, day: int, label: str) -> str:
+    """Handle '明日 村谷さんの干場' / '今日 Calmの干場' style commands.
+
+    Looks up the registered spot by nickname, then returns a single-day
+    forecast for that spot. Falls back to area query if no nickname match.
+    """
+    sub = get_subscription(source_type, source_id)
+    nicknames = sub.get('spot_nicknames', {}) if sub else {}  # {nickname: spot_id}
+    spot_id = nicknames.get(label)
+    if spot_id:
+        spot = find_spot_by_id(spot_id)
+        if spot:
+            fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+            if fcs and len(fcs) > day:
+                return format_single_day(label, fcs[day])
+            day_word = _DAY_NAMES.get(day, f'{day}日後')
+            return f'【{label}】\n{day_word}の予報を取得できませんでした。\n少し待ってから再度お試しください。'
+    # No nickname match — try as area name
+    return handle_area_query(label, day)
+
 
 _WELCOME_TEXT = """\
 利尻島昆布干場予報へようこそ🌿
@@ -2004,13 +2031,14 @@ def notify_all(kind: str) -> dict:
                 except Exception as _fmt_err:
                     logger.error('notify_all: format_single_day failed for %s: %s', sid, _fmt_err)
                     fallback_word = '明日' if kind == 'evening' else '今日'
-                    msgs.append(f'【{display}】\n「{fallback_word}」と送ると予報を確認できます。')
+                    msgs.append(f'【{display}】\n「{fallback_word}　{display}」と送ると予報を確認できます。')
             else:
-                # Forecast unavailable after 3 attempts — show friendly fallback
-                # telling the user which command to send (never show a scary error)
+                # Forecast unavailable after 3 attempts.
+                # Guide the user to send "明日 {nickname}" or "今日 {nickname}"
+                # to fetch this spot's forecast on demand.
                 logger.error('notify_all: all 3 attempts failed for %s — using fallback text', sid)
                 fallback_word = '明日' if kind == 'evening' else '今日'
-                msgs.append(f'【{display}】\n「{fallback_word}」と送ると予報を確認できます。')
+                msgs.append(f'【{display}】\n「{fallback_word}　{display}」と送ると予報を確認できます。')
 
         if not msgs:
             skipped += 1
@@ -2221,6 +2249,8 @@ def process_event(event: dict) -> None:
             response = '\n\n'.join(msgs) if msgs else '予報取得失敗'
     elif cmd['cmd'] == 'forecast_diag':
         response = _handle_forecast_diag(source_type, source_id)
+    elif cmd['cmd'] == 'day_spot':
+        response = handle_day_spot(source_type, source_id, cmd['day'], cmd['label'])
     elif cmd['cmd'] == 'spot':
         response = handle_spot_query(cmd['spot_id'])
     elif cmd['cmd'] == 'area':
