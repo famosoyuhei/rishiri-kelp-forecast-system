@@ -1982,32 +1982,35 @@ def notify_all(kind: str) -> dict:
                 logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
                 continue
             display = _get_spot_label(source_type_sub, source_id, sid)
-            # Fetch forecast; retry once on failure.
-            # Even if both attempts fail, include the spot with an error notice
-            # rather than silently omitting it from the notification.
+            # Fetch forecast with up to 3 attempts.
+            # Warmup request (top of notify_all) pre-warms the TCP connection,
+            # so failures here are rare. If all attempts fail, skip silently —
+            # showing an error notice to a fisherman with 1 spot would be alarming.
             fcs = []
-            try:
-                fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-                if not fcs or len(fcs) <= day_number:
-                    logger.warning(
-                        'notify_all: forecast short for %s len=%d, retrying…',
-                        sid, len(fcs),
-                    )
+            for _attempt, _tout in enumerate([25, 30, 35], 1):
+                try:
+                    fcs = get_forecast_for_spot(spot['lat'], spot['lon'], timeout=_tout)
+                    if fcs and len(fcs) > day_number:
+                        break  # success
+                    logger.warning('notify_all: attempt %d short for %s len=%d', _attempt, sid, len(fcs))
+                except Exception as _fc_err:
+                    logger.error('notify_all: attempt %d raised for %s: %s', _attempt, sid, _fc_err)
+                if _attempt < 3:
                     import time as _time; _time.sleep(3)
-                    fcs = get_forecast_for_spot(spot['lat'], spot['lon'], timeout=30)
-            except Exception as _fc_err:
-                logger.error('notify_all: get_forecast_for_spot raised for %s: %s', sid, _fc_err)
 
             if fcs and len(fcs) > day_number:
                 try:
                     msgs.append(format_single_day(display, fcs[day_number]))
                 except Exception as _fmt_err:
                     logger.error('notify_all: format_single_day failed for %s: %s', sid, _fmt_err)
-                    msgs.append(f'【{display}】\n⚠️ 予報の整形に失敗しました。')
+                    fallback_word = '明日' if kind == 'evening' else '今日'
+                    msgs.append(f'【{display}】\n「{fallback_word}」と送ると予報を確認できます。')
             else:
-                # Include spot with error notice — never silently omit a registered spot
-                logger.error('notify_all: forecast unavailable for %s after retry — sending error notice', sid)
-                msgs.append(f'【{display}】\n⚠️ 予報を取得できませんでした（通信エラー）。\nWebアプリでご確認ください。')
+                # Forecast unavailable after 3 attempts — show friendly fallback
+                # telling the user which command to send (never show a scary error)
+                logger.error('notify_all: all 3 attempts failed for %s — using fallback text', sid)
+                fallback_word = '明日' if kind == 'evening' else '今日'
+                msgs.append(f'【{display}】\n「{fallback_word}」と送ると予報を確認できます。')
 
         if not msgs:
             skipped += 1
