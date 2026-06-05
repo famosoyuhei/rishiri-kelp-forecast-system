@@ -6490,6 +6490,8 @@ def line_subscriptions_summary():
         entries.append({
             'key':          f'{source_type}:{masked_id}',
             'source_type':  source_type,
+            'spot_ids':     sub.get('spots', []),   # H_XXXX_XXXX IDs (not sensitive)
+            'spot_nicknames': sub.get('spot_nicknames', {}),
             'spots':        len(sub.get('spots', [])),
             'notify_enabled': sub.get('notify_enabled', False),
             'season_start': sub.get('season_start', ''),
