@@ -352,7 +352,7 @@ def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tup
     return score, 'poor'
 
 
-def get_forecast_for_spot(lat: float, lon: float, timeout: int = 10) -> list:
+def get_forecast_for_spot(lat: float, lon: float, timeout: int = 25) -> list:
     """
     Fetch simplified 7-day drying forecast from Open-Meteo.
     Returns list of daily dicts with keys:
@@ -1902,6 +1902,21 @@ def notify_all(kind: str) -> dict:
     """
     if kind not in ('evening', 'morning'):
         return {'error': 'kind must be evening or morning'}
+
+    # Warm up the outbound HTTP connection to Open-Meteo before processing spots.
+    # Render background threads wake from idle; the first TCP+TLS handshake can
+    # take several seconds, causing the first spot's request to time out while
+    # subsequent spots (reusing the connection) succeed.
+    try:
+        _requests.get(
+            'https://api.open-meteo.com/v1/forecast'
+            '?latitude=45.18&longitude=141.24&daily=precipitation_sum'
+            '&timezone=Asia%2FTokyo&forecast_days=1',
+            timeout=20,
+        )
+        logger.info('notify_all: Open-Meteo connection warmed up')
+    except Exception as _wu_err:
+        logger.warning('notify_all: warmup request failed (%s), continuing', _wu_err)
 
     # Season check: only notify during kelp drying season (June–September JST)
     JST = timezone(timedelta(hours=9))
