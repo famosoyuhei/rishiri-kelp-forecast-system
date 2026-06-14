@@ -840,6 +840,25 @@ LINE通知登録時に各ユーザーが干場に呼び名をつけられる。
 
 ## 更新履歴
 
+### v2.6.16〜v2.6.19 (2026年6月14日)
+- **降水量判定を 04:00-16:00 積算に統一** (`start.py`)
+  - `/api/forecast` の各日スコア計算で `daily['precipitation_sum']`（24h合計）→ 時間別データ `[start_hour:end_hour]`（04:00-16:00積算）に変更
+  - **設計根拠**: 干場は砂利。前夜どんなに雨が降っても04:00-16:00が0mmなら「干せる」と判定すべき
+  - `_compute_score_field()` はすでに `_extract_day_window()` で同窓を使用 → 全APIパスで統一完了
+- **AMeDAS・ナウキャスト降水量のRedis永続化** (`start.py`)
+  - `_obs_redis_get()` / `_obs_redis_set()`: TTL=90日の汎用ヘルパーを追加
+  - `_collect_amedas_from_openmeteo()`: Redis優先 → ローカルmigration → API取得 の順に変更
+  - `_record_nowcast_snapshot()`: 全334干場のナウキャスト降水量を `nowcast:daily:{YYYYMMDD}` に保存（NX dedup付き）
+  - **背景**: Renderのエフェメラルファイルシステムはデプロイ毎にリセットされるため Redis に永続化
+- **forecast_history の Redis 永続化** (`start.py`)
+  - `_obs_redis_scan_keys()`: SCAN ページング対応ヘルパーを追加
+  - `_save_forecast_history()`: `forecast:hist:{spot_name}:{YYYYMMDD}` キーへ保存（ローカルファイルは副）
+    - `precipitation_0416`（04:00-16:00積算）フィールドを追加
+    - 同一 `forecast_date` の重複登録を dedup チェックで防止
+  - `_auto_compare_precip_forecast()`: Redis SCAN 優先 → ローカルファイル fallback に変更
+    - `fc_precip` は `precipitation_0416` 優先（旧データは `precipitation` で代替）
+- Service Worker バージョン: `v2-6-22`
+
 ### v2.6.9〜v2.6.11 (2026年5月29日)
 - **`登録解除 呼び名` コマンド追加** (`line_integration.py`)
   - LINE上で登録干場を個別に解除できるように（`通知解除`は全解除のまま）

@@ -112,6 +112,58 @@
 
 ## 💬 セッションログ（新しい順）
 
+### 2026-06-14（降水量比較ループの Redis 永続化 + 04:00-16:00 窓統一）
+
+**実施内容**:
+
+#### 背景確認
+- 「干せません通知が続いている」→ Open-Meteo Archive API で6月上旬の実測降水量を確認
+  - 6/6: 0mm、6/7: 0mm、6/8: 微量、6/9〜12: 0mm — 降雨は限定的
+  - →「干せません」通知の原因は降水量ではなくスコア閾値の問題の可能性が高い
+- 予報 vs 実測比較が機能していない根本原因: Render のエフェメラルファイルシステムがデプロイ毎にリセットされ `amedas_data/` と `forecast_history/` が消える
+
+#### コミット 68e93f5: AMeDAS+ナウキャスト降水量をRedisに永続化
+- `_obs_redis_get()` / `_obs_redis_set()`: AMEDAS・ナウキャスト用 Redis 汎用ヘルパー
+  - key: `amedas:obs:{station_id}:{YYYYMMDD}`, TTL: 90日
+- `_collect_amedas_from_openmeteo()`: Redis 優先 → ローカルファイル migration → API 取得 → Redis保存 の順
+- `_auto_compare_precip_forecast()`: AMEDAS データ読み込みを Redis 優先に変更
+- `_record_nowcast_snapshot()`: 全334干場のナウキャスト降水量を `nowcast:daily:{YYYYMMDD}` に保存
+  - NX dedup キー `nowcast:snap_done:{YYYYMMDD}:{HHMM}` (1時間TTL) で重複防止
+  - `_daily_amedas_collection()` (03:00 JST) と `_scheduled_line_notify()` から呼び出し
+- `/api/collect_amedas?days=14` で June 1〜13 のバックフィルを実行済み
+
+#### コミット b7847d8: 予報履歴の降水量を04:00-16:00積算に修正
+- `_save_forecast_history()` に `precipitation_0416` フィールドを追加
+  - `/api/forecast` の `hourly_details` から時刻4〜16のデータを積算
+  - `precip_0416 = round(sum(h.get('precipitation', 0) or 0 for h in hourly_data[4:17]), 2)`
+  - 旧 `precipitation` (24時間合計) も互換用に残す
+
+#### コミット 6d816fa: 乾燥スコアの降水量判定を04:00-16:00積算に変更
+- `/api/forecast` の各日スコア計算で `daily['precipitation_sum'][i]` → 時間別データから04:00-16:00のみ積算に変更
+  ```python
+  start_hour = i * 24 + 4
+  end_hour   = start_hour + 13
+  precipitation = round(sum(p for p in _ph[start_hour:end_hour] if p is not None), 2)
+  ```
+- **設計根拠**: 干場は砂利。前夜どんなに雨が降っても04:00-16:00が0mmなら「干せる」と判定すべき
+
+#### コミット 3bf3920: forecast_history を Redis に永続化
+- `_obs_redis_scan_keys(pattern)`: SCAN ページング対応の新ヘルパー（count=500、cursor=0まで繰り返し）
+- `_save_forecast_history()`: Redis に `forecast:hist:{spot_name}:{target_YYYYMMDD}` として保存
+  - 同一 `forecast_date` の重複登録を dedup チェックで防止
+  - ローカルファイルは副（バックアップ）、Redis が主
+- `_auto_compare_precip_forecast()`: 予報履歴読み込みを Redis SCAN 優先に変更
+  - SCAN pattern: `forecast:hist:*:{date_str}` → 全干場を一括取得
+  - `fc_precip` は `precipitation_0416` 優先（旧データは `precipitation` で代替）
+  - ローカルファイル fallback も維持（開発環境向け）
+- SW: v2-6-21 → v2-6-22
+
+**設計確認**:
+- `/api/forecast` の降水量は 04:00-16:00 積算のみ（`_compute_score_field` も `_extract_day_window()` で同様）→ 完全統一
+- `forecast:hist:*` キーは今夜 16:00 通知から蓄積開始、翌日以降の比較で利用可能
+
+---
+
 ### 2026-05-31（v2.6.15〜: 降水量実測比較ループ + フルレビュー修正）
 
 **実施内容**:
