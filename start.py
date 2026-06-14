@@ -836,13 +836,19 @@ def get_forecast():
             temp_min = daily['temperature_2m_min'][i]
             humidity = daily['relative_humidity_2m_mean'][i]
             wind_speed = daily['wind_speed_10m_max'][i] / 3.6  # Convert km/h to m/s
-            precipitation = daily['precipitation_sum'][i]
             pop_max = daily['precipitation_probability_max'][i] if 'precipitation_probability_max' in daily and daily['precipitation_probability_max'][i] is not None else None
+
+            # 作業時間帯（04:00-16:00 JST）の降水量のみ積算
+            # 砂利干場は夜間雨が滞水しないため、夜間降水は乾燥判定に含めない
+            start_hour = i * 24 + 4  # 4AM of the day
+            end_hour = start_hour + 13  # Until 4PM inclusive (13 hours: 4,5,6,...,16)
+            _ph = hourly.get('precipitation', [])
+            precipitation = round(
+                sum(p for p in _ph[start_hour:end_hour] if p is not None), 2
+            )
 
             # Calculate daily representative wind direction (average of working hours)
             daily_wind_directions = []
-            start_hour = i * 24 + 4  # 4AM of the day
-            end_hour = start_hour + 13  # Until 4PM inclusive (13 hours: 4,5,6,...,16)
 
             for h in range(start_hour, min(end_hour, len(hourly.get('wind_direction_10m', [])))):
                 if h < len(hourly['wind_direction_10m']) and hourly['wind_direction_10m'][h] is not None:
