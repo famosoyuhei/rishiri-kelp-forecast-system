@@ -754,22 +754,34 @@ def _save_forecast_history(spot_name, forecasts):
         valid_wind = [h['wind_speed'] for h in hourly if h.get('wind_speed') is not None]
         # hourly_details は 04:00-16:00 の時別データのみ（13時間）
         precip_0416 = round(sum(h.get('precipitation') or 0 for h in hourly), 2)
+        record = {
+            'forecast_date':    today_str,
+            'target_date':      fc['date'],
+            'day_number':       fc['day_number'],
+            'max_temp':         fc['daily_summary']['temperature_max'],
+            'min_humidity':     min(valid_humidity) if valid_humidity else None,
+            'avg_wind':         sum(valid_wind) / len(valid_wind) if valid_wind else None,
+            'precipitation':    fc['daily_summary']['precipitation'],  # 24時間全日積算
+            'precipitation_0416': precip_0416,                         # 04:00-16:00 積算（実測比較用）
+            'drying_score':     fc['daily_summary']['drying_score'],
+            'suitability':      fc['daily_summary']['suitability'],
+        }
+        # ローカルファイルに保存（副）
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'forecast_date': today_str,
-                    'target_date': fc['date'],
-                    'day_number': fc['day_number'],
-                    'max_temp': fc['daily_summary']['temperature_max'],
-                    'min_humidity': min(valid_humidity) if valid_humidity else None,
-                    'avg_wind': sum(valid_wind) / len(valid_wind) if valid_wind else None,
-                    'precipitation': fc['daily_summary']['precipitation'],      # 24時間全日積算
-                    'precipitation_0416': precip_0416,                          # 04:00-16:00 積算（実測比較用）
-                    'drying_score': fc['daily_summary']['drying_score'],
-                    'suitability': fc['daily_summary']['suitability'],
-                }, f, ensure_ascii=False)
+                json.dump(record, f, ensure_ascii=False)
         except Exception as e:
-            app.logger.error('[forecast_history] save error for %s %s: %s', spot_name, target_date_str, e)
+            app.logger.error('[forecast_history] local save error for %s %s: %s', spot_name, target_date_str, e)
+        # Redis に保存（主：デプロイをまたいで永続化）
+        # Key: forecast:hist:{spot_name}:{target_YYYYMMDD}
+        redis_key = f'forecast:hist:{spot_name}:{target_date_str}'
+        try:
+            existing = _obs_redis_get(redis_key) or []
+            if not any(e.get('forecast_date') == today_str for e in existing):
+                existing.append(record)
+                _obs_redis_set(redis_key, existing)
+        except Exception as re:
+            app.logger.warning('[forecast_history] Redis save error for %s: %s', redis_key, re)
 
 
 @app.route('/api/forecast')
@@ -2321,6 +2333,32 @@ def _obs_redis_set(key: str, data, ttl: int = _OBS_KEY_TTL) -> bool:
         return isinstance(results, list) and bool(results) and results[0].get('result') == 'OK'
     except Exception:
         return False
+
+
+def _obs_redis_scan_keys(pattern: str) -> list:
+    """Upstash REST SCAN でパターンに一致するキーを全件返す（ページング対応）。"""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return []
+    keys   = []
+    cursor = '0'
+    try:
+        while True:
+            resp = requests.get(
+                f'{rest_url}/scan/{cursor}',
+                headers={'Authorization': f'Bearer {token}'},
+                params={'match': pattern, 'count': '500'},
+                timeout=5,
+            )
+            result = resp.json().get('result', ['0', []])
+            cursor = str(result[0])
+            keys.extend(result[1] if len(result) > 1 else [])
+            if cursor == '0':
+                break
+    except Exception:
+        pass
+    return keys
 
 
 def _field_cache_get(key: str):
@@ -4842,14 +4880,35 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     actual_precip_total = amedas.get('daily_summary', {}).get('total_precipitation') or 0.0
     actual_rain_0416 = actual_precip_0416 > 0.0
 
-    # ── 2. forecast_history/ を走査して対象日の予報ファイルを収集 ──────────
-    # パターン: forecast_history/{spot}/forecast_*_for_{date_str}.json
-    fc_pattern = os.path.join(FORECAST_HISTORY_DIR, '*',
-                              f'forecast_*_for_{date_str}.json')
-    fc_files = _glob.glob(fc_pattern)
+    # ── 2. 予報履歴を収集（Redis 優先 → ローカルファイル fallback） ────────
+    # Redis key pattern: forecast:hist:{spot_name}:{date_str}
+    # (spot_name は H_/A_/R_ 形式で : を含まない)
+    fc_entries: list[tuple[str, dict]] = []  # [(spot_name, record), ...]
 
-    if not fc_files:
-        print(f'[auto_compare] no forecast_history for {date_str}')
+    redis_keys = _obs_redis_scan_keys(f'forecast:hist:*:{date_str}')
+    for rk in redis_keys:
+        parts = rk.split(':')
+        if len(parts) < 4:
+            continue
+        spot_from_key = parts[2]
+        hist = _obs_redis_get(rk) or []
+        for entry in hist:
+            fc_entries.append((spot_from_key, entry))
+
+    if not fc_entries:
+        # ローカルファイル fallback（ローカル開発環境またはRedis未設定時）
+        fc_pattern = os.path.join(FORECAST_HISTORY_DIR, '*',
+                                  f'forecast_*_for_{date_str}.json')
+        for fc_file in _glob.glob(fc_pattern):
+            try:
+                spot_name = os.path.basename(os.path.dirname(fc_file))
+                with open(fc_file, 'r', encoding='utf-8') as f:
+                    fc_entries.append((spot_name, json.load(f)))
+            except Exception:
+                pass
+
+    if not fc_entries:
+        app.logger.warning('[auto_compare] no forecast data for %s (Redis + local)', date_str)
         return 0
 
     # ── 3. 干し記録（records）を事前に日付で絞り込む ─────────────────────
@@ -4862,7 +4921,7 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                     if row.get('date') == target_date_fmt and row.get('name'):
                         records_on_date[row['name']] = row.get('result', '')
     except Exception as re:
-        print(f'[auto_compare] records read error: {re}')
+        app.logger.warning('[auto_compare] records read error: %s', re)
 
     # ── 4. 既存 feedback_log を読み込む ──────────────────────────────────
     if os.path.exists(FEEDBACK_FILE):
@@ -4876,18 +4935,13 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     else:
         fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
 
-    # ── 5. 予報ファイルごとに照合 ─────────────────────────────────────────
+    # ── 5. 予報エントリごとに照合 ─────────────────────────────────────────
     now_jst = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
     updated = 0
     new_rows = []
 
-    for fc_file in fc_files:
+    for spot_name, fc in fc_entries:
         try:
-            # spot_name はパスの親ディレクトリ名
-            spot_name = os.path.basename(os.path.dirname(fc_file))
-            with open(fc_file, 'r', encoding='utf-8') as f:
-                fc = json.load(f)
-
             forecast_date_str = fc.get('forecast_date', '')
             try:
                 fc_dt = datetime.strptime(forecast_date_str, '%Y%m%d')
@@ -4896,73 +4950,73 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
             except ValueError:
                 days_ahead = None
 
-            fc_precip  = fc.get('precipitation') or 0.0
-            fc_rain    = fc_precip > 0.0
-            fc_score   = fc.get('drying_score')
-            fc_suit    = fc.get('suitability', '')
-            fc_label   = _suitability_to_label(fc_suit)
-            precip_ok  = (fc_rain == actual_rain_0416)
+            # precipitation_0416（04:00-16:00積算）を優先。旧データは24時間積算で代替
+            fc_precip = fc.get('precipitation_0416', fc.get('precipitation')) or 0.0
+            fc_rain   = fc_precip > 0.0
+            fc_score  = fc.get('drying_score')
+            fc_suit   = fc.get('suitability', '')
+            fc_label  = _suitability_to_label(fc_suit)
+            precip_ok = (fc_rain == actual_rain_0416)
 
             # 干し記録があれば付加
-            rec_result = records_on_date.get(spot_name)
-            actual_label   = _result_to_label(rec_result) if rec_result else None
-            judg_correct   = (actual_label == fc_label) if actual_label else None
-            has_record     = rec_result is not None
+            rec_result   = records_on_date.get(spot_name)
+            actual_label = _result_to_label(rec_result) if rec_result else None
+            judg_correct = (actual_label == fc_label) if actual_label else None
+            has_record   = rec_result is not None
 
             # upsert: (date, spot_name, days_ahead) が一致する行を更新
             mask = (
-                (fb_df['date']      == target_date_fmt) &
-                (fb_df['spot_name'] == spot_name)       &
+                (fb_df['date']       == target_date_fmt) &
+                (fb_df['spot_name']  == spot_name)       &
                 (fb_df['days_ahead'] == days_ahead)
             )
             if mask.any():
-                # 降水照合フィールドのみ上書き（干し記録は後から _record_forecast_feedback で上書き可）
-                fb_df.loc[mask, 'actual_precip_0416_mm']  = actual_precip_0416
-                fb_df.loc[mask, 'actual_precip_total_mm'] = actual_precip_total
-                fb_df.loc[mask, 'actual_rain_0416']       = actual_rain_0416
-                fb_df.loc[mask, 'forecast_precip_mm']     = fc_precip
-                fb_df.loc[mask, 'forecast_rain']          = fc_rain
+                fb_df.loc[mask, 'actual_precip_0416_mm']   = actual_precip_0416
+                fb_df.loc[mask, 'actual_precip_total_mm']  = actual_precip_total
+                fb_df.loc[mask, 'actual_rain_0416']        = actual_rain_0416
+                fb_df.loc[mask, 'forecast_precip_mm']      = fc_precip
+                fb_df.loc[mask, 'forecast_rain']           = fc_rain
                 fb_df.loc[mask, 'precip_forecast_correct'] = precip_ok
-                fb_df.loc[mask, 'data_source']            = 'openmeteo_archive'
-                fb_df.loc[mask, 'recorded_at']            = now_jst
+                fb_df.loc[mask, 'data_source']             = 'openmeteo_archive'
+                fb_df.loc[mask, 'recorded_at']             = now_jst
                 if has_record:
-                    fb_df.loc[mask, 'actual_result']   = rec_result
-                    fb_df.loc[mask, 'actual_label']    = actual_label
-                    fb_df.loc[mask, 'judgment_correct'] = judg_correct
-                    fb_df.loc[mask, 'has_drying_record'] = True
+                    fb_df.loc[mask, 'actual_result']      = rec_result
+                    fb_df.loc[mask, 'actual_label']       = actual_label
+                    fb_df.loc[mask, 'judgment_correct']   = judg_correct
+                    fb_df.loc[mask, 'has_drying_record']  = True
                 updated += 1
             else:
                 new_rows.append({
-                    'date':                  target_date_fmt,
-                    'spot_name':             spot_name,
-                    'days_ahead':            days_ahead,
-                    'actual_precip_0416_mm': actual_precip_0416,
+                    'date':                   target_date_fmt,
+                    'spot_name':              spot_name,
+                    'days_ahead':             days_ahead,
+                    'actual_precip_0416_mm':  actual_precip_0416,
                     'actual_precip_total_mm': actual_precip_total,
-                    'actual_rain_0416':      actual_rain_0416,
-                    'forecast_precip_mm':    fc_precip,
-                    'forecast_rain':         fc_rain,
+                    'actual_rain_0416':       actual_rain_0416,
+                    'forecast_precip_mm':     fc_precip,
+                    'forecast_rain':          fc_rain,
                     'precip_forecast_correct': precip_ok,
-                    'forecast_score':        fc_score,
-                    'forecast_suitability':  fc_suit,
-                    'forecast_label':        fc_label,
-                    'actual_result':         rec_result,
-                    'actual_label':          actual_label,
-                    'judgment_correct':      judg_correct,
-                    'has_drying_record':     has_record,
-                    'data_source':           'openmeteo_archive',
-                    'recorded_at':           now_jst,
+                    'forecast_score':         fc_score,
+                    'forecast_suitability':   fc_suit,
+                    'forecast_label':         fc_label,
+                    'actual_result':          rec_result,
+                    'actual_label':           actual_label,
+                    'judgment_correct':       judg_correct,
+                    'has_drying_record':      has_record,
+                    'data_source':            'openmeteo_archive',
+                    'recorded_at':            now_jst,
                 })
 
         except Exception as fe:
-            print(f'[auto_compare] parse error {fc_file}: {fe}')
+            app.logger.error('[auto_compare] parse error for %s: %s', spot_name, fe)
 
     if new_rows:
         fb_df = pd.concat([fb_df, pd.DataFrame(new_rows)], ignore_index=True)
         updated += len(new_rows)
 
     fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
-    print(f'[auto_compare] {date_str}: actual_precip_0416={actual_precip_0416}mm '
-          f'rain={actual_rain_0416} | {updated} rows written to feedback_log')
+    app.logger.info('[auto_compare] %s: actual_precip_0416=%.2fmm rain=%s | %d rows written',
+                    date_str, actual_precip_0416, actual_rain_0416, updated)
     return updated
 
 
