@@ -752,6 +752,8 @@ def _save_forecast_history(spot_name, forecasts):
         hourly = fc.get('hourly_details', [])
         valid_humidity = [h['humidity'] for h in hourly if h.get('humidity') is not None]
         valid_wind = [h['wind_speed'] for h in hourly if h.get('wind_speed') is not None]
+        # hourly_details は 04:00-16:00 の時別データのみ（13時間）
+        precip_0416 = round(sum(h.get('precipitation') or 0 for h in hourly), 2)
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump({
@@ -761,12 +763,13 @@ def _save_forecast_history(spot_name, forecasts):
                     'max_temp': fc['daily_summary']['temperature_max'],
                     'min_humidity': min(valid_humidity) if valid_humidity else None,
                     'avg_wind': sum(valid_wind) / len(valid_wind) if valid_wind else None,
-                    'precipitation': fc['daily_summary']['precipitation'],
+                    'precipitation': fc['daily_summary']['precipitation'],      # 24時間全日積算
+                    'precipitation_0416': precip_0416,                          # 04:00-16:00 積算（実測比較用）
                     'drying_score': fc['daily_summary']['drying_score'],
                     'suitability': fc['daily_summary']['suitability'],
                 }, f, ensure_ascii=False)
         except Exception as e:
-            print(f'[forecast_history] save error for {spot_name} {target_date_str}: {e}')
+            app.logger.error('[forecast_history] save error for %s %s: %s', spot_name, target_date_str, e)
 
 
 @app.route('/api/forecast')
@@ -1888,7 +1891,8 @@ def _record_forecast_feedback(name, date_str, result):
 
                 fc_score  = fc_data.get('drying_score')
                 fc_suit   = fc_data.get('suitability', '')
-                fc_precip = fc_data.get('precipitation') or 0.0
+                # precipitation_0416（04:00-16:00積算）を優先。旧データは24時間積算で代替
+                fc_precip = fc_data.get('precipitation_0416', fc_data.get('precipitation')) or 0.0
                 fc_label  = _suitability_to_label(fc_suit)
                 correct   = (actual_label == fc_label)
 
