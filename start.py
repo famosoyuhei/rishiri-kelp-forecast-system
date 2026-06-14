@@ -2271,6 +2271,48 @@ def _fc_redis_set(key: str, data, ttl: int) -> bool:
         return False
 
 
+# ── 観測データ・ナウキャスト永続化用 Redis（prefix なし、90日TTL） ────────────
+_OBS_KEY_TTL = 90 * 24 * 3600  # 90日 = 7,776,000 秒
+
+
+def _obs_redis_get(key: str):
+    """観測データ/ナウキャスト用 Redis GET（_FC_KEY_PREFIX なし）。"""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return None
+    try:
+        resp = requests.get(
+            f'{rest_url}/get/{key}',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=3,
+        )
+        result = resp.json().get('result')
+        return json.loads(result) if result else None
+    except Exception:
+        return None
+
+
+def _obs_redis_set(key: str, data, ttl: int = _OBS_KEY_TTL) -> bool:
+    """観測データ/ナウキャスト用 Redis SET EX（pipeline API経由）。"""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return False
+    try:
+        payload = json.dumps(data, ensure_ascii=False)
+        resp = requests.post(
+            f'{rest_url}/pipeline',
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=[['SET', key, payload, 'EX', ttl]],
+            timeout=5,
+        )
+        results = resp.json()
+        return isinstance(results, list) and bool(results) and results[0].get('result') == 'OK'
+    except Exception:
+        return False
+
+
 def _field_cache_get(key: str):
     """Hybrid cache read: Redis primary → in-memory fallback."""
     # 1. Try Redis (shared across workers)
@@ -4564,10 +4606,9 @@ def get_forecast_accuracy():
 
 
 def _collect_amedas_from_openmeteo(target_date_str):
-    """Fetch one day's actual weather from Open-Meteo Archive API for both amedas stations.
+    """Open-Meteo Archive から両アメダス局の実測値を取得し Redis（主）＋ローカル（副）に保存する。
 
-    Saves to amedas_data/amedas_11151_{YYYYMMDD}.json (沓形) and
-    amedas_data/amedas_11311_{YYYYMMDD}.json (本泊).
+    Redis key: amedas:obs:{station_id}:{YYYYMMDD}  TTL 90日
     Returns True on success, False on failure.
     """
     STATIONS = [
@@ -4577,9 +4618,26 @@ def _collect_amedas_from_openmeteo(target_date_str):
     os.makedirs(AMEDAS_DATA_DIR, exist_ok=True)
     success = True
     for st in STATIONS:
+        redis_key = f'amedas:obs:{st["id"]}:{target_date_str}'
+
+        # ── Redis にすでにあればスキップ ─────────────────────────────────────
+        if _obs_redis_get(redis_key) is not None:
+            app.logger.info('[amedas] %s already in Redis, skip fetch', redis_key)
+            continue
+
+        # ── ローカルファイルから Redis へ移行（デプロイ前収集分を救済） ────────
         filepath = os.path.join(AMEDAS_DATA_DIR, f'amedas_{st["id"]}_{target_date_str}.json')
         if os.path.exists(filepath):
-            continue
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    record = json.load(f)
+                _obs_redis_set(redis_key, record)
+                app.logger.info('[amedas] migrated local → Redis: %s', redis_key)
+                continue
+            except Exception:
+                pass  # 読み込み失敗なら API から再取得
+
+        # ── Open-Meteo Archive API から取得 ──────────────────────────────────
         url = (
             f'https://archive-api.open-meteo.com/v1/archive'
             f'?latitude={st["lat"]}&longitude={st["lon"]}'
@@ -4593,34 +4651,38 @@ def _collect_amedas_from_openmeteo(target_date_str):
             with urllib.request.urlopen(url, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             hourly = data.get('hourly', {})
-            times = hourly.get('time', [])
-            temps = hourly.get('temperature_2m', [])
-            humids = hourly.get('relative_humidity_2m', [])
-            winds = hourly.get('wind_speed_10m', [])
+            times   = hourly.get('time', [])
+            temps   = hourly.get('temperature_2m', [])
+            humids  = hourly.get('relative_humidity_2m', [])
+            winds   = hourly.get('wind_speed_10m', [])
             precips = hourly.get('precipitation', [])
-            valid_h = [h for h in humids if h is not None]
-            valid_w = [w for w in winds if w is not None]
+            valid_h = [h for h in humids  if h is not None]
+            valid_w = [w for w in winds   if w is not None]
             valid_p = [p for p in precips if p is not None]
             record = {
-                'date': f'{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}',
-                'station_id': st['id'],
+                'date':         f'{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}',
+                'station_id':   st['id'],
                 'station_name': st['name'],
                 'hourly': [
-                    {'time': t, 'temperature': te, 'humidity': hu, 'wind_speed': wi, 'precipitation': pr}
+                    {'time': t, 'temperature': te, 'humidity': hu,
+                     'wind_speed': wi, 'precipitation': pr}
                     for t, te, hu, wi, pr in zip(times, temps, humids, winds, precips)
                 ],
                 'daily_summary': {
-                    'min_humidity': min(valid_h) if valid_h else None,
-                    'avg_wind': round(sum(valid_w) / len(valid_w), 2) if valid_w else None,
+                    'min_humidity':        min(valid_h) if valid_h else None,
+                    'avg_wind':            round(sum(valid_w) / len(valid_w), 2) if valid_w else None,
                     'total_precipitation': round(sum(valid_p), 2) if valid_p else None,
                 },
                 'collected_at': datetime.now(tz=JST).isoformat(),
             }
+            # Redis に保存（主）
+            _obs_redis_set(redis_key, record)
+            # ローカルにも保存（副：ローカル確認用）
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(record, f, ensure_ascii=False)
-            print(f'[amedas] saved {filepath}')
+            app.logger.info('[amedas] saved %s → Redis + local', redis_key)
         except Exception as e:
-            print(f'[amedas] fetch error for {st["id"]} {target_date_str}: {e}')
+            app.logger.error('[amedas] fetch error %s %s: %s', st['id'], target_date_str, e)
             success = False
     return success
 
@@ -4645,6 +4707,62 @@ def collect_amedas():
     return jsonify({'status': 'ok', 'results': results})
 
 
+def _record_nowcast_snapshot() -> None:
+    """全干場（334地点）のナウキャスト降水量を Redis にスナップショットとして蓄積する。
+
+    16:00 / 01:30 / 03:00 JST の各バックグラウンドスレッドから呼ばれる。
+    Redis key: nowcast:daily:{YYYYMMDD}
+      → [{time, basetime, any_rain, max_precip_mmh, spots:{name: mm_h}}, ...]
+    TTL: 90日
+
+    重複スナップショット防止: nowcast:snap_done:{YYYYMMDD}:{HHMM} を Redis NX で確保。
+    """
+    try:
+        result = _fetch_nowcast_precip_rishiri()
+        if result is None:
+            app.logger.warning('[nowcast] snapshot skipped — fetch returned None')
+            return
+
+        now      = datetime.now(tz=JST)
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H:%M')
+
+        # NX で重複防止（同分内に複数ワーカーが呼んでも1回のみ記録）
+        rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+        token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+        if rest_url and token:
+            try:
+                dedup_key = f'nowcast:snap_done:{date_str}:{time_str}'
+                r = requests.post(
+                    f'{rest_url}/pipeline',
+                    headers={'Authorization': f'Bearer {token}',
+                             'Content-Type': 'application/json'},
+                    json=[['SET', dedup_key, '1', 'NX', 'EX', '3600']],
+                    timeout=3,
+                )
+                results = r.json()
+                if isinstance(results, list) and results and results[0].get('result') != 'OK':
+                    app.logger.info('[nowcast] snapshot dedup skip %s %s', date_str, time_str)
+                    return
+            except Exception:
+                pass  # dedup 失敗なら記録を続行
+
+        key      = f'nowcast:daily:{date_str}'
+        existing = _obs_redis_get(key) or []
+        existing.append({
+            'time':           time_str,
+            'basetime':       result.get('basetime'),
+            'any_rain':       result.get('any_rain', False),
+            'max_precip_mmh': result.get('max_precip_mmh', 0.0),
+            'spots':          result.get('spots', {}),
+        })
+        _obs_redis_set(key, existing)
+        app.logger.info('[nowcast] snapshot saved %d spots at %s (key=%s)',
+                        len(result.get('spots', {})), time_str, key)
+    except Exception as e:
+        app.logger.error('[nowcast] snapshot error: %s', e)
+
+
 def _daily_amedas_collection():
     """Background thread: collect yesterday's amedas data once a day at 03:00 JST."""
     import time
@@ -4660,6 +4778,7 @@ def _daily_amedas_collection():
         ok = _collect_amedas_from_openmeteo(yesterday)
         if ok:
             _auto_compare_precip_forecast(yesterday)
+        _record_nowcast_snapshot()  # 03:00 JST ナウキャストスナップショット
 
 
 def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> int:
@@ -4685,18 +4804,22 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     import glob as _glob
     import csv as _csv
 
-    amedas_path = os.path.join(AMEDAS_DATA_DIR, f'amedas_{station_id}_{date_str}.json')
-    if not os.path.exists(amedas_path):
-        print(f'[auto_compare] {amedas_path} not found, skip')
-        return 0
+    # ── 0. 実測データ取得（Redis 優先 → ローカルファイル fallback） ──────────
+    redis_key = f'amedas:obs:{station_id}:{date_str}'
+    amedas = _obs_redis_get(redis_key)
+    if amedas is None:
+        amedas_path = os.path.join(AMEDAS_DATA_DIR, f'amedas_{station_id}_{date_str}.json')
+        if not os.path.exists(amedas_path):
+            app.logger.warning('[auto_compare] %s not in Redis or local, skip', date_str)
+            return 0
+        try:
+            with open(amedas_path, 'r', encoding='utf-8') as f:
+                amedas = json.load(f)
+        except Exception as e:
+            app.logger.error('[auto_compare] read error %s: %s', amedas_path, e)
+            return 0
 
-    # ── 1. 実測降水量を抽出（04:00-16:00 JST = インデックス4-16） ──────────
-    try:
-        with open(amedas_path, 'r', encoding='utf-8') as f:
-            amedas = json.load(f)
-    except Exception as e:
-        print(f'[auto_compare] read error {amedas_path}: {e}')
-        return 0
+    # ── 1. 実測降水量を抽出（04:00-16:00 JST） ─────────────────────────────
 
     hourly = amedas.get('hourly', [])
     # "YYYY-MM-DDTHH:MM" 形式。04:00〜16:00 JST（時刻文字列のHH部分で判定）
@@ -6418,6 +6541,8 @@ def _scheduled_line_notify(kind: str, hour: int, minute: int) -> None:
                 app.logger.info('LINE %s notification result: %s', kind, result)
             except Exception as exc:
                 app.logger.error('LINE %s notification failed: %s', kind, exc)
+            # 通知時刻のナウキャストスナップショットを記録（lockを取得したワーカーのみ）
+            _record_nowcast_snapshot()
         else:
             app.logger.info(
                 'LINE %s notification already sent by another worker, skipping', kind
