@@ -65,7 +65,7 @@ python start.py
 - ダッシュボード: http://localhost:5000/dashboard
 - モバイル版: http://localhost:5000/mobile
 
-## API エンドポイント（13個）
+## API エンドポイント
 
 | カテゴリ | エンドポイント | 機能 |
 |---------|--------------|------|
@@ -75,6 +75,7 @@ python start.py
 | 天気 | `GET /api/weather` | 現在天気取得 |
 | 予報 | `GET /api/forecast` | 7日間乾燥予報 |
 | 干場 | `GET /api/spots` | 干場リスト（334地点） |
+| 連携 | `GET /api/integration/spots/sheets` | n8n / Google Sheets向け現在地点マスター |
 | 干場 | `POST /add` | 干場追加 |
 | 干場 | `POST /delete` | 干場削除（5条件制限付き） |
 | 記録 | `POST /record` | 乾燥記録追加・更新 |
@@ -83,6 +84,8 @@ python start.py
 | 分析 | `GET /api/analysis/contours` | 等値線解析 |
 | 分析 | `GET /api/analysis/spot-differences` | 干場間気象差異 |
 | 検証 | `GET /api/validation/accuracy` | 予報精度検証 |
+| 検証 | `GET /api/validation/accuracy/sheets` | n8n / Google Sheets向け精度ログ行データ |
+| 検証 | `GET /api/validation/accuracy/sheets/summary` | Google Sheetsダッシュボード向け集計データ |
 
 ## システム構成
 
@@ -152,6 +155,12 @@ rishiri-kelp-forecast-system/
 - **GitHub**: https://github.com/famosoyuhei/rishiri-kelp-forecast-system（mainブランチ自動デプロイ）
 
 詳細は [DEPLOYMENT.md](DEPLOYMENT.md) を参照してください。
+
+## n8n / Google Sheets 精度可視化
+
+Microsoft Excelの契約は不要です。無料のGoogle Sheetsとn8nで、予報精度のRawログ、日別・何日前予報別・地区別・部落別集計、干場選択式の個別ビューを運用できます。
+
+セットアップ: [docs/GOOGLE_SHEETS_FREE_SETUP.md](docs/GOOGLE_SHEETS_FREE_SETUP.md)
 
 ## ドキュメント
 

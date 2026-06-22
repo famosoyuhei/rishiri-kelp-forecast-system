@@ -1578,6 +1578,53 @@ def get_spots():
             'status': 'error'
         }), 503
 
+
+@app.route('/api/integration/spots/sheets')
+def get_spot_master_for_sheets():
+    """Current spot master snapshot for n8n -> Google Sheets replacement sync."""
+    try:
+        spots_df = pd.read_csv(CSV_FILE)
+        synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+        rows = []
+        for _, spot in spots_df.iterrows():
+            name = str(spot.get('name', ''))
+            if name.startswith('A_'):
+                spot_type = 'amedas'
+            elif name.startswith('R_'):
+                spot_type = 'reference'
+            else:
+                spot_type = 'hoshiba'
+            rows.append({
+                'master_key': name,
+                'spot_name': name,
+                'spot_type': spot_type,
+                'is_active': True,
+                'is_protected': spot_type in ('amedas', 'reference'),
+                'lat': _json_safe_value(spot.get('lat')),
+                'lon': _json_safe_value(spot.get('lon')),
+                'town': _json_safe_value(spot.get('town')),
+                'district': _json_safe_value(spot.get('district')),
+                'buraku': _json_safe_value(spot.get('buraku')),
+                'synced_at_jst': synced_at,
+            })
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': synced_at,
+            'sync_mode': 'replace_current_snapshot',
+            'columns': [
+                'master_key', 'spot_name', 'spot_type', 'is_active', 'is_protected',
+                'lat', 'lon', 'town', 'district', 'buraku', 'synced_at_jst',
+            ],
+            'summary': {
+                'total': len(rows),
+                'hoshiba': sum(1 for row in rows if row['spot_type'] == 'hoshiba'),
+                'special_points': sum(1 for row in rows if row['spot_type'] != 'hoshiba'),
+            },
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/spots')
 def get_spots_legacy():
     """Legacy endpoint for /spots - redirects to /api/spots"""
@@ -1828,6 +1875,9 @@ FEEDBACK_COLUMNS = [
     "date",                     # 対象日 (YYYY-MM-DD)
     "spot_name",                # 干場名
     "days_ahead",               # 何日前に出した予報か (0=当日朝)
+    "town",                     # 記録作成時点の町（削除後も履歴保持）
+    "district",                 # 記録作成時点の地区
+    "buraku",                   # 記録作成時点の部落
     # ── 実測降水量（Open-Meteo Archive / 沓形局基準）────────────────────
     "actual_precip_0416_mm",    # 04:00-16:00 実測降水量合計 (mm)
     "actual_precip_total_mm",   # 全日 実測降水量合計 (mm)
@@ -1851,6 +1901,28 @@ FEEDBACK_COLUMNS = [
     "recorded_at",              # ログ追記日時
 ]
 
+
+def _load_spot_metadata_map() -> dict:
+    """Load current spot classifications keyed by spot name."""
+    if not os.path.exists(CSV_FILE):
+        return {}
+    try:
+        spots_df = pd.read_csv(CSV_FILE)
+        result = {}
+        for _, row in spots_df.iterrows():
+            name = row.get('name')
+            if not name:
+                continue
+            result[str(name)] = {
+                'town': _json_safe_value(row.get('town')),
+                'district': _json_safe_value(row.get('district')),
+                'buraku': _json_safe_value(row.get('buraku')),
+            }
+        return result
+    except Exception as exc:
+        app.logger.warning('[spot_metadata] load failed: %s', exc)
+        return {}
+
 def _result_to_label(result):
     """乾燥記録結果 → 二値ラベル（可/不可）"""
     return "可" if result in ("完全乾燥", "概ね乾燥") else "不可"
@@ -1858,6 +1930,236 @@ def _result_to_label(result):
 def _suitability_to_label(suitability):
     """予報 suitability → 二値ラベル（可/不可）"""
     return "可" if suitability in ("excellent", "good") else "不可"
+
+
+def _json_safe_value(value):
+    """Convert pandas/numpy scalar values to JSON-safe primitives."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
+
+
+def _load_feedback_sheet_rows(days_back: int = 90, spot_name: str | None = None,
+                              has_record: str | None = None) -> tuple[list[dict], dict]:
+    """Return feedback_log.csv as flat rows for n8n / Google Sheets ingestion."""
+    if not os.path.exists(FEEDBACK_FILE):
+        return [], {
+            'total_rows': 0,
+            'note': 'feedback_log.csv not found yet',
+        }
+
+    fb_df = pd.read_csv(FEEDBACK_FILE)
+    for col in FEEDBACK_COLUMNS:
+        if col not in fb_df.columns:
+            fb_df[col] = None
+
+    bool_columns = [
+        'actual_rain_0416', 'forecast_rain', 'precip_forecast_correct',
+        'judgment_correct', 'has_drying_record',
+    ]
+    for col in bool_columns:
+        fb_df[col] = fb_df[col].map({
+            True: True, False: False,
+            'True': True, 'False': False,
+            'true': True, 'false': False,
+            '1': True, '0': False,
+            1: True, 0: False,
+        })
+
+    fb_df['date'] = pd.to_datetime(fb_df['date'], errors='coerce')
+    cutoff = datetime.now(tz=JST).date() - timedelta(days=days_back)
+    fb_df = fb_df[fb_df['date'].dt.date >= cutoff].copy()
+
+    if spot_name:
+        fb_df = fb_df[fb_df['spot_name'] == spot_name].copy()
+
+    if has_record in ('true', '1', 'yes'):
+        fb_df = fb_df[fb_df['has_drying_record'] == True].copy()
+    elif has_record in ('false', '0', 'no'):
+        fb_df = fb_df[fb_df['has_drying_record'] == False].copy()
+
+    if os.path.exists(CSV_FILE):
+        try:
+            spots_df = pd.read_csv(CSV_FILE)[['name', 'town', 'district', 'buraku']]
+            spots_df.rename(columns={
+                'town': 'current_town',
+                'district': 'current_district',
+                'buraku': 'current_buraku',
+            }, inplace=True)
+            fb_df = fb_df.merge(spots_df, left_on='spot_name', right_on='name', how='left')
+            fb_df.drop(columns=['name'], inplace=True, errors='ignore')
+            for col in ('town', 'district', 'buraku'):
+                current_col = f'current_{col}'
+                fb_df[col] = fb_df[col].combine_first(fb_df[current_col])
+                fb_df.drop(columns=[current_col], inplace=True, errors='ignore')
+        except Exception as exc:
+            app.logger.warning('[accuracy_sheets] spot metadata merge failed: %s', exc)
+            for col in ('town', 'district', 'buraku'):
+                if col not in fb_df.columns:
+                    fb_df[col] = None
+
+    fb_df['date'] = fb_df['date'].dt.strftime('%Y-%m-%d')
+    fb_df.sort_values(['date', 'spot_name', 'days_ahead'], inplace=True)
+
+    sheet_columns = [
+        'upsert_key',
+        'date', 'spot_name', 'town', 'district', 'buraku', 'days_ahead',
+        'actual_precip_0416_mm', 'actual_precip_total_mm', 'actual_rain_0416',
+        'forecast_precip_mm', 'forecast_rain', 'precip_forecast_correct',
+        'forecast_score', 'forecast_suitability', 'forecast_label',
+        'actual_result', 'actual_label', 'judgment_correct',
+        'has_drying_record', 'data_source', 'recorded_at',
+    ]
+    for col in sheet_columns:
+        if col not in fb_df.columns:
+            fb_df[col] = None
+
+    fb_df['upsert_key'] = (
+        fb_df['date'].fillna('').astype(str) + '|' +
+        fb_df['spot_name'].fillna('').astype(str) + '|' +
+        fb_df['days_ahead'].fillna('').astype(str)
+    )
+
+    rows = [
+        {col: _json_safe_value(row[col]) for col in sheet_columns}
+        for _, row in fb_df[sheet_columns].iterrows()
+    ]
+
+    def _rate(series):
+        valid = series.dropna()
+        if valid.empty:
+            return None
+        return round(float(valid.mean()) * 100, 1)
+
+    summary = {
+        'total_rows': len(rows),
+        'days_back': days_back,
+        'spot': spot_name or 'all',
+        'has_record_filter': has_record or 'all',
+        'precip_hit_rate_pct': _rate(fb_df['precip_forecast_correct']),
+        'judgment_hit_rate_pct': _rate(fb_df['judgment_correct']),
+        'drying_record_rows': int((fb_df['has_drying_record'] == True).sum()),
+    }
+    return rows, summary
+
+
+@app.route('/api/validation/accuracy/sheets')
+def get_accuracy_for_sheets():
+    """Flat forecast accuracy rows for n8n -> Google Sheets visualization."""
+    try:
+        days_back = min(max(int(request.args.get('days', 90)), 1), 365)
+        spot_name = request.args.get('spot') or None
+        has_record = request.args.get('has_record')
+        rows, summary = _load_feedback_sheet_rows(days_back, spot_name, has_record)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'columns': [
+                'upsert_key',
+                'date', 'spot_name', 'town', 'district', 'buraku', 'days_ahead',
+                'actual_precip_0416_mm', 'actual_precip_total_mm', 'actual_rain_0416',
+                'forecast_precip_mm', 'forecast_rain', 'precip_forecast_correct',
+                'forecast_score', 'forecast_suitability', 'forecast_label',
+                'actual_result', 'actual_label', 'judgment_correct',
+                'has_drying_record', 'data_source', 'recorded_at',
+            ],
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def _pct(series):
+    valid = series.dropna()
+    if valid.empty:
+        return None
+    return round(float(valid.mean()) * 100, 1)
+
+
+def _count_true(series):
+    valid = series.dropna()
+    if valid.empty:
+        return 0
+    return int((valid == True).sum())
+
+
+def _build_accuracy_summary_tables(rows: list[dict]) -> dict:
+    """Build chart-ready summary tables from flat feedback rows."""
+    if not rows:
+        return {
+            'by_day': [],
+            'by_days_ahead': [],
+            'by_area': [],
+            'by_buraku': [],
+        }
+
+    df = pd.DataFrame(rows)
+
+    def summarize(group_cols):
+        table = []
+        for keys, group in df.groupby(group_cols, dropna=False):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            row = {col: _json_safe_value(val) for col, val in zip(group_cols, keys)}
+            row['summary_key'] = '|'.join('' if val is None else str(val) for val in keys)
+            row.update({
+                'rows': int(len(group)),
+                'drying_record_rows': _count_true(group['has_drying_record']),
+                'precip_hit_rate_pct': _pct(group['precip_forecast_correct']),
+                'judgment_hit_rate_pct': _pct(group['judgment_correct']),
+                'avg_forecast_score': (
+                    round(float(pd.to_numeric(group['forecast_score'], errors='coerce').mean()), 1)
+                    if pd.to_numeric(group['forecast_score'], errors='coerce').notna().any()
+                    else None
+                ),
+                'false_positive_count': int(
+                    ((group['forecast_label'] == '可') & (group['actual_label'] == '不可')).sum()
+                ),
+                'false_negative_count': int(
+                    ((group['forecast_label'] == '不可') & (group['actual_label'] == '可')).sum()
+                ),
+            })
+            table.append(row)
+        return table
+
+    return {
+        'by_day': summarize(['date']),
+        'by_days_ahead': summarize(['days_ahead']),
+        'by_area': summarize(['town', 'district']),
+        'by_buraku': summarize(['town', 'district', 'buraku']),
+    }
+
+
+@app.route('/api/validation/accuracy/sheets/summary')
+def get_accuracy_sheet_summaries():
+    """Chart-ready summary rows for n8n -> Google Sheets dashboard tabs."""
+    try:
+        days_back = min(max(int(request.args.get('days', 90)), 1), 365)
+        spot_name = request.args.get('spot') or None
+        has_record = request.args.get('has_record')
+        rows, source_summary = _load_feedback_sheet_rows(days_back, spot_name, has_record)
+        tables = _build_accuracy_summary_tables(rows)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'source_summary': source_summary,
+            'tables': tables,
+            'recommended_sheet_tabs': [
+                'raw_feedback',
+                'summary_by_day',
+                'summary_by_days_ahead',
+                'summary_by_area',
+                'summary_by_buraku',
+            ],
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 def _record_forecast_feedback(name, date_str, result):
     """
@@ -1880,6 +2182,7 @@ def _record_forecast_feedback(name, date_str, result):
         actual_label = _result_to_label(result)
         jst = _tz2(_td2(hours=9))
         now_jst = _dt.now(jst).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+        spot_meta = _load_spot_metadata_map().get(name, {})
 
         # 既存フィードバックログを読み込み
         try:
@@ -1927,11 +2230,17 @@ def _record_forecast_feedback(name, date_str, result):
                     fb_df.loc[mask, 'judgment_correct'] = correct
                     fb_df.loc[mask, 'has_drying_record'] = True
                     fb_df.loc[mask, 'recorded_at']      = now_jst
+                    for meta_col in ('town', 'district', 'buraku'):
+                        if spot_meta.get(meta_col) is not None:
+                            fb_df.loc[mask, meta_col] = spot_meta[meta_col]
                 else:
                     new_rows.append({
                         'date':                  date_str,
                         'spot_name':             name,
                         'days_ahead':            days_ahead,
+                        'town':                  spot_meta.get('town'),
+                        'district':              spot_meta.get('district'),
+                        'buraku':                spot_meta.get('buraku'),
                         'actual_result':         result,
                         'actual_label':          actual_label,
                         'forecast_score':        fc_score,
@@ -4939,9 +5248,11 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     now_jst = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
     updated = 0
     new_rows = []
+    spot_metadata = _load_spot_metadata_map()
 
     for spot_name, fc in fc_entries:
         try:
+            spot_meta = spot_metadata.get(spot_name, {})
             forecast_date_str = fc.get('forecast_date', '')
             try:
                 fc_dt = datetime.strptime(forecast_date_str, '%Y%m%d')
@@ -4979,6 +5290,9 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                 fb_df.loc[mask, 'precip_forecast_correct'] = precip_ok
                 fb_df.loc[mask, 'data_source']             = 'openmeteo_archive'
                 fb_df.loc[mask, 'recorded_at']             = now_jst
+                for meta_col in ('town', 'district', 'buraku'):
+                    if spot_meta.get(meta_col) is not None:
+                        fb_df.loc[mask, meta_col] = spot_meta[meta_col]
                 if has_record:
                     fb_df.loc[mask, 'actual_result']      = rec_result
                     fb_df.loc[mask, 'actual_label']       = actual_label
@@ -4990,6 +5304,9 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                     'date':                   target_date_fmt,
                     'spot_name':              spot_name,
                     'days_ahead':             days_ahead,
+                    'town':                   spot_meta.get('town'),
+                    'district':               spot_meta.get('district'),
+                    'buraku':                 spot_meta.get('buraku'),
                     'actual_precip_0416_mm':  actual_precip_0416,
                     'actual_precip_total_mm': actual_precip_total,
                     'actual_rain_0416':       actual_rain_0416,

@@ -1,0 +1,128 @@
+{
+  "name": "Rishiri Accuracy to Google Sheets",
+  "description": "Blueprint for syncing Rishiri kelp forecast accuracy API data into Google Sheets. Configure Google credentials and sheet IDs inside n8n before activating.",
+  "timezone": "Asia/Tokyo",
+  "sheets": {
+    "raw": "raw_feedback",
+    "summary_by_day": "summary_by_day",
+    "summary_by_days_ahead": "summary_by_days_ahead",
+    "summary_by_area": "summary_by_area",
+    "summary_by_buraku": "summary_by_buraku"
+    ,"spot_master": "spot_master"
+    ,"spot_detail": "spot_detail"
+  },
+  "apis": {
+    "raw": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90",
+    "summary": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets/summary?days=90"
+    ,"spot_master": "https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets"
+  },
+  "workflow_a_raw_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "03:35",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "={{$json.apis.raw || 'https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90'}}",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split API rows into n8n items. upsert_key is already returned by the API.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "raw_feedback",
+        "matchingColumn": "upsert_key",
+        "note": "upsert_key format: date|spot_name|days_ahead."
+      }
+    }
+  ],
+  "workflow_b_summary_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "03:40",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets/summary?days=90",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Choose one table at a time, or duplicate this branch for each summary table.",
+      "code": "const tableName = 'by_day';\nconst rows = $json.tables?.[tableName] || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "summary_by_day",
+        "matchingColumn": "summary_key",
+        "note": "Duplicate the Code + Google Sheets pair for by_days_ahead, by_area, and by_buraku."
+      }
+    }
+  ],
+  "recommended_chart_tabs": [
+    "Dashboard",
+    "spot_master",
+    "spot_detail",
+    "raw_feedback",
+    "summary_by_day",
+    "summary_by_days_ahead",
+    "summary_by_area",
+    "summary_by_buraku"
+  ],
+  "workflow_c_spot_master_sync": [
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Clear Rows",
+      "settings": {
+        "sheetTab": "spot_master",
+        "range": "A2:K"
+      }
+    },
+    {
+      "node": "Code",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append Row",
+      "settings": {
+        "sheetTab": "spot_master"
+      }
+    }
+  ],
+  "safety_notes": [
+    "This workflow reads the accuracy APIs only; it does not write to the Flask app.",
+    "Do not call /api/forecast for all 334 spots from n8n.",
+    "Run after 03:00 JST so the app has time to collect AMEDAS data.",
+    "Keep LINE notification automation separate to avoid duplicate sends."
+  ]
+}
