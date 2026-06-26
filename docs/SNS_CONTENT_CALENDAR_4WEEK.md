@@ -70,15 +70,15 @@
 
 ```csv
 post_id,campaign,audience,platform,post_type,status,fact_check_status,scheduled_at_jst,title,body,cta,url,asset_url,asset_notes,approval_notes,published_at_jst,external_post_id,error_message
-sns-001,rishiri_island,island,facebook,image,needs_review,ok,2026-07-07 16:00,利尻島で昆布を干す方へ,"明日の干場ごとの乾燥予報を、スマホで確認できます。利尻島の331か所の干場と3つの観測/基準点をもとに、7日間の乾燥適性を表示します。まずは自分の地区・干場を開いて、明日の判断材料として見てください。",自分の干場を見る,https://rishiri-kelp-forecast-system.onrender.com,,アプリ地図画面 + 見出し「利尻島で昆布を干す方へ」,,,,
+sns-001,rishiri_island,island,facebook,image,needs_review,ok,2026-07-07 16:00,利尻島で昆布を干す方へ,"明日の干場ごとの乾燥予報を、スマホで確認できます。利尻島の331か所の干場と3つの観測/基準点をもとに、7日間の乾燥適性を表示します。まずは自分の地区・干場を開いて、明日の判断材料として見てください。",自分の干場を見る,https://rishiri-kelp-forecast-system.onrender.com/island,,アプリ地図画面 + 見出し「利尻島で昆布を干す方へ」,,,,
 sns-002,national_primary_industry,national,x,text,needs_review,ok,2026-07-08 11:30,天気予報を見るだけでは足りない,"天気予報を見るだけでは、一次産業の作業判断には足りないことがあります。\n\n刈るか。干すか。防除するか。出漁するか。\n\n必要なのは天気そのものではなく、現場ごとの作業可否。\n\n利尻島の昆布干場予報アプリをもとに、相談・ヒアリング前提の天候判断アプリ導入支援を始めます。",個別相談,,,,,,
 sns-003,national_primary_industry,national,threads,text,needs_review,ok,2026-07-09 19:00,自分の干場の予報が必要な理由,"利尻島の昆布干しは、同じ島でも場所によって風と湿度が違います。\n\nだから「北海道の天気」ではなく、「自分の干場の予報」が必要になる。\n\n一次産業のアプリは、こういう小さな違いを拾うところから作るのが大事だと思っています。",note予告,,,,,,
-sns-004,rishiri_island,island,line_share,line_text,needs_review,ok,2026-07-10 16:00,家族共有用,"明日の昆布干しの目安、ここで見られます。\n\n干場ごとに7日間の乾燥予報が出ます。スマホで開いて、自分の干場を地図から選んでください。\n\nhttps://rishiri-kelp-forecast-system.onrender.com",URLを開く,https://rishiri-kelp-forecast-system.onrender.com,,LINE転送用。自動一斉送信しない,,,,
-sns-005,rishiri_island,island,instagram,image,needs_review,ok,2026-07-13 16:00,地図から干場を見る方法,"利尻島の昆布干場予報は、地図から自分の干場を選んで7日間の乾燥予報を確認できます。\n\nまずは自分の地区を探して、明日の判断材料として見てください。",干場を選ぶ,https://rishiri-kelp-forecast-system.onrender.com,,スマホ地図画面のスクリーンショット,,,,
+sns-004,rishiri_island,island,line_share,line_text,needs_review,ok,2026-07-10 16:00,家族共有用,"明日の昆布干しの目安、ここで見られます。\n\n干場ごとに7日間の乾燥予報が出ます。スマホで開いて、自分の干場を地図から選んでください。\n\nhttps://rishiri-kelp-forecast-system.onrender.com/island",URLを開く,https://rishiri-kelp-forecast-system.onrender.com/island,,LINE転送用。自動一斉送信しない,,,,
+sns-005,rishiri_island,island,instagram,image,needs_review,ok,2026-07-13 16:00,地図から干場を見る方法,"利尻島の昆布干場予報は、地図から自分の干場を選んで7日間の乾燥予報を確認できます。\n\nまずは自分の地区を探して、明日の判断材料として見てください。",干場を選ぶ,https://rishiri-kelp-forecast-system.onrender.com/island,,スマホ地図画面のスクリーンショット,,,,
 sns-006,national_primary_industry,national,x,text,needs_review,ok,2026-07-14 12:00,利尻島331干場の実例,"利尻島向けに、昆布干場ごとの7日間乾燥予報アプリを作っています。\n\n331か所の干場と3つの観測/基準点を扱い、降水・湿度・風速などから乾燥適性を表示します。\n\nこの考え方は、牧草乾燥、露地野菜の防除、果樹の霜害、養殖の強風判断にも応用できます。",スレッドを見る,,,,,,
 sns-007,national_primary_industry,national,threads,text,needs_review,ok,2026-07-15 19:00,経験と勘を否定しない設計,"現場の経験と勘を、アプリで置き換えたいわけではありません。\n\nむしろ、経験と勘が見ているものを少しずつ記録に残して、次の判断に使えるようにしたい。\n\n利尻島の昆布干場予報は、そういう考え方で作っています。",プロフィールを見る,,,,,,
 sns-008,national_primary_industry,national,x,text,needs_review,ok,2026-07-16 11:30,牧草乾燥への応用,"牧草乾燥では、刈る・反転する・集草する・ロールする判断が天候に左右されます。\n\n降水、湿度、風、日射、連続乾燥時間を作業判断に翻訳できれば、専用の通知アプリとして設計できます。\n\n実際の導入は、地域・地点・作業手順を相談で伺ってから個別に組み立てます。",個別相談,,,,,,
-sns-009,rishiri_island,island,facebook,image,needs_review,ok,2026-07-17 16:00,通知登録の説明,"前日の夕方に明日の目安を見られると、段取りを決めやすくなります。\n\n利尻島昆布干場予報では、干場ごとの7日間予報を確認できます。通知機能も、必要に応じて使ってください。\n\n予報改善のため、干せた日・干せなかった日の記録入力にもご協力ください。任意入力で、わかる範囲で大丈夫です。",通知を確認,https://rishiri-kelp-forecast-system.onrender.com,,通知画面または7日間予報画面,,,,
+sns-009,rishiri_island,island,facebook,image,needs_review,ok,2026-07-17 16:00,通知登録の説明,"前日の夕方に明日の目安を見られると、段取りを決めやすくなります。\n\n利尻島昆布干場予報では、干場ごとの7日間予報を確認できます。通知機能も、必要に応じて使ってください。\n\n予報改善のため、干せた日・干せなかった日の記録入力にもご協力ください。任意入力で、わかる範囲で大丈夫です。",通知を確認,https://rishiri-kelp-forecast-system.onrender.com/island,,通知画面または7日間予報画面,,,,
 sns-010,national_primary_industry,national,note,article,needs_review,ok,2026-07-27 10:00,利尻島の昆布干場予報アプリを作った話,"天気予報を見るだけでは足りない一次産業のために、利尻島の昆布干場予報アプリを作った話。全国向けは相談・ヒアリング前提で個別構築します。本文はnote下書きで作成。",個別相談,,,"noteは原則手動投稿。承認後に下書きを作る",,,,
 ```
 

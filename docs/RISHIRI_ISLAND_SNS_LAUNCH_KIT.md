@@ -74,7 +74,7 @@ QRコード + スマホ画面 + 地区名
 明日干せそうかの判断材料に使えます。
 
 利尻島で昆布を干す人向けです。
-https://rishiri-kelp-forecast-system.onrender.com
+https://rishiri-kelp-forecast-system.onrender.com/island
 ```
 
 ### 家族共有用
@@ -85,7 +85,7 @@ https://rishiri-kelp-forecast-system.onrender.com
 干場ごとに7日間の乾燥予報が出ます。
 スマホで開いて、自分の干場を地図から選んでください。
 
-https://rishiri-kelp-forecast-system.onrender.com
+https://rishiri-kelp-forecast-system.onrender.com/island
 ```
 
 ### 部落・グループ共有用
@@ -96,7 +96,7 @@ https://rishiri-kelp-forecast-system.onrender.com
 沓形・仙法志・鴛泊・鬼脇など、地図から干場を選んで7日間の乾燥予報を確認できます。
 予報は作業判断の補助情報として使ってください。
 
-https://rishiri-kelp-forecast-system.onrender.com
+https://rishiri-kelp-forecast-system.onrender.com/island
 ```
 
 ---
