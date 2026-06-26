@@ -507,8 +507,12 @@ def dashboard():
 
 @app.route('/mobile')
 def mobile():
-    """Serve mobile interface"""
-    return send_file(os.path.join(BASE_DIR, 'mobile_forecast_interface.html'))
+    """Serve the production map UI for mobile users.
+
+    The old mobile_forecast_interface.html is a legacy mock input screen and
+    does not use the 334 registered spots, so keep /mobile on the real app.
+    """
+    return drying_map()
 
 @app.route('/rishiri-island')
 @app.route('/island')
