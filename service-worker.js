@@ -5,9 +5,9 @@
 // ★ v2.6.15: JMA降水ナウキャスト(hrpns) /api/nowcast/precip エンドポイント追加
 // ★ v2.6.15: scoreColor JS→Python _score_color() に同期 (#1f9d55/#c9a500/#d64545)
 // ★ v2.6.15: 伝統風名(アイ/シモ/クダリ等)廃止 → windDisplay() 矢印+英略語に統一
-const CACHE_NAME = 'rishiri-kelp-v2-6-22';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-22';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-22';
+const CACHE_NAME = 'rishiri-kelp-v2-6-23';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-23';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-23';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;
@@ -194,6 +194,28 @@ async function handleWeatherRequest(request) {
 
 // Handle static resource requests
 async function handleStaticRequest(request) {
+    if (request.destination === 'document') {
+        try {
+            const response = await fetch(request, { cache: 'no-store' });
+            if (response.ok) {
+                const cache = await caches.open(STATIC_CACHE_NAME);
+                cache.put(request, response.clone());
+            }
+            return response;
+        } catch (error) {
+            console.log('Service Worker: Failed to fetch document, trying cache', request.url);
+            const cachedResponse = await caches.match(request);
+            if (cachedResponse) {
+                return cachedResponse;
+            }
+            const offlineResponse = await caches.match('/offline.html');
+            if (offlineResponse) {
+                return offlineResponse;
+            }
+            throw error;
+        }
+    }
+
     // Try cache first for static resources
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
