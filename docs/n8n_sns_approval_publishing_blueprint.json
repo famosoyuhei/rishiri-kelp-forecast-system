@@ -1,0 +1,128 @@
+{
+  "name": "Rishiri SNS Approval Publisher",
+  "description": "Blueprint for polling approved SNS posts from Google Sheets and publishing only after human approval. Configure credentials and API endpoints in n8n before activation.",
+  "timezone": "Asia/Tokyo",
+  "source_sheet": {
+    "tab": "post_queue",
+    "approval_rule": "status=approved AND fact_check_status=ok AND scheduled_at_jst<=now_jst AND published_at_jst is blank AND NOT(island campaign scheduled after September 30)"
+  },
+  "safety": {
+    "dry_run_first": true,
+    "never_publish_statuses": ["draft", "needs_review", "scheduled", "published", "error", "hold"],
+    "required_status": "approved",
+    "required_fact_check_status": "ok",
+    "do_not_store_credentials_in_sheets": true
+  },
+  "workflow": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every 15 Minutes",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Read Rows",
+      "settings": {
+        "sheetTab": "post_queue",
+        "range": "A:R",
+        "note": "Read all rows, then filter in Code node. Keep API credentials in n8n credentials, not in the sheet."
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Filter approved rows due for publication.",
+      "code": "const now = new Date();\nconst rows = $input.all().map(item => item.json);\nfunction isIslandCampaign(row) {\n  return (row.campaign || '').toLowerCase() === 'rishiri_island' || (row.audience || '').toLowerCase() === 'island';\n}\nfunction afterIslandSeason(scheduled) {\n  const month = scheduled.getMonth() + 1;\n  const day = scheduled.getDate();\n  return month > 9 || (month === 9 && day > 30);\n}\nfunction due(row) {\n  if ((row.status || '').toLowerCase() !== 'approved') return false;\n  if ((row.fact_check_status || '').toLowerCase() !== 'ok') return false;\n  if (row.published_at_jst) return false;\n  if (!row.scheduled_at_jst) return false;\n  const scheduled = new Date(row.scheduled_at_jst.replace(' ', 'T') + '+09:00');\n  if (isIslandCampaign(row) && afterIslandSeason(scheduled)) return false;\n  return scheduled <= now;\n}\nreturn rows.filter(due).map(row => ({ json: row }));"
+    },
+    {
+      "node": "Switch",
+      "purpose": "Route by platform.",
+      "routes": ["facebook", "instagram", "x", "threads", "note", "line_share"]
+    },
+    {
+      "node": "HTTP Request",
+      "route": "facebook",
+      "settings": {
+        "method": "POST",
+        "credential": "Meta Graph API credential",
+        "url": "https://graph.facebook.com/vXX.X/{page-id}/feed",
+        "body": {
+          "message": "={{$json.body + ($json.url ? '\\n' + $json.url : '')}}"
+        },
+        "note": "Replace API version/page-id and add page access token credential in n8n."
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "route": "instagram",
+      "settings": {
+        "method": "POST",
+        "credential": "Instagram Graph API credential",
+        "note": "Instagram publishing is a two-step media container + publish flow. asset_url must be publicly accessible."
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "route": "x",
+      "settings": {
+        "method": "POST",
+        "credential": "X API credential",
+        "url": "https://api.x.com/2/tweets",
+        "body": {
+          "text": "={{$json.body + ($json.url ? '\\n' + $json.url : '')}}"
+        },
+        "note": "Confirm X API plan, posting limits, and link-post costs before enabling."
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "route": "threads",
+      "settings": {
+        "method": "POST",
+        "credential": "Threads API credential",
+        "note": "Use the current Threads API create/publish flow and permissions. Confirm in Meta Developer dashboard before enabling."
+      }
+    },
+    {
+      "node": "NoOp or Notification",
+      "route": "note",
+      "settings": {
+        "note": "If stable official posting API is unavailable, send approved article body to the user as a manual-post notification instead of auto-publishing."
+      }
+    },
+    {
+      "node": "NoOp or Notification",
+      "route": "line_share",
+      "settings": {
+        "note": "Generate share text and notify user. Do not mass-send through LINE without separate approval and duplicate-notification checks."
+      }
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Update Row",
+      "settings": {
+        "sheetTab": "post_queue",
+        "matchingColumn": "post_id",
+        "onSuccess": {
+          "status": "published",
+          "published_at_jst": "={{new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Tokyo' })}}",
+          "external_post_id": "={{$json.id || $json.post_id || ''}}",
+          "error_message": ""
+        },
+        "onError": {
+          "status": "error",
+          "error_message": "={{$json.error?.message || $json.message || 'publish failed'}}"
+        }
+      }
+    }
+  ],
+  "implementation_notes": [
+    "Start with dry_run mode and write would-be publish logs to review_notes.",
+    "Enable one platform at a time, starting with Facebook or Instagram if Meta credentials are ready.",
+    "Do not enable X until API plan/cost is confirmed.",
+    "Treat note and LINE as semi-automatic unless a reliable official posting path is available.",
+    "Do not auto-publish rishiri_island/island-audience posts scheduled after September 30; switch to record aggregation and accuracy analysis.",
+    "Always keep human approval in Google Sheets as the final gate."
+  ]
+}

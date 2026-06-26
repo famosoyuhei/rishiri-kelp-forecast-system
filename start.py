@@ -510,6 +510,16 @@ def mobile():
     """Serve mobile interface"""
     return send_file(os.path.join(BASE_DIR, 'mobile_forecast_interface.html'))
 
+@app.route('/rishiri-island')
+@app.route('/island')
+def rishiri_island_landing():
+    """Serve the Rishiri island-facing landing page"""
+    response = send_file(os.path.join(BASE_DIR, 'rishiri_island_lp.html'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 @app.route("/drying-map")
 @app.route("/map")
 @app.route("/")

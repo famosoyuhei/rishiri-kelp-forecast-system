@@ -2,7 +2,7 @@
 
 ## 概要
 
-このフォルダには、リリース前最終チェック用のAI社員14名が格納されています。  
+このフォルダには、リリース前最終チェック用のAI社員18名が格納されています。  
 各ファイルをClaudeとの会話に貼り付けて（またはCLAUDE.mdとして配置して）、  
 担当領域の精査を依頼してください。
 
@@ -37,6 +37,16 @@
 | `AGENT_api_backend.md` | 🔌 APIバックエンド担当 | 13エンドポイント・エラー処理 |
 | `AGENT_pwa_offline.md` | 📱 モバイル/PWA担当 | Service Worker・オフライン同期 |
 | `AGENT_security_perf.md` | 🔒 性能・セキュリティ担当 | 速度・認証・CORS・バリデーション |
+
+### 外部連携・分析系（5名）
+
+| ファイル | 担当 | 主な確認対象 |
+|---------|------|------------|
+| `AGENT_line_operation.md` | 📲 LINE通知配信・コマンド担当 | Webhook・登録/解除・沖止め |
+| `AGENT_line_ux_flow.md` | 🌊 LINE登録UXフロー担当 | 登録導線・ニックネーム・QRヘルプ |
+| `AGENT_upstash_persistence.md` | 💾 Upstash Redis永続化担当 | 通知データ永続化・診断 |
+| `AGENT_amedas_accuracy.md` | 📡 実測データ収集・予報精度管理担当 | JMA実測・forecast_history・精度API |
+| `AGENT_accuracy_spreadsheet_auditor.md` | 🧮 精度分析スプレッドシート監査担当 | Google Sheets・n8n・精度Dashboard |
 
 ### 統括（1名）
 

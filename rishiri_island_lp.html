@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="利尻島で昆布を干す方向けに、干場ごとの7日間乾燥予報をスマホで確認できる案内ページです。">
+  <title>利尻島で昆布を干す方へ | 利尻島昆布干場予報</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/app_icon.png">
+  <style>
+    :root {
+      --c-base: #ffffff;
+      --c-text: #333333;
+      --c-main: #0068b7;
+      --c-main-light: #e5f4ff;
+      --c-border: color-mix(in srgb, var(--c-text) 16%, var(--c-base));
+      --font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+      --font-size-body: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
+      --font-size-sm: clamp(0.8125rem, 0.75rem + 0.25vw, 0.875rem);
+      --font-size-h1: clamp(1.75rem, 1.25rem + 2vw, 2.5rem);
+      --font-size-h2: clamp(1.375rem, 1rem + 1.5vw, 2rem);
+      --font-size-h3: clamp(1.125rem, 0.9375rem + 0.75vw, 1.5rem);
+      --line-height: 1.7;
+      --container-max: 1120px;
+      --container-padding: clamp(1rem, 5vw, 2rem);
+      --space-xs: 0.25rem;
+      --space-sm: 0.5rem;
+      --space-md: 1rem;
+      --space-lg: 2rem;
+      --space-xl: 4rem;
+      --border-radius: 8px;
+      --touch-target-min: 44px;
+      --transition-fast: 150ms ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-family);
+      font-size: var(--font-size-body);
+      line-height: var(--line-height);
+      color: var(--c-text);
+      background: var(--c-base);
+      letter-spacing: 0.04em;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -4rem;
+      z-index: 100;
+      background: var(--c-main);
+      color: var(--c-base);
+      padding: 0.75rem 1rem;
+    }
+
+    .skip-link:focus {
+      top: 1rem;
+    }
+
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--c-base);
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .header-inner {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0.75rem var(--container-padding);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-height: var(--touch-target-min);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .brand img {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+
+    .nav-actions {
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding-inline: var(--container-padding);
+    }
+
+    .hero {
+      min-height: calc(100svh - 65px);
+      display: grid;
+      align-items: center;
+      background: var(--c-main-light);
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .hero-inner {
+      display: grid;
+      gap: var(--space-lg);
+      padding-block: var(--space-xl);
+    }
+
+    .eyebrow {
+      margin: 0 0 var(--space-sm);
+      font-size: var(--font-size-sm);
+      font-weight: 700;
+      color: var(--c-main);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: var(--space-md);
+      font-size: var(--font-size-h1);
+      line-height: 1.35;
+      letter-spacing: 0.04em;
+    }
+
+    h2 {
+      margin-bottom: var(--space-md);
+      font-size: var(--font-size-h2);
+      line-height: 1.45;
+      letter-spacing: 0.04em;
+    }
+
+    h3 {
+      margin-bottom: var(--space-sm);
+      font-size: var(--font-size-h3);
+      line-height: 1.5;
+    }
+
+    .lead {
+      max-width: 42rem;
+      margin-bottom: var(--space-lg);
+      font-size: clamp(1rem, 0.9375rem + 0.3vw, 1.125rem);
+    }
+
+    .hero-visual {
+      display: grid;
+      gap: 1rem;
+      align-content: center;
+      min-height: 260px;
+      padding: 1.5rem;
+      background: var(--c-base);
+      border: 1px solid var(--c-border);
+    }
+
+    .app-mark {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .app-mark img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+    }
+
+    .forecast-preview {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .preview-row {
+      display: grid;
+      grid-template-columns: 6rem 1fr;
+      gap: 0.75rem;
+      align-items: center;
+      min-height: 44px;
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .preview-label {
+      font-weight: 700;
+      color: var(--c-main);
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-items: stretch;
+      margin-top: var(--space-lg);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: var(--touch-target-min);
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--c-main);
+      border-radius: var(--border-radius);
+      background: var(--c-base);
+      color: var(--c-main);
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background var(--transition-fast), color var(--transition-fast);
+    }
+
+    .btn-primary {
+      background: var(--c-main);
+      color: var(--c-base);
+    }
+
+    .btn:hover {
+      background: var(--c-main-light);
+    }
+
+    .btn-primary:hover {
+      background: color-mix(in srgb, var(--c-main) 88%, var(--c-text));
+      color: var(--c-base);
+    }
+
+    .btn:focus-visible,
+    .brand:focus-visible,
+    .text-link:focus-visible {
+      outline: 3px solid var(--c-main);
+      outline-offset: 3px;
+    }
+
+    .scroll-note {
+      margin-top: var(--space-lg);
+      font-size: var(--font-size-sm);
+      color: var(--c-main);
+      font-weight: 700;
+    }
+
+    main section {
+      padding-block: var(--space-xl);
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .section-narrow {
+      max-width: 760px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .cards {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .card {
+      padding: 1.25rem;
+      border: 1px solid var(--c-border);
+      border-radius: var(--border-radius);
+      background: var(--c-base);
+    }
+
+    .card-accent {
+      background: var(--c-main-light);
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 1rem;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .steps li {
+      counter-increment: step;
+      display: grid;
+      gap: 0.5rem;
+      padding: 1.25rem;
+      border: 1px solid var(--c-border);
+      border-radius: var(--border-radius);
+    }
+
+    .steps li::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: var(--c-main);
+      color: var(--c-base);
+      font-weight: 700;
+    }
+
+    .note-box {
+      padding: 1.25rem;
+      border-left: 6px solid var(--c-main);
+      background: var(--c-main-light);
+    }
+
+    .link-list {
+      display: grid;
+      gap: 0.75rem;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .link-list a,
+    .text-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      color: var(--c-main);
+      font-weight: 700;
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.22em;
+    }
+
+    .site-footer {
+      padding-block: var(--space-lg);
+      background: var(--c-main-light);
+    }
+
+    .footer-inner {
+      display: grid;
+      gap: 0.75rem;
+      font-size: var(--font-size-sm);
+    }
+
+    .small {
+      font-size: var(--font-size-sm);
+    }
+
+    @media (min-width: 768px) {
+      .nav-actions {
+        display: flex;
+      }
+
+      .hero-inner {
+        grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+        align-items: center;
+      }
+
+      .actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .steps {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="利尻島昆布干場予報システムを開く">
+        <img src="/app_icon.png" alt="" width="40" height="40">
+        <span>利尻島昆布干場予報</span>
+      </a>
+      <nav class="nav-actions" aria-label="主要リンク">
+        <a class="btn" href="#how">使い方</a>
+        <a class="btn" href="#contact">任意で相談する</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container hero-inner">
+        <div>
+          <p class="eyebrow">利尻島で昆布を干す方へ</p>
+          <h1 id="hero-title">干場ごとの7日間乾燥予報を、スマホで確認できます。</h1>
+          <p class="lead">
+            降水量・湿度・風速などをもとに乾燥適性を表示し、明日干すかどうかを考えるための判断材料として使えます。
+            経験と勘を置き換えるものではありません。現地の空・風・海の様子とあわせて確認してください。
+          </p>
+          <div class="actions" aria-label="最初の操作">
+            <a class="btn btn-primary" href="/">自分の干場を見る</a>
+            <a class="btn" href="#contact">困ったら相談する</a>
+            <button class="btn" type="button" id="lineShareButton">LINEで家族に送る</button>
+          </div>
+          <p class="scroll-note">下に使い方と任意の相談窓口があります</p>
+        </div>
+
+        <aside class="hero-visual" aria-label="アプリで見られる内容">
+          <div class="app-mark">
+            <img src="/app_icon.png" alt="利尻島昆布干場予報システムのロゴ" width="72" height="72">
+            <div>
+              <h2>干場予報の入口</h2>
+              <p class="small">地図から干場を選んで、7日間の予報を確認します。</p>
+            </div>
+          </div>
+          <div class="forecast-preview" aria-label="表示内容の例">
+            <div class="preview-row">
+              <span class="preview-label">対象</span>
+              <span>331干場 + 3観測/基準点</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">期間</span>
+              <span>7日間の乾燥予報</span>
+            </div>
+            <div class="preview-row">
+              <span class="preview-label">内容</span>
+              <span>乾燥スコア、降水量、湿度、風速など</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section aria-labelledby="about-title">
+      <div class="container section-narrow">
+        <p class="eyebrow">このページについて</p>
+        <h2 id="about-title">島内向けの案内ページです。</h2>
+        <p>
+          この予報システムは、利尻島内の昆布干場ごとの予報を確認するために作っています。
+          一般の天気予報の代わりではなく、干場ごとの段取りを考えるための補助情報として使ってください。
+        </p>
+        <p>
+          2026年9月末までは、利尻島内向けに自由に使える形で公開します。
+          相談フォームは、使い方がわからない時や不具合を知らせたい時の任意の窓口です。
+        </p>
+        <div class="note-box">
+          <p>
+            作成者は2025年夏に利尻島を訪れ、昆布干しの現場で作業に関わりました。
+            その経験から、干場ごとに天気の感じ方が違うこと、前日の段取り判断が大切なことを知り、このアプリを作りました。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" aria-labelledby="how-title">
+      <div class="container">
+        <p class="eyebrow">使い方</p>
+        <h2 id="how-title">まずは自分の干場を開いてください。</h2>
+        <ol class="steps">
+          <li>
+            <h3>地図を開く</h3>
+            <p>「自分の干場を見る」からアプリを開きます。</p>
+          </li>
+          <li>
+            <h3>干場を選ぶ</h3>
+            <p>地図上のマーカーから、自分の干場や近い場所を選びます。</p>
+          </li>
+          <li>
+            <h3>7日間を見る</h3>
+            <p>明日以降の乾燥適性、降水量、湿度、風速などを確認します。</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section aria-labelledby="record-title">
+      <div class="container grid">
+        <div class="section-narrow">
+          <p class="eyebrow">お願い</p>
+          <h2 id="record-title">干し記録の入力にご協力ください。</h2>
+          <p>
+            予報の精度を上げるために、実際に干せた日・干せなかった日の記録入力にご協力ください。
+            記録が増えるほど、干場ごとの予報の見直しや改善に役立ちます。
+          </p>
+          <p>
+            入力は任意です。わかる範囲でかまいません。
+          </p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>干せた日</h3>
+            <p>予報と実際の結果を比べるための大切な記録になります。</p>
+          </article>
+          <article class="card">
+            <h3>干せなかった日</h3>
+            <p>雨・湿度・風の条件を見直す材料になります。</p>
+          </article>
+          <article class="card">
+            <h3>わかる範囲で</h3>
+            <p>すべてを細かく入力しなくても、記録が少しずつ改善に役立ちます。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact" aria-labelledby="contact-title">
+      <div class="container">
+        <p class="eyebrow">任意の相談窓口</p>
+        <h2 id="contact-title">困った時だけ、フォームからお知らせください。</h2>
+        <div class="cards">
+          <article class="card card-accent">
+            <h3>相談は任意です</h3>
+            <p>
+              そのまま自由に使えます。使い方がわからない、干場が見つからない、不具合がある、追加してほしい機能がある場合だけ、フォームからお知らせください。
+            </p>
+            <button class="btn btn-primary" type="button" id="contactFormButton">相談フォームを開く</button>
+          </article>
+          <article class="card">
+            <h3>電話対応について</h3>
+            <p>
+              電話対応は現在行っていません。すぐに返信できない場合がありますが、内容は確認します。
+            </p>
+          </article>
+          <article class="card">
+            <h3>情報の扱い</h3>
+            <p>
+              お問い合わせ内容は、アプリ改善と返信のためにのみ使用します。
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="season-title">
+      <div class="container section-narrow">
+        <p class="eyebrow">今年の運用</p>
+        <h2 id="season-title">島内向けの宣伝は9月末で一旦終了します。</h2>
+        <p>
+          6月から9月までは、島内向けに自由使用の案内と任意の相談受付を行います。
+          10月以降は新しい宣伝を止め、干し記録の集計、精度分析、次年度に向けた改善に移ります。
+        </p>
+        <p>
+          全国の一次産業向けは、現場ごとに必要な内容が違うため、相談とヒアリングを前提にした個別構築として9月以降も継続します。
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <strong>利尻島昆布干場予報システム</strong>
+      <span>予報は作業判断の補助情報です。最終判断は現地の状況とあわせて行ってください。</span>
+      <ul class="link-list" aria-label="関連リンク">
+        <li><a href="/">アプリを開く</a></li>
+        <li><a href="/mobile">モバイル版を開く</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <script>
+    const CONSULT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSfaMVTptw9B680fBsZjRdrIvVpJVs1HNxgiDp92hMBHuTJG-A/viewform?usp=dialog";
+    const APP_URL = "https://rishiri-kelp-forecast-system.onrender.com";
+    const shareText = [
+      "利尻島の昆布干し用の予報ページです。",
+      "",
+      "地図から自分の干場を選ぶと、7日間の乾燥予報が見られます。",
+      "明日干せそうかの判断材料に使えます。",
+      "",
+      APP_URL + "/rishiri-island"
+    ].join("\n");
+
+    document.getElementById("lineShareButton").addEventListener("click", () => {
+      const url = "https://line.me/R/msg/text/?" + encodeURIComponent(shareText);
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+
+    document.getElementById("contactFormButton").addEventListener("click", () => {
+      if (CONSULT_FORM_URL.includes("REPLACE_WITH_FORM_URL")) {
+        alert("相談フォームは準備中です。GoogleフォームURLを設定すると、このボタンから開けます。");
+        return;
+      }
+      window.open(CONSULT_FORM_URL, "_blank", "noopener,noreferrer");
+    });
+  </script>
+</body>
+</html>
