@@ -9,6 +9,9 @@ https://rishiri-kelp-forecast-system.onrender.com/island
 注意:
 予報は作業判断の補助情報です。必ず当たる、公式、公認、収益が上がる、といった表現は使いません。
 
+配信経路:
+利尻島内へ絞って届ける経路は `docs/RISHIRI_ISLAND_GEO_TARGETING_PLAYBOOK.md` を使います。
+
 ---
 
 ## 1. 最初に出す投稿
@@ -91,4 +94,3 @@ https://rishiri-kelp-forecast-system.onrender.com/island
 - [ ] 電話対応を期待させる表現がない
 - [ ] 「必ず当たる」「公式」「公認」「収益が上がる」と書いていない
 - [ ] 干し記録入力の協力依頼は押しつけになっていない
-
