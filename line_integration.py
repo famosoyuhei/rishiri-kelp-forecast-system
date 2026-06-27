@@ -309,7 +309,7 @@ _OPEN_METEO_DAILY = (
     'wind_speed_10m_max,relative_humidity_2m_mean,'
     'precipitation_sum,precipitation_probability_max'
 )
-_OPEN_METEO_HOURLY = 'relative_humidity_2m,wind_speed_10m'
+_OPEN_METEO_HOURLY = 'relative_humidity_2m,wind_speed_10m,precipitation'
 
 
 def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tuple:
@@ -377,6 +377,7 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
     hourly = data.get('hourly', {})
     hourly_rh = hourly.get('relative_humidity_2m', [])
     hourly_ws = hourly.get('wind_speed_10m', [])  # km/h
+    hourly_pr = hourly.get('precipitation', [])   # mm/h（04:00-16:00 積算に使用）
 
     days = []
     for i in range(min(7, len(daily.get('time', [])))):
@@ -385,8 +386,9 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
             wind_kmh = daily['wind_speed_10m_max'][i] or 0.0
             avg_wind_ms = wind_kmh / 3.6
             pop = (daily.get('precipitation_probability_max') or [None] * 7)[i]
+            max_temp = (daily.get('temperature_2m_max') or [None] * 7)[i]
 
-            # Min humidity during working hours 04-16 JST
+            # 干場稼働時間帯 04:00-16:00 JST（13時間）
             start_h = i * 24 + 4
             end_h = start_h + 13
             work_rh = [
@@ -400,8 +402,15 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
                 for h in range(start_h, min(end_h, len(hourly_ws)))
                 if hourly_ws[h] is not None
             ]
+            # 04:00-16:00 積算降水量（_save_forecast_history の precipitation_0416 と同窓）
+            work_pr = [
+                hourly_pr[h]
+                for h in range(start_h, min(end_h, len(hourly_pr)))
+                if hourly_pr[h] is not None
+            ]
             min_humidity = min(work_rh) if work_rh else (daily['relative_humidity_2m_mean'][i] or 100.0)
             avg_wind = sum(work_ws) / len(work_ws) if work_ws else avg_wind_ms
+            precip_0416 = round(sum(work_pr), 2) if work_pr else precip
 
             score, suitability = _simple_score(precip, min_humidity, avg_wind)
 
@@ -409,6 +418,8 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
                 'date': daily['time'][i],
                 'day_number': i,
                 'precipitation': round(precip, 1),
+                'precipitation_0416': precip_0416,
+                'max_temp': max_temp,
                 'min_humidity': round(min_humidity, 1),
                 'avg_wind': round(avg_wind, 1),
                 'pop': pop,

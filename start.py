@@ -798,6 +798,95 @@ def _save_forecast_history(spot_name, forecasts):
             app.logger.warning('[forecast_history] Redis save error for %s: %s', redis_key, re)
 
 
+def _save_daily_forecast_snapshot():
+    """全334地点の予報を Redis に一括保存する（毎日16:05 JST バッチ）。
+
+    line_integration.get_forecast_for_spot() を使って Open-Meteo から取得し、
+    _save_forecast_history() と同じスキーマで forecast:hist:{name}:{YYYYMMDD} に保存する。
+    Webアプリへのアクセスがない日も精度検証データが欠けないようにするためのバッチ。
+    """
+    import csv as _csv
+    import time as _time
+    today_str = datetime.now(tz=JST).strftime('%Y%m%d')
+    spots = []
+    try:
+        with open(CSV_FILE, 'r', encoding='utf-8') as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                name = row.get('name', '').strip()
+                if not name:
+                    continue
+                try:
+                    lat = float(row['lat'])
+                    lon = float(row['lon'])
+                except (KeyError, ValueError):
+                    continue
+                spots.append((name, lat, lon))
+    except Exception as e:
+        app.logger.error('[forecast_snapshot] CSV read error: %s', e)
+        return
+
+    from line_integration import get_forecast_for_spot as _gffs
+    saved = 0
+    errors = 0
+    for name, lat, lon in spots:
+        try:
+            fcs = _gffs(lat, lon, timeout=15)
+        except Exception as e:
+            app.logger.warning('[forecast_snapshot] fetch error %s: %s', name, e)
+            errors += 1
+            _time.sleep(1)
+            continue
+        for fc in fcs:
+            target_date_str = fc['date'].replace('-', '')
+            redis_key = f'forecast:hist:{name}:{target_date_str}'
+            record = {
+                'forecast_date':      today_str,
+                'target_date':        fc['date'],
+                'day_number':         fc['day_number'],
+                'max_temp':           fc.get('max_temp'),
+                'min_humidity':       fc.get('min_humidity'),
+                'avg_wind':           fc.get('avg_wind'),
+                'precipitation':      fc.get('precipitation'),
+                'precipitation_0416': fc.get('precipitation_0416', fc.get('precipitation')),
+                'drying_score':       fc.get('score'),
+                'suitability':        fc.get('suitability'),
+            }
+            try:
+                existing = _obs_redis_get(redis_key) or []
+                if not any(e.get('forecast_date') == today_str for e in existing):
+                    existing.append(record)
+                    _obs_redis_set(redis_key, existing)
+                    saved += 1
+            except Exception as re:
+                app.logger.warning('[forecast_snapshot] Redis save error %s: %s', redis_key, re)
+        _time.sleep(0.1)  # Open-Meteo レート制限を避ける
+
+    app.logger.info('[forecast_snapshot] done: saved=%d errors=%d spots=%d', saved, errors, len(spots))
+
+
+def _scheduled_forecast_snapshot():
+    """バックグラウンドスレッド: 毎日16:05 JSTに全地点の予報履歴を保存する。"""
+    import time as _time
+    from datetime import timedelta
+    while True:
+        now = datetime.now(tz=JST)
+        next_run = now.replace(hour=16, minute=5, second=0, microsecond=0)
+        if now >= next_run:
+            next_run += timedelta(days=1)
+        _time.sleep((next_run - now).total_seconds())
+
+        date_str = datetime.now(tz=JST).strftime('%Y%m%d')
+        lock_key = f'forecast_snapshot_lock:{date_str}'
+        if _try_acquire_notify_lock(lock_key):
+            try:
+                _save_daily_forecast_snapshot()
+            except Exception as exc:
+                app.logger.error('[forecast_snapshot] batch error: %s', exc)
+        else:
+            app.logger.info('[forecast_snapshot] already run by another worker, skipping')
+
+
 @app.route('/api/forecast')
 @limiter.limit("60 per minute")
 def get_forecast():
@@ -1916,6 +2005,49 @@ FEEDBACK_COLUMNS = [
 ]
 
 
+_FEEDBACK_REDIS_KEY = 'feedback_log:csv'
+_FEEDBACK_REDIS_TTL = 365 * 24 * 3600  # 1年（デプロイをまたいで恒久保持）
+
+
+def _feedback_log_redis_save(df) -> bool:
+    """feedback_log DataFrame を CSV 文字列として Redis に永続保存する。
+
+    デプロイごとにエフェメラルファイルが消えても Redis から復元できるようにするため、
+    feedback_log.csv への書き込みと必ずセットで呼ぶこと。
+    """
+    try:
+        csv_str = df.to_csv(index=False)
+        ok = _obs_redis_set(_FEEDBACK_REDIS_KEY, csv_str, ttl=_FEEDBACK_REDIS_TTL)
+        if not ok:
+            app.logger.warning('[feedback_redis] Redis save returned False')
+        return ok
+    except Exception as e:
+        app.logger.warning('[feedback_redis] save error: %s', e)
+        return False
+
+
+def _feedback_log_redis_restore() -> bool:
+    """Redis から feedback_log.csv をローカルに復元する。
+
+    Render デプロイ後などローカルファイルが消えている場合のみ実行。
+    feedback_log.csv を読む関数の先頭で呼ぶことでデプロイ後の空データを防ぐ。
+    Returns True if restored from Redis, False otherwise.
+    """
+    if os.path.exists(FEEDBACK_FILE):
+        return False
+    csv_str = _obs_redis_get(_FEEDBACK_REDIS_KEY)
+    if not csv_str or not isinstance(csv_str, str):
+        return False
+    try:
+        with open(FEEDBACK_FILE, 'w', encoding='utf-8') as f:
+            f.write(csv_str)
+        app.logger.info('[feedback_redis] restored feedback_log.csv from Redis (%d chars)', len(csv_str))
+        return True
+    except Exception as e:
+        app.logger.error('[feedback_redis] restore error: %s', e)
+        return False
+
+
 def _load_spot_metadata_map() -> dict:
     """Load current spot classifications keyed by spot name."""
     if not os.path.exists(CSV_FILE):
@@ -1960,6 +2092,7 @@ def _json_safe_value(value):
 def _load_feedback_sheet_rows(days_back: int = 90, spot_name: str | None = None,
                               has_record: str | None = None) -> tuple[list[dict], dict]:
     """Return feedback_log.csv as flat rows for n8n / Google Sheets ingestion."""
+    _feedback_log_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     if not os.path.exists(FEEDBACK_FILE):
         return [], {
             'total_rows': 0,
@@ -4756,6 +4889,8 @@ def get_forecast_accuracy():
         days_back = int(request.args.get('days', 30))
         spot_name = request.args.get('spot', 'H_1631_1434')  # デフォルトは神居
 
+        _feedback_log_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
+
         # アメダスデータディレクトリの確認
         import os
         from datetime import datetime, timedelta
@@ -5135,21 +5270,36 @@ def _record_nowcast_snapshot() -> None:
 
 
 def _daily_amedas_collection():
-    """Background thread: collect yesterday's amedas data once a day at 03:00 JST."""
+    """Background thread: collect yesterday's amedas data once a day at 03:00 JST.
+
+    03:00 JST に取得を試み、失敗した場合は 30 分後（03:30 JST）に1回だけリトライする。
+    Open-Meteo Archive API が一時障害を起こした日も feedback_log が欠落しないようにするため。
+    """
     import time
     from datetime import timedelta
     while True:
         now = datetime.now(tz=JST)
-        # Target 03:00 JST (same timezone the app runs in)
         next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run = next_run + timedelta(days=1)
         time.sleep((next_run - now).total_seconds())
+
         yesterday = (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
         ok = _collect_amedas_from_openmeteo(yesterday)
+
+        if not ok:
+            # 30 分後に 1 回だけリトライ（Open-Meteo Archive 一時障害対策）
+            app.logger.warning('[amedas] 03:00 attempt failed for %s — retrying in 30 min', yesterday)
+            time.sleep(30 * 60)
+            ok = _collect_amedas_from_openmeteo(yesterday)
+            if ok:
+                app.logger.info('[amedas] retry succeeded for %s', yesterday)
+            else:
+                app.logger.error('[amedas] retry also failed for %s — feedback_log will be incomplete', yesterday)
+
         if ok:
             _auto_compare_precip_forecast(yesterday)
-        _record_nowcast_snapshot()  # 03:00 JST ナウキャストスナップショット
+        _record_nowcast_snapshot()  # 03:00/03:30 JST ナウキャストスナップショット
 
 
 def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> int:
@@ -5247,6 +5397,7 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
         app.logger.warning('[auto_compare] records read error: %s', re)
 
     # ── 4. 既存 feedback_log を読み込む ──────────────────────────────────
+    _feedback_log_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     if os.path.exists(FEEDBACK_FILE):
         try:
             fb_df = pd.read_csv(FEEDBACK_FILE)
@@ -5346,6 +5497,7 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
         updated += len(new_rows)
 
     fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
+    _feedback_log_redis_save(fb_df)  # Render デプロイ後も消えないよう Redis に永続化
     app.logger.info('[auto_compare] %s: actual_precip_0416=%.2fmm rain=%s | %d rows written',
                     date_str, actual_precip_0416, actual_rain_0416, updated)
     return updated
@@ -6964,8 +7116,13 @@ def _start_background_threads():
     )
     t3.start()
 
+    # Daily forecast history snapshot at 16:05 JST (全334地点を一括保存)
+    t4 = _threading.Thread(target=_scheduled_forecast_snapshot, daemon=True)
+    t4.start()
+
     app.logger.info(
-        'Background threads started: amedas@03:00, line-evening@16:00, line-morning@01:30 JST'
+        'Background threads started: amedas@03:00, line-evening@16:00, '
+        'line-morning@01:30, forecast-snapshot@16:05 JST'
     )
 
 # ============================================================================
