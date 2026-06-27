@@ -2,6 +2,9 @@
 
 作成日: 2026-06-27 JST
 
+相談フォーム:
+https://docs.google.com/forms/d/e/1FAIpQLScFy1hmLU2lF7_CGosjYZ-FWlPXpbcOGSLqG1pyAFERwLNU5w/viewform
+
 ## 目的
 
 利尻島昆布干場予報システムを「実例」として、全国の天候で作業判断が変わる一次産業向けに、相談・ヒアリング前提の専用アプリ導入支援を伝える。
@@ -49,6 +52,9 @@
 地域、地点、作業手順、通知先、記録項目が現場ごとに違うためです。
 
 まずは小さく、1か月試験運用できる形から設計します。
+
+相談フォーム:
+https://docs.google.com/forms/d/e/1FAIpQLScFy1hmLU2lF7_CGosjYZ-FWlPXpbcOGSLqG1pyAFERwLNU5w/viewform
 ```
 
 ## X 今日の単発投稿
@@ -64,6 +70,9 @@
 必要なのは、天気そのものではなく現場ごとの作業可否。
 
 利尻島の昆布干場予報アプリを実例に、相談・ヒアリング前提の天候判断アプリ導入支援を始めます。
+
+相談フォーム:
+https://docs.google.com/forms/d/e/1FAIpQLScFy1hmLU2lF7_CGosjYZ-FWlPXpbcOGSLqG1pyAFERwLNU5w/viewform
 ```
 
 ## Threads 今日の投稿
@@ -110,6 +119,9 @@
 全国向けの導入支援は、業種・地域・地点・作業判断が現場ごとに違うため、相談とヒアリングを前提にしています。
 
 「うちの作業にも使えるかもしれない」と思った方は、作業内容・地域・困っている判断を教えてください。
+
+相談フォーム:
+https://docs.google.com/forms/d/e/1FAIpQLScFy1hmLU2lF7_CGosjYZ-FWlPXpbcOGSLqG1pyAFERwLNU5w/viewform
 ```
 
 ## 無料範囲の説明
