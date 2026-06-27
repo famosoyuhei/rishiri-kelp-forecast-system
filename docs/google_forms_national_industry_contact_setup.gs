@@ -5,7 +5,7 @@
  * 1. Create a new Google Sheet for national consultation management.
  * 2. Extensions > Apps Script.
  * 3. Paste this file.
- * 4. Change ADMIN_EMAIL.
+ * 4. Change NATIONAL_ADMIN_EMAIL.
  * 5. Run setupNationalIndustryContactForm().
  *
  * The script creates a Google Form, links responses to the current Sheet,
@@ -17,7 +17,7 @@
  * paragraph fields so Google Forms does not create duplicate Other fields.
  */
 
-const ADMIN_EMAIL = 'your-email@example.com';
+const NATIONAL_ADMIN_EMAIL = 'your-email@example.com';
 const SERVICE_NAME = '一次産業向け 天候判断アプリ導入支援';
 const FORM_TITLE = '一次産業向け 天候判断アプリ導入相談フォーム';
 const DEMO_URL = 'https://rishiri-kelp-forecast-system.onrender.com/island';
@@ -69,6 +69,7 @@ function setupNationalIndustryContactForm() {
   form.addTextItem()
     .setTitle('返信先メール')
     .setHelpText('必須です。まずはメールで返信します。通話ツールや詳しい相談方法は、初回返信後に確認します。')
+    .setValidation(FormApp.createTextValidation().requireTextIsEmail().build())
     .setRequired(true);
 
   form.addMultipleChoiceItem()
@@ -202,19 +203,19 @@ function setupNationalIndustryContactForm() {
     .setRequired(false);
 
   Utilities.sleep(1500);
-  const responseSheet = findResponseSheet_(ss);
+  const responseSheet = nationalFindResponseSheet_(ss);
   ensureNationalOpsColumns_(responseSheet);
   styleNationalContactSheet_(responseSheet);
   installNationalContactTriggers_(ss);
 
-  const setup = getOrCreateSheet_(ss, 'national_contact_setup');
+  const setup = nationalGetOrCreateSheet_(ss, 'national_contact_setup');
   setup.clear();
   setup.getRange(1, 1, 1, 2).setValues([['項目', '内容']]);
   setup.getRange(2, 1, 8, 2).setValues([
     ['フォーム編集URL', form.getEditUrl()],
     ['フォーム公開URL', form.getPublishedUrl()],
     ['構築例URL', DEMO_URL],
-    ['管理者メール', ADMIN_EMAIL],
+    ['管理者メール', NATIONAL_ADMIN_EMAIL],
     ['回答シート', responseSheet.getName()],
     ['用途', '全国一次産業向け導入相談'],
     ['注意', '利尻島内向け無料利用フォームとは分けて運用'],
@@ -234,22 +235,22 @@ function onNationalIndustryFormSubmit(e) {
 
   ensureNationalOpsColumns_(sheet);
 
-  const name = getFirst_(values, 'お名前');
-  const company = getFirst_(values, '法人名・屋号');
-  const email = getFirst_(values, '返信先メール');
-  const industry = getFirst_(values, '業種');
-  const region = getFirst_(values, '地域');
-  const decisions = getFirst_(values, '天候で迷う作業判断');
-  const detail = getFirst_(values, '具体的に困っている判断');
-  const spotCount = getFirst_(values, '見たい地点数の目安');
-  const features = getFirst_(values, '必要そうな機能');
-  const supportStyle = getFirst_(values, '希望する支援スタイル');
-  const currentMethod = getFirst_(values, '現在使っている天気情報・判断方法');
-  const consultation = getFirst_(values, '相談したい内容');
-  const preference = getFirst_(values, '相談希望');
-  const contactMethods = getFirst_(values, '希望する連絡・打ち合わせ手段');
-  const contactNote = getFirst_(values, '連絡手段に関する補足');
-  const demoStatus = getFirst_(values, '構築例の確認');
+  const name = nationalGetFirst_(values, 'お名前');
+  const company = nationalGetFirst_(values, '法人名・屋号');
+  const email = nationalGetFirst_(values, '返信先メール');
+  const industry = nationalGetFirst_(values, '業種');
+  const region = nationalGetFirst_(values, '地域');
+  const decisions = nationalGetFirst_(values, '天候で迷う作業判断');
+  const detail = nationalGetFirst_(values, '具体的に困っている判断');
+  const spotCount = nationalGetFirst_(values, '見たい地点数の目安');
+  const features = nationalGetFirst_(values, '必要そうな機能');
+  const supportStyle = nationalGetFirst_(values, '希望する支援スタイル');
+  const currentMethod = nationalGetFirst_(values, '現在使っている天気情報・判断方法');
+  const consultation = nationalGetFirst_(values, '相談したい内容');
+  const preference = nationalGetFirst_(values, '相談希望');
+  const contactMethods = nationalGetFirst_(values, '希望する連絡・打ち合わせ手段');
+  const contactNote = nationalGetFirst_(values, '連絡手段に関する補足');
+  const demoStatus = nationalGetFirst_(values, '構築例の確認');
 
   const priority = classifyNationalPriority_(spotCount, preference, detail);
   setNationalOpsValues_(sheet, row, priority);
@@ -288,7 +289,7 @@ function onNationalIndustryFormSubmit(e) {
     `シート: ${SpreadsheetApp.getActive().getUrl()}`
   ].join('\n');
 
-  MailApp.sendEmail(ADMIN_EMAIL, subject, body);
+  MailApp.sendEmail(NATIONAL_ADMIN_EMAIL, subject, body);
 
   if (email) {
     sendNationalAutoReply_(email, name, company);
@@ -297,7 +298,7 @@ function onNationalIndustryFormSubmit(e) {
 
 function sendDailyNationalOpenItemsSummary() {
   const ss = SpreadsheetApp.getActive();
-  const sheet = findResponseSheet_(ss);
+  const sheet = nationalFindResponseSheet_(ss);
   ensureNationalOpsColumns_(sheet);
 
   const values = sheet.getDataRange().getValues();
@@ -320,7 +321,7 @@ function sendDailyNationalOpenItemsSummary() {
     SpreadsheetApp.getActive().getUrl()
   ].join('\n');
 
-  MailApp.sendEmail(ADMIN_EMAIL, subject, body);
+  MailApp.sendEmail(NATIONAL_ADMIN_EMAIL, subject, body);
 }
 
 function installNationalContactTriggers_(ss) {
@@ -411,12 +412,12 @@ function sendNationalAutoReply_(email, name, company) {
   MailApp.sendEmail(email, subject, body);
 }
 
-function findResponseSheet_(ss) {
+function nationalFindResponseSheet_(ss) {
   const sheets = ss.getSheets();
   return sheets.find(sheet => sheet.getName().includes('フォームの回答')) || sheets[0];
 }
 
-function getOrCreateSheet_(ss, name) {
+function nationalGetOrCreateSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
@@ -432,7 +433,7 @@ function styleNationalContactSheet_(sheet) {
   sheet.autoResizeColumns(1, lastCol);
 }
 
-function getFirst_(namedValues, key) {
+function nationalGetFirst_(namedValues, key) {
   const value = namedValues[key];
   if (Array.isArray(value)) return value.join(', ');
   return value || '';
