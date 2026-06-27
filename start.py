@@ -5213,6 +5213,34 @@ def collect_amedas():
     return jsonify({'status': 'ok', 'results': results})
 
 
+@app.route('/api/integrity_check')
+@limiter.limit("30 per minute")
+def get_integrity_check():
+    """精度データの整合性チェック結果を返す（または手動実行する）。
+
+    Query params:
+      date  (YYYYMMDD, 省略時=昨日): 検証対象日
+      force (true/false, 省略時=false): true のとき Redis キャッシュを無視して再実行
+    """
+    target = request.args.get(
+        'date',
+        (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
+    )
+    force = request.args.get('force', 'false').lower() == 'true'
+
+    if not force:
+        cached = _obs_redis_get(f'integrity_check:{target}')
+        if cached:
+            return jsonify(cached)
+
+    try:
+        report = _daily_data_integrity_check(target_date=target)
+        return jsonify(report)
+    except Exception as e:
+        app.logger.error('[integrity_check API] error: %s', e)
+        return jsonify({'error': str(e)}), 500
+
+
 def _record_nowcast_snapshot() -> None:
     """全干場（334地点）のナウキャスト降水量を Redis にスナップショットとして蓄積する。
 
@@ -7096,6 +7124,245 @@ def _scheduled_line_notify(kind: str, hour: int, minute: int) -> None:
             )
 
 
+# ============================================================================
+# 精度データ整合性チェック（毎日05:00 JST）
+# ============================================================================
+
+def _compare_amedas_full_weather(date_str: str) -> dict:
+    """アメダス2地点の全気象データ（04:00-16:00）について予報vs実測を比較する。
+
+    比較項目: 最高気温・最低湿度・平均風速・降水量合計（04:00-16:00）
+    Returns dict keyed by station_id with actual/forecast/metrics.
+    """
+    STATIONS = [
+        {'id': '11151', 'spot': 'A_1783_1383', 'name': '沓形'},
+        {'id': '11311', 'spot': 'A_2417_1867', 'name': '本泊'},
+    ]
+    results = {}
+    for st in STATIONS:
+        # ── 実測（Redis から） ─────────────────────────────────────────────
+        amedas = _obs_redis_get(f'amedas:obs:{st["id"]}:{date_str}')
+        if amedas is None:
+            results[st['id']] = {'status': 'missing_actual', 'station': st['name']}
+            continue
+
+        window = [h for h in amedas.get('hourly', [])
+                  if '04:00' <= (h.get('time') or '')[-5:] <= '16:00']
+        if not window:
+            results[st['id']] = {'status': 'no_window_data', 'station': st['name']}
+            continue
+
+        temps = [h['temperature'] for h in window if h.get('temperature') is not None]
+        rhs   = [h['humidity']    for h in window if h.get('humidity')    is not None]
+        wss   = [h['wind_speed']  for h in window if h.get('wind_speed')  is not None]
+        prs   = [h.get('precipitation') or 0.0 for h in window]
+        actual = {
+            'max_temp':     round(max(temps), 1)              if temps else None,
+            'min_humidity': round(min(rhs), 1)                if rhs   else None,
+            'avg_wind':     round(sum(wss) / len(wss), 1)     if wss   else None,
+            'precip_0416':  round(sum(prs), 2),
+        }
+
+        # ── 予報（Redis から。forecast_date が date_str に最も近いエントリを使用） ──
+        fc_list = _obs_redis_get(f'forecast:hist:{st["spot"]}:{date_str}') or []
+        if not fc_list:
+            results[st['id']] = {
+                'status': 'missing_forecast', 'station': st['name'], 'actual': actual,
+            }
+            continue
+
+        # 当日予報を優先（days_ahead が最小）
+        def _days_ahead(e):
+            try:
+                return abs((datetime.strptime(date_str, '%Y%m%d') -
+                            datetime.strptime(e.get('forecast_date', '19700101'), '%Y%m%d')).days)
+            except ValueError:
+                return 999
+
+        fc = min(fc_list, key=_days_ahead)
+        forecast = {
+            'max_temp':     fc.get('max_temp'),
+            'min_humidity': fc.get('min_humidity'),
+            'avg_wind':     fc.get('avg_wind'),
+            'precip_0416':  fc.get('precipitation_0416', fc.get('precipitation')),
+            'days_ahead':   _days_ahead(fc),
+        }
+
+        # ── MAE と降水判定 ──────────────────────────────────────────────────
+        metrics = {}
+        for key in ('max_temp', 'min_humidity', 'avg_wind'):
+            a_val, f_val = actual.get(key), forecast.get(key)
+            metrics[f'mae_{key}'] = (
+                round(abs(a_val - f_val), 2) if a_val is not None and f_val is not None else None
+            )
+        a_rain = actual['precip_0416'] > 0
+        f_rain = (forecast['precip_0416'] or 0) > 0
+        metrics['precip_correct'] = (a_rain == f_rain)
+        metrics['actual_rain']    = a_rain
+        metrics['forecast_rain']  = f_rain
+
+        results[st['id']] = {
+            'status': 'ok', 'station': st['name'],
+            'actual': actual, 'forecast': forecast, 'metrics': metrics,
+        }
+    return results
+
+
+def _check_redis_persistence(date_str: str) -> dict:
+    """デプロイをまたいで消えてはならない Redis キーの存在と内容を検証する。"""
+    checks = {}
+
+    # 1. feedback_log:csv（精度蓄積）
+    fb = _obs_redis_get(_FEEDBACK_REDIS_KEY)
+    checks['feedback_log_csv'] = {
+        'ok':         fb is not None and isinstance(fb, str) and len(fb) > 50,
+        'size_chars': len(fb) if isinstance(fb, str) else 0,
+        'note':       'デプロイ後の精度統計が消えないよう必須',
+    }
+
+    # 2. アメダス実測（当日 date_str）
+    for sid, name in (('11151', '沓形'), ('11311', '本泊')):
+        val = _obs_redis_get(f'amedas:obs:{sid}:{date_str}')
+        checks[f'amedas_{name}_{date_str}'] = {
+            'ok':   val is not None,
+            'note': f'アメダス{name}実測 — 精度比較の基準値',
+        }
+
+    # 3. 予報履歴（当日 date_str）
+    fc_keys = _obs_redis_scan_keys(f'forecast:hist:*:{date_str}')
+    checks[f'forecast_hist_{date_str}'] = {
+        'ok':         len(fc_keys) >= 330,  # 334地点中330以上あれば合格
+        'spot_count': len(fc_keys),
+        'note':       '全334地点の予報記録 — 精度比較の対象',
+    }
+
+    # 4. nowcast snapshot（当日 date_str）
+    nowcast = _obs_redis_get(f'nowcast:daily:{date_str}')
+    checks[f'nowcast_{date_str}'] = {
+        'ok':   isinstance(nowcast, list) and len(nowcast) > 0,
+        'note': '降水ナウキャスト実測スナップショット',
+    }
+
+    all_ok = all(v['ok'] for v in checks.values())
+    return {'all_ok': all_ok, 'checks': checks}
+
+
+def _daily_data_integrity_check(target_date: str | None = None) -> dict:
+    """精度データの整合性を網羅的に検証し、結果を Redis に保存する。
+
+    毎日05:00 JSTに _scheduled_integrity_check() から自動実行される。
+    /api/integrity_check?date=YYYYMMDD から手動実行も可能。
+
+    チェック内容:
+    1. 全334地点の forecast_history が Redis に存在するか
+    2. アメダス2地点の実測データが Redis に存在するか
+    3. アメダス2地点の予報vs実測（気温・湿度・風速・降水量）
+    4. nowcast snapshot が記録されているか
+    5. feedback_log:csv が Redis に永続化されているか
+    6. 乾燥記録がある場合の判定正誤（feedback_log から集計）
+    """
+    from datetime import timedelta
+    yesterday = target_date or (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
+
+    # A. Redis 永続化チェック
+    persistence = _check_redis_persistence(yesterday)
+
+    # B. アメダス2地点の全気象比較
+    amedas_cmp = _compare_amedas_full_weather(yesterday)
+
+    # C. 干し記録がある行の判定正誤を feedback_log から集計
+    drying_accuracy = None
+    try:
+        _feedback_log_redis_restore()
+        if os.path.exists(FEEDBACK_FILE):
+            fb_df = pd.read_csv(FEEDBACK_FILE)
+            date_fmt = f'{yesterday[:4]}-{yesterday[4:6]}-{yesterday[6:]}'
+            day_rows = fb_df[fb_df['date'] == date_fmt]
+            record_rows = day_rows[day_rows['has_drying_record'] == True]
+            if not record_rows.empty:
+                correct = record_rows['judgment_correct'].sum()
+                total   = len(record_rows)
+                drying_accuracy = {
+                    'total_with_record': total,
+                    'correct': int(correct),
+                    'accuracy_pct': round(correct / total * 100, 1),
+                }
+    except Exception as e:
+        app.logger.warning('[integrity] drying_accuracy error: %s', e)
+
+    # D. 降水予報 vs nowcast 実測の整合確認（全地点サマリー）
+    nowcast_vs_forecast = None
+    try:
+        nowcast_data = _obs_redis_get(f'nowcast:daily:{yesterday}')
+        fc_keys = _obs_redis_scan_keys(f'forecast:hist:*:{yesterday}')
+        if nowcast_data and fc_keys:
+            # nowcast で雨ありと判定されたスナップショット数
+            any_rain_snaps = sum(1 for snap in nowcast_data if snap.get('any_rain', False))
+            nowcast_vs_forecast = {
+                'nowcast_snapshots': len(nowcast_data),
+                'rainy_snapshots': any_rain_snaps,
+                'forecast_spots_recorded': len(fc_keys),
+                'note': '詳細な地点別比較は feedback_log.csv に格納',
+            }
+    except Exception as e:
+        app.logger.warning('[integrity] nowcast_vs_forecast error: %s', e)
+
+    # E. レポートをまとめて Redis に保存
+    fc_count = persistence['checks'].get(f'forecast_hist_{yesterday}', {}).get('spot_count', 0)
+    report = {
+        'date':                    yesterday,
+        'checked_at':              datetime.now(tz=JST).isoformat(),
+        'overall_ok':              persistence['all_ok'] and fc_count >= 330,
+        'forecast_history': {
+            'spot_count':     fc_count,
+            'complete':       fc_count >= 330,
+            'target':         334,
+        },
+        'redis_persistence':       persistence,
+        'amedas_weather_comparison': amedas_cmp,
+        'nowcast_vs_forecast':     nowcast_vs_forecast,
+        'drying_record_accuracy':  drying_accuracy,
+    }
+
+    _obs_redis_set(f'integrity_check:{yesterday}', report)
+
+    # F. ログ出力（WARNING / INFO）
+    status = 'OK' if report['overall_ok'] else 'INCOMPLETE'
+    log_fn = app.logger.info if report['overall_ok'] else app.logger.warning
+    log_fn(
+        '[integrity] %s %s | fc_spots=%d/334 | redis_all_ok=%s | amedas=%s | drying=%s',
+        yesterday, status, fc_count, persistence['all_ok'],
+        {sid: r.get('status', r.get('metrics', {}).get('precip_correct')) for sid, r in amedas_cmp.items()},
+        drying_accuracy,
+    )
+    return report
+
+
+def _scheduled_integrity_check():
+    """バックグラウンドスレッド: 毎日05:00 JSTにデータ整合性チェックを実行する。
+
+    03:00 アメダス収集 → (03:30 リトライ) → feedback_log 更新、の完了を待ってから検証。
+    """
+    import time as _time
+    from datetime import timedelta
+    while True:
+        now = datetime.now(tz=JST)
+        next_run = now.replace(hour=5, minute=0, second=0, microsecond=0)
+        if now >= next_run:
+            next_run += timedelta(days=1)
+        _time.sleep((next_run - now).total_seconds())
+
+        date_str = datetime.now(tz=JST).strftime('%Y%m%d')
+        lock_key = f'integrity_check_lock:{date_str}'
+        if _try_acquire_notify_lock(lock_key):
+            try:
+                _daily_data_integrity_check()
+            except Exception as exc:
+                app.logger.error('[integrity] check error: %s', exc)
+        else:
+            app.logger.info('[integrity] already run by another worker, skipping')
+
+
 def _start_background_threads():
     """Start long-running background threads.  Called once from wsgi.py so the
     thread is NOT started when the module is merely imported (e.g. in tests or
@@ -7120,9 +7387,13 @@ def _start_background_threads():
     t4 = _threading.Thread(target=_scheduled_forecast_snapshot, daemon=True)
     t4.start()
 
+    # Daily data integrity check at 05:00 JST (欠落・Redis永続化・精度比較を検証)
+    t5 = _threading.Thread(target=_scheduled_integrity_check, daemon=True)
+    t5.start()
+
     app.logger.info(
         'Background threads started: amedas@03:00, line-evening@16:00, '
-        'line-morning@01:30, forecast-snapshot@16:05 JST'
+        'line-morning@01:30, forecast-snapshot@16:05, integrity-check@05:00 JST'
     )
 
 # ============================================================================

@@ -5,9 +5,9 @@
 // ★ v2.6.15: JMA降水ナウキャスト(hrpns) /api/nowcast/precip エンドポイント追加
 // ★ v2.6.15: scoreColor JS→Python _score_color() に同期 (#1f9d55/#c9a500/#d64545)
 // ★ v2.6.15: 伝統風名(アイ/シモ/クダリ等)廃止 → windDisplay() 矢印+英略語に統一
-const CACHE_NAME = 'rishiri-kelp-v2-6-27';
-const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-27';
-const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-27';
+const CACHE_NAME = 'rishiri-kelp-v2-6-28';
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-28';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-28';
 
 // Determine base URL based on environment
 const BASE_URL = self.location.origin;
