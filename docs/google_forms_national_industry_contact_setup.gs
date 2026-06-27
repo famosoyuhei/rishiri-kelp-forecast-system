@@ -34,6 +34,10 @@ function setupNationalIndustryContactForm() {
     '',
     `構築例: ${DEMO_URL}`,
     '',
+    'このフォームの送信、内容確認、メールでの簡単な初回回答までは無料です。',
+    '個別ヒアリング、要件整理、試作、構築、運用支援などが必要になった場合は、内容を確認したうえで事前に相談します。',
+    '勝手に有料作業へ進むことはありません。',
+    '',
     '相談・ヒアリング前提です。まだ具体化していない段階でも、わかる範囲で入力してください。',
     '',
     '予報やスコアは作業判断の補助情報です。最終判断は現地の状況や既存の安全基準とあわせて行う前提です。'
@@ -43,6 +47,14 @@ function setupNationalIndustryContactForm() {
   form.setAllowResponseEdits(false);
   form.setLimitOneResponsePerUser(false);
   form.setDestination(FormApp.DestinationType.SPREADSHEET, ss.getId());
+
+  form.addSectionHeaderItem()
+    .setTitle('無料範囲と有料相談について')
+    .setHelpText([
+      '無料: フォーム送信、内容確認、メールでの簡単な初回回答、構築例の閲覧。',
+      '有料になり得るもの: 個別ヒアリング、要件整理、試作、アプリ構築、通知設定、記録・精度分析の仕組み作り、運用支援。',
+      '費用が発生する場合は、作業前に内容と進め方を確認します。フォーム送信だけで料金は発生しません。'
+    ].join('\n'));
 
   form.addTextItem()
     .setTitle('お名前')
