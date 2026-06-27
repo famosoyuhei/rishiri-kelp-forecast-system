@@ -59,16 +59,16 @@ function setupNationalIndustryContactForm() {
 
   form.addTextItem()
     .setTitle('お名前')
-    .setRequired(true);
+    .setRequired(false);
 
   form.addTextItem()
     .setTitle('法人名・屋号')
-    .setHelpText('個人での相談の場合は「個人」と入力してください。')
-    .setRequired(true);
+    .setHelpText('差し支えなければ入力してください。個人での相談の場合は未入力でもかまいません。')
+    .setRequired(false);
 
   form.addTextItem()
     .setTitle('返信先メール')
-    .setHelpText('全国向け導入支援は相談前提のため、返信先メールを入力してください。')
+    .setHelpText('必須です。まずはメールで返信します。通話ツールや詳しい相談方法は、初回返信後に確認します。')
     .setRequired(true);
 
   form.addMultipleChoiceItem()
@@ -84,12 +84,12 @@ function setupNationalIndustryContactForm() {
       '自治体・支援機関',
       'その他'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addTextItem()
     .setTitle('地域')
     .setHelpText('都道府県・市町村など、差し支えない範囲で入力してください。')
-    .setRequired(true);
+    .setRequired(false);
 
   form.addCheckboxItem()
     .setTitle('天候で迷う作業判断')
@@ -105,12 +105,12 @@ function setupNationalIndustryContactForm() {
       'ドローン散布',
       'その他'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addParagraphTextItem()
     .setTitle('具体的に困っている判断')
     .setHelpText('例: 牧草を刈る日、雨前のロール判断、防除に入れる風か、強風時に出漁するか、など。')
-    .setRequired(true);
+    .setRequired(false);
 
   form.addMultipleChoiceItem()
     .setTitle('見たい地点数の目安')
@@ -122,7 +122,7 @@ function setupNationalIndustryContactForm() {
       '100地点以上',
       'まだわからない'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addCheckboxItem()
     .setTitle('必要そうな機能')
@@ -149,7 +149,7 @@ function setupNationalIndustryContactForm() {
       '自走支援型: Claude CodeやCodex等の使い方を最初だけ教わり、あとは自分で進めたい',
       'まだわからない'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addParagraphTextItem()
     .setTitle('現在使っている天気情報・判断方法')
@@ -169,7 +169,7 @@ function setupNationalIndustryContactForm() {
       '資料や例を見てから考えたい',
       'まだ情報収集段階'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addCheckboxItem()
     .setTitle('希望する連絡・打ち合わせ手段')
@@ -185,7 +185,7 @@ function setupNationalIndustryContactForm() {
       '電話以外は使えない',
       'まだわからない'
     ])
-    .setRequired(true);
+    .setRequired(false);
 
   form.addParagraphTextItem()
     .setTitle('連絡手段に関する補足')
@@ -399,6 +399,7 @@ function sendNationalAutoReply_(email, name, company) {
     '伴走型、丸投げ型、コード納品型、自走支援型など、希望する関わり方に合わせて進め方を相談します。',
     '打ち合わせが必要な場合は、WhatsApp、Zoom、Google Meet、LINE、Skype、メール、文字でのやり取りなど、使える手段に合わせて相談します。',
     '電話番号での通話対応は基本的に行っていません。',
+    '希望する通話ツールや連絡方法があれば、このメールへの返信で教えてください。',
     '入力内容を確認し、必要に応じて追加で確認したい点をメールでご連絡します。',
     '',
     '構築例として、利尻島の昆布干場予報アプリを公開しています。',
