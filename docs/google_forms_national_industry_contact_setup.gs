@@ -35,7 +35,7 @@ function setupNationalIndustryContactForm() {
     `構築例: ${DEMO_URL}`,
     '',
     'このフォームの送信、内容確認、メールでの簡単な初回回答までは無料です。',
-    '個別ヒアリング、要件整理、試作、構築、運用支援などが必要になった場合は、内容を確認したうえで事前に相談します。',
+    '個別ヒアリング、要件整理、試作、構築、運用支援などが必要になった場合は、希望する関わり方と内容を確認したうえで事前に相談します。',
     '勝手に有料作業へ進むことはありません。',
     '',
     '相談・ヒアリング前提です。まだ具体化していない段階でも、わかる範囲で入力してください。',
@@ -53,6 +53,7 @@ function setupNationalIndustryContactForm() {
     .setHelpText([
       '無料: フォーム送信、内容確認、メールでの簡単な初回回答、構築例の閲覧。',
       '有料になり得るもの: 個別ヒアリング、要件整理、試作、アプリ構築、通知設定、記録・精度分析の仕組み作り、運用支援。',
+      '支援スタイルは、伴走型、完成コード納品型、最初だけ使い方を教える自走型など、希望に合わせて相談できます。',
       '費用が発生する場合は、作業前に内容と進め方を確認します。フォーム送信だけで料金は発生しません。'
     ].join('\n'));
 
@@ -138,6 +139,18 @@ function setupNationalIndustryContactForm() {
     ])
     .setRequired(false);
 
+  form.addMultipleChoiceItem()
+    .setTitle('希望する支援スタイル')
+    .setHelpText('まだ決まっていない場合は、近いものを選んでください。あとで変更できます。')
+    .setChoiceValues([
+      '伴走型: 相談しながら構築・運用まで継続的に見てほしい',
+      '丸投げ型: 要望を伝えて、使える状態まで任せたい',
+      'コード納品型: 完成したコードだけ受け取り、自分で設置・運用したい',
+      '自走支援型: Claude CodeやCodex等の使い方を最初だけ教わり、あとは自分で進めたい',
+      'まだわからない'
+    ])
+    .setRequired(true);
+
   form.addParagraphTextItem()
     .setTitle('現在使っている天気情報・判断方法')
     .setHelpText('天気アプリ、気象庁、Windy、経験判断、観測機器など。未入力でもかまいません。')
@@ -209,6 +222,7 @@ function onNationalIndustryFormSubmit(e) {
   const detail = getFirst_(values, '具体的に困っている判断');
   const spotCount = getFirst_(values, '見たい地点数の目安');
   const features = getFirst_(values, '必要そうな機能');
+  const supportStyle = getFirst_(values, '希望する支援スタイル');
   const currentMethod = getFirst_(values, '現在使っている天気情報・判断方法');
   const consultation = getFirst_(values, '相談したい内容');
   const preference = getFirst_(values, '相談希望');
@@ -230,6 +244,7 @@ function onNationalIndustryFormSubmit(e) {
     `天候で迷う作業判断: ${decisions || '未入力'}`,
     `見たい地点数: ${spotCount || '未入力'}`,
     `必要そうな機能: ${features || '未入力'}`,
+    `希望する支援スタイル: ${supportStyle || '未入力'}`,
     `相談希望: ${preference || '未入力'}`,
     `構築例の確認: ${demoStatus || '未入力'}`,
     '',
@@ -354,6 +369,7 @@ function sendNationalAutoReply_(email, name, company) {
     company ? `法人名・屋号: ${company}` : '',
     '',
     '全国向けの導入支援は、業種・地域・地点・作業判断が現場ごとに違うため、相談とヒアリングを前提にしています。',
+    '伴走型、丸投げ型、コード納品型、自走支援型など、希望する関わり方に合わせて進め方を相談します。',
     '入力内容を確認し、必要に応じて追加で確認したい点をメールでご連絡します。',
     '',
     '構築例として、利尻島の昆布干場予報アプリを公開しています。',
