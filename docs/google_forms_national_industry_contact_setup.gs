@@ -171,6 +171,27 @@ function setupNationalIndustryContactForm() {
     ])
     .setRequired(true);
 
+  form.addCheckboxItem()
+    .setTitle('希望する連絡・打ち合わせ手段')
+    .setHelpText('電話番号での通話対応は基本的に行いません。使えるものを選んでください。複数選択できます。')
+    .setChoiceValues([
+      'WhatsApp',
+      'Zoom',
+      'Google Meet',
+      'LINE',
+      'Skype',
+      'メール',
+      'チャット・文字でのやり取りのみ',
+      '電話以外は使えない',
+      'まだわからない'
+    ])
+    .setRequired(true);
+
+  form.addParagraphTextItem()
+    .setTitle('連絡手段に関する補足')
+    .setHelpText('WhatsApp、LINE、Skype等のIDをすぐ書きたくない場合は空欄でかまいません。初回返信後に確認します。')
+    .setRequired(false);
+
   form.addMultipleChoiceItem()
     .setTitle('構築例の確認')
     .setChoiceValues([
@@ -226,6 +247,8 @@ function onNationalIndustryFormSubmit(e) {
   const currentMethod = getFirst_(values, '現在使っている天気情報・判断方法');
   const consultation = getFirst_(values, '相談したい内容');
   const preference = getFirst_(values, '相談希望');
+  const contactMethods = getFirst_(values, '希望する連絡・打ち合わせ手段');
+  const contactNote = getFirst_(values, '連絡手段に関する補足');
   const demoStatus = getFirst_(values, '構築例の確認');
 
   const priority = classifyNationalPriority_(spotCount, preference, detail);
@@ -246,6 +269,7 @@ function onNationalIndustryFormSubmit(e) {
     `必要そうな機能: ${features || '未入力'}`,
     `希望する支援スタイル: ${supportStyle || '未入力'}`,
     `相談希望: ${preference || '未入力'}`,
+    `希望する連絡・打ち合わせ手段: ${contactMethods || '未入力'}`,
     `構築例の確認: ${demoStatus || '未入力'}`,
     '',
     '具体的に困っている判断:',
@@ -256,6 +280,9 @@ function onNationalIndustryFormSubmit(e) {
     '',
     '相談したい内容:',
     consultation || '未入力',
+    '',
+    '連絡手段に関する補足:',
+    contactNote || '未入力',
     '',
     `構築例: ${DEMO_URL}`,
     `シート: ${SpreadsheetApp.getActive().getUrl()}`
@@ -370,6 +397,8 @@ function sendNationalAutoReply_(email, name, company) {
     '',
     '全国向けの導入支援は、業種・地域・地点・作業判断が現場ごとに違うため、相談とヒアリングを前提にしています。',
     '伴走型、丸投げ型、コード納品型、自走支援型など、希望する関わり方に合わせて進め方を相談します。',
+    '打ち合わせが必要な場合は、WhatsApp、Zoom、Google Meet、LINE、Skype、メール、文字でのやり取りなど、使える手段に合わせて相談します。',
+    '電話番号での通話対応は基本的に行っていません。',
     '入力内容を確認し、必要に応じて追加で確認したい点をメールでご連絡します。',
     '',
     '構築例として、利尻島の昆布干場予報アプリを公開しています。',
