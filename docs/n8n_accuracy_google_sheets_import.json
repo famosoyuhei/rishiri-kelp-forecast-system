@@ -1,0 +1,361 @@
+{
+  "name": "Rishiri Accuracy Google Sheets Sync",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-1040, 120]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 03:35 JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1040, -80]
+    },
+    {
+      "parameters": {
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "fetch-raw",
+      "name": "Fetch Raw Accuracy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-800, -320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.first().json.rows || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-raw",
+      "name": "Split Raw Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-560, -320]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "raw_feedback",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": ["upsert_key"],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "upsert-raw",
+      "name": "Upsert Raw Feedback",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-320, -320]
+    },
+    {
+      "parameters": {
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets/summary?days=90",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "fetch-summary",
+      "name": "Fetch Accuracy Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-800, 80]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_day", "mode": "name"},
+        "clear": "specificRange",
+        "range": "A2:Z"
+      },
+      "id": "clear-day",
+      "name": "Clear Summary By Day",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-560, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Fetch Accuracy Summary').first().json.tables?.by_day || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-day",
+      "name": "Split Summary By Day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, -80]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_day", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": false},
+        "options": {}
+      },
+      "id": "append-day",
+      "name": "Write Summary By Day",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-80, -80]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_days_ahead", "mode": "name"},
+        "clear": "specificRange",
+        "range": "A2:Z"
+      },
+      "id": "clear-days-ahead",
+      "name": "Clear Summary By Days Ahead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-560, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Fetch Accuracy Summary').first().json.tables?.by_days_ahead || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-days-ahead",
+      "name": "Split Summary By Days Ahead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 80]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_days_ahead", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": false},
+        "options": {}
+      },
+      "id": "append-days-ahead",
+      "name": "Write Summary By Days Ahead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-80, 80]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_area", "mode": "name"},
+        "clear": "specificRange",
+        "range": "A2:Z"
+      },
+      "id": "clear-area",
+      "name": "Clear Summary By Area",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-560, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Fetch Accuracy Summary').first().json.tables?.by_area || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-area",
+      "name": "Split Summary By Area",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 240]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_area", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": false},
+        "options": {}
+      },
+      "id": "append-area",
+      "name": "Write Summary By Area",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-80, 240]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_buraku", "mode": "name"},
+        "clear": "specificRange",
+        "range": "A2:Z"
+      },
+      "id": "clear-buraku",
+      "name": "Clear Summary By Buraku",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-560, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Fetch Accuracy Summary').first().json.tables?.by_buraku || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-buraku",
+      "name": "Split Summary By Buraku",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "summary_by_buraku", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": false},
+        "options": {}
+      },
+      "id": "append-buraku",
+      "name": "Write Summary By Buraku",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-80, 400]
+    },
+    {
+      "parameters": {
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "fetch-spots",
+      "name": "Fetch Spot Master",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-800, 640]
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "spot_master", "mode": "name"},
+        "clear": "specificRange",
+        "range": "A2:Z"
+      },
+      "id": "clear-spots",
+      "name": "Clear Spot Master",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-560, 640]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $('Fetch Spot Master').first().json.rows || [];\nreturn rows.map((row) => ({ json: row }));"
+      },
+      "id": "split-spots",
+      "name": "Split Spot Master",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 640]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "REPLACE_WITH_SPREADSHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "spot_master", "mode": "name"},
+        "columns": {"mappingMode": "autoMapInputData", "value": {}, "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": false},
+        "options": {}
+      },
+      "id": "append-spots",
+      "name": "Write Spot Master",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-80, 640]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [[
+        {"node": "Fetch Raw Accuracy", "type": "main", "index": 0},
+        {"node": "Fetch Accuracy Summary", "type": "main", "index": 0},
+        {"node": "Fetch Spot Master", "type": "main", "index": 0}
+      ]]
+    },
+    "Daily 03:35 JST": {
+      "main": [[
+        {"node": "Fetch Raw Accuracy", "type": "main", "index": 0},
+        {"node": "Fetch Accuracy Summary", "type": "main", "index": 0},
+        {"node": "Fetch Spot Master", "type": "main", "index": 0}
+      ]]
+    },
+    "Fetch Raw Accuracy": {"main": [[{"node": "Split Raw Rows", "type": "main", "index": 0}]]},
+    "Split Raw Rows": {"main": [[{"node": "Upsert Raw Feedback", "type": "main", "index": 0}]]},
+    "Fetch Accuracy Summary": {
+      "main": [[
+        {"node": "Clear Summary By Day", "type": "main", "index": 0},
+        {"node": "Clear Summary By Days Ahead", "type": "main", "index": 0},
+        {"node": "Clear Summary By Area", "type": "main", "index": 0},
+        {"node": "Clear Summary By Buraku", "type": "main", "index": 0}
+      ]]
+    },
+    "Clear Summary By Day": {"main": [[{"node": "Split Summary By Day", "type": "main", "index": 0}]]},
+    "Split Summary By Day": {"main": [[{"node": "Write Summary By Day", "type": "main", "index": 0}]]},
+    "Clear Summary By Days Ahead": {"main": [[{"node": "Split Summary By Days Ahead", "type": "main", "index": 0}]]},
+    "Split Summary By Days Ahead": {"main": [[{"node": "Write Summary By Days Ahead", "type": "main", "index": 0}]]},
+    "Clear Summary By Area": {"main": [[{"node": "Split Summary By Area", "type": "main", "index": 0}]]},
+    "Split Summary By Area": {"main": [[{"node": "Write Summary By Area", "type": "main", "index": 0}]]},
+    "Clear Summary By Buraku": {"main": [[{"node": "Split Summary By Buraku", "type": "main", "index": 0}]]},
+    "Split Summary By Buraku": {"main": [[{"node": "Write Summary By Buraku", "type": "main", "index": 0}]]},
+    "Fetch Spot Master": {"main": [[{"node": "Clear Spot Master", "type": "main", "index": 0}]]},
+    "Clear Spot Master": {"main": [[{"node": "Split Spot Master", "type": "main", "index": 0}]]},
+    "Split Spot Master": {"main": [[{"node": "Write Spot Master", "type": "main", "index": 0}]]}
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  },
+  "versionId": "9a01dd86-1414-49a5-9bdd-5e97db833bad",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

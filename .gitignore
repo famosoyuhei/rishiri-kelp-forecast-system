@@ -141,6 +141,7 @@ Thumbs.db
 .idea/
 
 # Claude Code local settings (machine-specific, not for sharing)
+.claude/
 .claude/settings.local.json
 *.swp
 *.swo
@@ -161,3 +162,39 @@ Thumbs.db
 # Claude Code internal files (session permissions, worktrees)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Local Codex / generated working artifacts
+.tmp_openai_docs/
+_stage_diag.txt
+forecast_history/
+amedas_data/
+rishiri_app/
+rishiri-kelp-forecast-system/
+
+# Local sales/content-generation outputs kept outside app development
+coconala_*/
+lancers_service_images/
+weather_*.pdf
+field_location_csv_template.pdf
+coconala_weather_api_starter_kit.zip
+static/rich_menu_preview.png
+static/rich_menu_test*.png
+outputs/n8n_google_sheets_template/
+outputs/rishiri_launch_assets/photo_contact_sheet_*.jpg
+scripts/create_coconala_*.ps1
+scripts/create_field_location_csv_template_pdf.py
+scripts/create_lancers_*.py
+scripts/create_weather_*.py
+scripts/package_weather_starter_kit.py
+tests/_tmp_accuracy_sheets/*.csv
+test_extract.js
+test_response.json
+era5_rishiri_profile.nc
+era5_vs_openmeteo_comparison.png
+openmeteo_vs_tropopause_analysis.png
+乾燥断熱減率.jpg
+湿潤断熱減率.jpg
+等飽和混合比線.jpg
+
+# Large local photo/reference folders
+利尻島写真/
