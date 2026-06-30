@@ -1728,6 +1728,322 @@ def get_spot_master_for_sheets():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+FORECAST_SNAPSHOT_COLUMNS = [
+    'upsert_key',
+    'forecast_date', 'target_date', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku', 'days_ahead',
+    'max_temp', 'min_humidity', 'avg_wind',
+    'precipitation', 'precipitation_0416',
+    'forecast_rain_0416', 'drying_score', 'suitability',
+    'data_source', 'synced_at_jst',
+]
+
+
+def _normalize_yyyymmdd(value: str | None, default: str | None = None) -> str:
+    raw = (value or default or datetime.now(tz=JST).strftime('%Y%m%d')).strip()
+    return raw.replace('-', '')
+
+
+def _spot_type_from_name(name: str) -> str:
+    if name.startswith('A_'):
+        return 'amedas'
+    if name.startswith('R_'):
+        return 'reference'
+    return 'hoshiba'
+
+
+def _load_forecast_snapshot_rows(forecast_date_yyyymmdd: str, max_days_ahead: int = 6,
+                                 spot_name: str | None = None) -> tuple[list[dict], dict]:
+    """Return saved forecast snapshot rows for n8n -> Google Sheets ingestion."""
+    import glob as _glob
+    from datetime import datetime as _dt, timedelta as _td
+
+    synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    forecast_dt = _dt.strptime(forecast_date_yyyymmdd, '%Y%m%d').date()
+
+    spots_df = pd.read_csv(CSV_FILE)
+    spot_meta = _load_spot_metadata_map()
+    spots = []
+    for _, row in spots_df.iterrows():
+        name = str(row.get('name', '')).strip()
+        if not name or (spot_name and name != spot_name):
+            continue
+        spots.append(name)
+
+    rows = []
+    missing_keys = []
+
+    for name in spots:
+        meta = spot_meta.get(name, {})
+        for days_ahead in range(0, max_days_ahead + 1):
+            target_dt = forecast_dt + _td(days=days_ahead)
+            target_yyyymmdd = target_dt.strftime('%Y%m%d')
+            redis_key = f'forecast:hist:{name}:{target_yyyymmdd}'
+            hist = _obs_redis_get(redis_key) or []
+            entries = [
+                entry for entry in hist
+                if str(entry.get('forecast_date', '')) == forecast_date_yyyymmdd
+            ]
+
+            if not entries:
+                fc_pattern = os.path.join(
+                    FORECAST_HISTORY_DIR,
+                    name,
+                    f'forecast_{forecast_date_yyyymmdd}_for_{target_yyyymmdd}.json',
+                )
+                for fc_file in _glob.glob(fc_pattern):
+                    try:
+                        with open(fc_file, 'r', encoding='utf-8') as f:
+                            entries.append(json.load(f))
+                    except Exception as exc:
+                        app.logger.warning('[forecast_snapshot_sheets] local read failed %s: %s', fc_file, exc)
+
+            if not entries:
+                missing_keys.append(f'{forecast_date_yyyymmdd}|{name}|{days_ahead}')
+                continue
+
+            # There should be one entry per forecast date; use the latest if duplicates exist.
+            fc = entries[-1]
+            target_date = fc.get('target_date') or target_dt.isoformat()
+            fc_precip_0416 = fc.get('precipitation_0416', fc.get('precipitation'))
+            row = {
+                'upsert_key': f'{forecast_date_yyyymmdd}|{name}|{days_ahead}',
+                'forecast_date': f'{forecast_date_yyyymmdd[:4]}-{forecast_date_yyyymmdd[4:6]}-{forecast_date_yyyymmdd[6:]}',
+                'target_date': target_date,
+                'spot_name': name,
+                'spot_type': _spot_type_from_name(name),
+                'town': meta.get('town'),
+                'district': meta.get('district'),
+                'buraku': meta.get('buraku'),
+                'days_ahead': days_ahead,
+                'max_temp': fc.get('max_temp'),
+                'min_humidity': fc.get('min_humidity'),
+                'avg_wind': fc.get('avg_wind'),
+                'precipitation': fc.get('precipitation'),
+                'precipitation_0416': fc_precip_0416,
+                'forecast_rain_0416': (fc_precip_0416 or 0) > 0,
+                'drying_score': fc.get('drying_score'),
+                'suitability': fc.get('suitability'),
+                'data_source': 'redis_forecast_history' if hist else 'local_forecast_history',
+                'synced_at_jst': synced_at,
+            }
+            rows.append({col: _json_safe_value(row.get(col)) for col in FORECAST_SNAPSHOT_COLUMNS})
+
+    expected_rows = len(spots) * (max_days_ahead + 1)
+    summary = {
+        'forecast_date': f'{forecast_date_yyyymmdd[:4]}-{forecast_date_yyyymmdd[4:6]}-{forecast_date_yyyymmdd[6:]}',
+        'spot_filter': spot_name or 'all',
+        'max_days_ahead': max_days_ahead,
+        'expected_spots': len(spots),
+        'expected_rows': expected_rows,
+        'total_rows': len(rows),
+        'missing_rows': max(expected_rows - len(rows), 0),
+        'coverage_pct': round(len(rows) / expected_rows * 100, 1) if expected_rows else None,
+        'complete': bool(expected_rows and len(rows) >= expected_rows),
+        'missing_keys_sample': missing_keys[:20],
+    }
+    return rows, summary
+
+
+@app.route('/api/forecast/snapshots/sheets')
+def get_forecast_snapshots_for_sheets():
+    """Saved forecast snapshot rows for n8n -> Google Sheets upsert."""
+    try:
+        forecast_date = _normalize_yyyymmdd(request.args.get('forecast_date') or request.args.get('date'))
+        max_days_ahead = min(max(int(request.args.get('max_days_ahead', 6)), 0), 6)
+        spot_name = request.args.get('spot') or None
+        rows, summary = _load_forecast_snapshot_rows(forecast_date, max_days_ahead, spot_name)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'sync_mode': 'append_or_update_snapshot_rows',
+            'columns': FORECAST_SNAPSHOT_COLUMNS,
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+AMEDAS_OBSERVATION_COLUMNS = [
+    'upsert_key',
+    'date', 'observed_time_jst', 'station_id', 'station_name', 'spot_name',
+    'temperature', 'humidity', 'wind_speed', 'precipitation',
+    'data_source', 'collected_at', 'synced_at_jst',
+]
+
+NOWCAST_OBSERVATION_COLUMNS = [
+    'upsert_key',
+    'date', 'observed_time_jst', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku',
+    'precip_mmh', 'any_rain', 'basetime',
+    'data_source', 'synced_at_jst',
+]
+
+
+def _load_amedas_observation_rows(date_yyyymmdd: str) -> tuple[list[dict], dict]:
+    """Return AMEDAS 04:00-16:00 observed weather rows for Sheets."""
+    stations = [
+        {'id': '11151', 'spot': 'A_1783_1383', 'name': '沓形'},
+        {'id': '11311', 'spot': 'A_2417_1867', 'name': '本泊'},
+    ]
+    synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    rows = []
+    missing_stations = []
+
+    for st in stations:
+        key = f'amedas:obs:{st["id"]}:{date_yyyymmdd}'
+        record = _obs_redis_get(key)
+        source = 'redis_amedas_obs'
+        if record is None:
+            path = os.path.join(AMEDAS_DATA_DIR, f'amedas_{st["id"]}_{date_yyyymmdd}.json')
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        record = json.load(f)
+                    source = 'local_amedas_obs'
+                except Exception as exc:
+                    app.logger.warning('[amedas_sheets] local read failed %s: %s', path, exc)
+
+        if record is None:
+            missing_stations.append(st['id'])
+            continue
+
+        for h in record.get('hourly', []):
+            time_str = h.get('time') or ''
+            hour_min = time_str[-5:]
+            if not ('04:00' <= hour_min <= '16:00'):
+                continue
+            row = {
+                'upsert_key': f'{date_yyyymmdd}|{st["id"]}|{hour_min}',
+                'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+                'observed_time_jst': time_str,
+                'station_id': st['id'],
+                'station_name': st['name'],
+                'spot_name': st['spot'],
+                'temperature': h.get('temperature'),
+                'humidity': h.get('humidity'),
+                'wind_speed': h.get('wind_speed'),
+                'precipitation': h.get('precipitation'),
+                'data_source': source,
+                'collected_at': record.get('collected_at'),
+                'synced_at_jst': synced_at,
+            }
+            rows.append({col: _json_safe_value(row.get(col)) for col in AMEDAS_OBSERVATION_COLUMNS})
+
+    expected_rows = len(stations) * 13
+    summary = {
+        'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+        'window': '04:00-16:00 JST',
+        'expected_stations': len(stations),
+        'expected_rows': expected_rows,
+        'total_rows': len(rows),
+        'missing_rows': max(expected_rows - len(rows), 0),
+        'coverage_pct': round(len(rows) / expected_rows * 100, 1) if expected_rows else None,
+        'complete': bool(expected_rows and len(rows) >= expected_rows),
+        'missing_stations': missing_stations,
+    }
+    return rows, summary
+
+
+def _load_nowcast_observation_rows(date_yyyymmdd: str, spot_name: str | None = None) -> tuple[list[dict], dict]:
+    """Return saved JMA nowcast mesh observations for Sheets."""
+    synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    snapshots = _obs_redis_get(f'nowcast:daily:{date_yyyymmdd}') or []
+    spot_meta = _load_spot_metadata_map()
+    all_spots = sorted(spot_meta.keys())
+    if spot_name:
+        all_spots = [name for name in all_spots if name == spot_name]
+
+    rows = []
+    snapshot_times = []
+    for snap in snapshots:
+        time_str = snap.get('time') or ''
+        if not ('04:00' <= time_str <= '16:00'):
+            continue
+        snapshot_times.append(time_str)
+        spots = snap.get('spots') or {}
+        for name in all_spots:
+            if name not in spots:
+                continue
+            meta = spot_meta.get(name, {})
+            precip = spots.get(name)
+            row = {
+                'upsert_key': f'{date_yyyymmdd}|{time_str}|{name}',
+                'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+                'observed_time_jst': time_str,
+                'spot_name': name,
+                'spot_type': _spot_type_from_name(name),
+                'town': meta.get('town'),
+                'district': meta.get('district'),
+                'buraku': meta.get('buraku'),
+                'precip_mmh': precip,
+                'any_rain': (precip or 0) > 0,
+                'basetime': snap.get('basetime'),
+                'data_source': 'jma_hrpns_nowcast_redis',
+                'synced_at_jst': synced_at,
+            }
+            rows.append({col: _json_safe_value(row.get(col)) for col in NOWCAST_OBSERVATION_COLUMNS})
+
+    unique_times = sorted(set(snapshot_times))
+    expected_rows = len(unique_times) * len(all_spots)
+    summary = {
+        'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+        'window': '04:00-16:00 JST',
+        'spot_filter': spot_name or 'all',
+        'snapshot_count': len(unique_times),
+        'snapshot_times': unique_times,
+        'expected_spots': len(all_spots),
+        'expected_rows_for_recorded_snapshots': expected_rows,
+        'total_rows': len(rows),
+        'missing_rows_for_recorded_snapshots': max(expected_rows - len(rows), 0),
+        'coverage_pct_for_recorded_snapshots': round(len(rows) / expected_rows * 100, 1) if expected_rows else None,
+        'complete_for_recorded_snapshots': bool(expected_rows and len(rows) >= expected_rows),
+        'note': 'JMA nowcast has no archive fallback here; rows depend on 04:00-16:00 scheduled Redis snapshots.',
+    }
+    return rows, summary
+
+
+@app.route('/api/observations/amedas/sheets')
+def get_amedas_observations_for_sheets():
+    """AMEDAS 04:00-16:00 observed weather rows for n8n -> Google Sheets."""
+    try:
+        date_yyyymmdd = _normalize_yyyymmdd(
+            request.args.get('date'),
+            (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d'),
+        )
+        rows, summary = _load_amedas_observation_rows(date_yyyymmdd)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'sync_mode': 'append_or_update_observation_rows',
+            'columns': AMEDAS_OBSERVATION_COLUMNS,
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/observations/nowcast/sheets')
+def get_nowcast_observations_for_sheets():
+    """Saved nowcast mesh observation rows for n8n -> Google Sheets."""
+    try:
+        date_yyyymmdd = _normalize_yyyymmdd(request.args.get('date'))
+        spot_name = request.args.get('spot') or None
+        rows, summary = _load_nowcast_observation_rows(date_yyyymmdd, spot_name)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'sync_mode': 'append_or_update_observation_rows',
+            'columns': NOWCAST_OBSERVATION_COLUMNS,
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/spots')
 def get_spots_legacy():
     """Legacy endpoint for /spots - redirects to /api/spots"""
@@ -2241,8 +2557,11 @@ def _build_accuracy_summary_tables(rows: list[dict]) -> dict:
         return {
             'by_day': [],
             'by_days_ahead': [],
+            'by_day_days_ahead': [],
             'by_area': [],
             'by_buraku': [],
+            'reliability_by_days_ahead': [],
+            'coverage_by_day_days_ahead': [],
         }
 
     df = pd.DataFrame(rows)
@@ -2274,12 +2593,184 @@ def _build_accuracy_summary_tables(rows: list[dict]) -> dict:
             table.append(row)
         return table
 
+    expected_spots = _accuracy_expected_spot_count()
+
     return {
         'by_day': summarize(['date']),
         'by_days_ahead': summarize(['days_ahead']),
+        'by_day_days_ahead': summarize(['date', 'days_ahead']),
         'by_area': summarize(['town', 'district']),
         'by_buraku': summarize(['town', 'district', 'buraku']),
+        'reliability_by_days_ahead': _build_reliability_by_days_ahead(df),
+        'coverage_by_day_days_ahead': _build_coverage_by_day_days_ahead(df, expected_spots),
     }
+
+
+def _accuracy_expected_spot_count() -> int:
+    """Return the expected number of drying spots used for completeness checks."""
+    try:
+        if os.path.exists(CSV_FILE):
+            spots_df = pd.read_csv(CSV_FILE)
+            if 'name' in spots_df.columns:
+                return int(spots_df['name'].astype(str).str.startswith('H_').sum())
+    except Exception as exc:
+        app.logger.warning('[accuracy] expected spot count failed: %s', exc)
+    return 331
+
+
+def _confidence_label(hit_rate: float | None, sample_count: int, coverage_pct: float | None = None) -> str:
+    """Human-friendly confidence band for forecast-day reliability."""
+    if sample_count == 0:
+        return 'データなし'
+    if coverage_pct is not None and coverage_pct < 80:
+        return '蓄積不足'
+    if hit_rate is None:
+        return '判定不可'
+    if hit_rate >= 90:
+        return '高'
+    if hit_rate >= 75:
+        return '中'
+    if hit_rate >= 60:
+        return '低'
+    return '要改善'
+
+
+def _as_int_or_none(value):
+    try:
+        if pd.isna(value):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_reliability_by_days_ahead(df: pd.DataFrame) -> list[dict]:
+    """Summarize how trustworthy each N-day-ahead forecast is."""
+    if df.empty:
+        return []
+
+    table = []
+    for days_ahead, group in df.groupby('days_ahead', dropna=False):
+        days_ahead_value = _as_int_or_none(days_ahead)
+        precip_rate = _pct(group['precip_forecast_correct'])
+        judgment_rate = _pct(group['judgment_correct'])
+        record_rows = _count_true(group['has_drying_record'])
+        row = {
+            'summary_key': days_ahead_value if days_ahead_value is not None else _json_safe_value(days_ahead),
+            'days_ahead': days_ahead_value if days_ahead_value is not None else _json_safe_value(days_ahead),
+            'rows': int(len(group)),
+            'unique_dates': int(group['date'].nunique(dropna=True)),
+            'unique_spots': int(group['spot_name'].nunique(dropna=True)),
+            'drying_record_rows': record_rows,
+            'precip_hit_rate_pct': precip_rate,
+            'judgment_hit_rate_pct': judgment_rate,
+            'missed_rain_count': int(
+                ((group['forecast_rain'] == False) & (group['actual_rain_0416'] == True)).sum()
+            ),
+            'false_alarm_count': int(
+                ((group['forecast_rain'] == True) & (group['actual_rain_0416'] == False)).sum()
+            ),
+            'false_positive_count': int(
+                ((group['forecast_label'] == '可') & (group['actual_label'] == '不可')).sum()
+            ),
+            'false_negative_count': int(
+                ((group['forecast_label'] == '不可') & (group['actual_label'] == '可')).sum()
+            ),
+        }
+        # Drying judgment is the better reliability signal once user records exist.
+        primary_rate = judgment_rate if record_rows > 0 else precip_rate
+        row['primary_metric'] = 'judgment_hit_rate_pct' if record_rows > 0 else 'precip_hit_rate_pct'
+        row['confidence_label'] = _confidence_label(primary_rate, int(len(group)))
+        table.append(row)
+
+    return sorted(table, key=lambda r: (r['days_ahead'] is None, r['days_ahead']))
+
+
+def _build_coverage_by_day_days_ahead(df: pd.DataFrame, expected_spots: int) -> list[dict]:
+    """Show whether each target date has the expected rows for each forecast horizon."""
+    if df.empty:
+        return []
+
+    table = []
+    grouped = df.groupby(['date', 'days_ahead'], dropna=False)
+    for (target_date, days_ahead), group in grouped:
+        days_ahead_value = _as_int_or_none(days_ahead)
+        rows = int(len(group))
+        coverage_pct = round(rows / expected_spots * 100, 1) if expected_spots else None
+        table.append({
+            'summary_key': f'{target_date}|{days_ahead_value if days_ahead_value is not None else days_ahead}',
+            'date': _json_safe_value(target_date),
+            'days_ahead': days_ahead_value if days_ahead_value is not None else _json_safe_value(days_ahead),
+            'rows': rows,
+            'unique_spots': int(group['spot_name'].nunique(dropna=True)),
+            'expected_spots': expected_spots,
+            'coverage_pct': coverage_pct,
+            'complete': bool(expected_spots and rows >= expected_spots),
+            'precip_hit_rate_pct': _pct(group['precip_forecast_correct']),
+            'judgment_hit_rate_pct': _pct(group['judgment_correct']),
+        })
+
+    return sorted(table, key=lambda r: (r['date'], r['days_ahead'] is None, r['days_ahead']))
+
+
+def _build_recent_accuracy_health(rows: list[dict], recent_days: int = 2) -> dict:
+    """Health check for the last N target dates represented in feedback rows."""
+    expected_spots = _accuracy_expected_spot_count()
+    if not rows:
+        return {
+            'recent_days': recent_days,
+            'expected_spots': expected_spots,
+            'dates': [],
+            'overall_complete': False,
+            'note': 'feedback rows are empty',
+        }
+
+    df = pd.DataFrame(rows)
+    unique_dates = sorted([d for d in df['date'].dropna().unique()])
+    target_dates = unique_dates[-recent_days:]
+    coverage_rows = _build_coverage_by_day_days_ahead(
+        df[df['date'].isin(target_dates)].copy(),
+        expected_spots,
+    )
+    # A fixed system should at least have the previous-day forecast for every spot.
+    required_rows = [
+        row for row in coverage_rows
+        if row.get('days_ahead') == 1
+    ]
+    return {
+        'recent_days': recent_days,
+        'expected_spots': expected_spots,
+        'dates': target_dates,
+        'overall_complete': bool(required_rows) and all(row['complete'] for row in required_rows),
+        'required_horizon': '1-day-ahead forecast for each recent target date',
+        'coverage_by_day_days_ahead': coverage_rows,
+    }
+
+
+@app.route('/api/validation/accuracy/reliability')
+def get_accuracy_reliability():
+    """Forecast reliability and completeness by forecast horizon."""
+    try:
+        days_back = min(max(int(request.args.get('days', 90)), 1), 365)
+        recent_days = min(max(int(request.args.get('recent_days', 2)), 1), 14)
+        spot_name = request.args.get('spot') or None
+        has_record = request.args.get('has_record')
+        rows, source_summary = _load_feedback_sheet_rows(days_back, spot_name, has_record)
+        tables = _build_accuracy_summary_tables(rows)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'source_summary': source_summary,
+            'recent_health': _build_recent_accuracy_health(rows, recent_days),
+            'reliability_by_days_ahead': tables['reliability_by_days_ahead'],
+            'coverage_by_day_days_ahead': tables['coverage_by_day_days_ahead'],
+            'methodology': (
+                'Each feedback row compares one target date with one saved forecast horizon. '
+                'days_ahead=1 means yesterday forecast for the target date; days_ahead=6 means six-day-ahead forecast.'
+            ),
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/validation/accuracy/sheets/summary')
@@ -5297,6 +5788,33 @@ def _record_nowcast_snapshot() -> None:
         app.logger.error('[nowcast] snapshot error: %s', e)
 
 
+def _scheduled_nowcast_observation_snapshots():
+    """Background thread: record nowcast mesh observations from 04:00 to 16:00 JST.
+
+    JMA nowcast is realtime data, so we must save snapshots during the drying
+    window. The stored Redis rows are later exposed to n8n/Google Sheets.
+    """
+    import time as _time
+    from datetime import timedelta as _td
+
+    while True:
+        now = datetime.now(tz=JST)
+        if 4 <= now.hour <= 16:
+            next_run = now.replace(second=0, microsecond=0)
+            minute_mod = next_run.minute % 10
+            if minute_mod or now.second or now.microsecond:
+                next_run += _td(minutes=(10 - minute_mod) if minute_mod else 10)
+            if next_run.hour <= 16:
+                _time.sleep(max((next_run - now).total_seconds(), 1))
+                _record_nowcast_snapshot()
+                continue
+
+        next_window = now.replace(hour=4, minute=0, second=0, microsecond=0)
+        if now >= next_window:
+            next_window += _td(days=1)
+        _time.sleep((next_window - now).total_seconds())
+
+
 def _daily_amedas_collection():
     """Background thread: collect yesterday's amedas data once a day at 03:00 JST.
 
@@ -7391,9 +7909,14 @@ def _start_background_threads():
     t5 = _threading.Thread(target=_scheduled_integrity_check, daemon=True)
     t5.start()
 
+    # JMA nowcast mesh observations every 10 minutes during 04:00-16:00 JST
+    t6 = _threading.Thread(target=_scheduled_nowcast_observation_snapshots, daemon=True)
+    t6.start()
+
     app.logger.info(
         'Background threads started: amedas@03:00, line-evening@16:00, '
-        'line-morning@01:30, forecast-snapshot@16:05, integrity-check@05:00 JST'
+        'line-morning@01:30, forecast-snapshot@16:05, integrity-check@05:00, '
+        'nowcast-observation@04:00-16:00/10min JST'
     )
 
 # ============================================================================

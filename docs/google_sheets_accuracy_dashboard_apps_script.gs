@@ -14,6 +14,9 @@ const RISHIRI_TABS = [
   'Dashboard',
   'spot_master',
   'spot_detail',
+  'forecast_snapshot',
+  'amedas_observation',
+  'nowcast_observation',
   'raw_feedback',
   'summary_by_day',
   'summary_by_days_ahead',
@@ -57,6 +60,12 @@ function setupN8nSetupTab_(ss) {
     ['Raw API', 'https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90'],
     ['Summary API', 'https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets/summary?days=90'],
     ['Spot master API', 'https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets'],
+    ['Forecast snapshot API', 'https://rishiri-kelp-forecast-system.onrender.com/api/forecast/snapshots/sheets?max_days_ahead=6'],
+    ['AMEDAS observation API', 'https://rishiri-kelp-forecast-system.onrender.com/api/observations/amedas/sheets'],
+    ['Nowcast observation API', 'https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/sheets'],
+    ['Forecast snapshot tab', 'forecast_snapshot'],
+    ['AMEDAS observation tab', 'amedas_observation'],
+    ['Nowcast observation tab', 'nowcast_observation'],
     ['Raw tab', 'raw_feedback'],
     ['Summary tabs', 'summary_by_day, summary_by_days_ahead, summary_by_area, summary_by_buraku'],
     ['Raw Matching Column', 'upsert_key'],
@@ -82,6 +91,32 @@ function formatDataTabs_(ss) {
   ]);
 
   const raw = ss.getSheetByName('raw_feedback');
+  const snapshot = ss.getSheetByName('forecast_snapshot');
+  ensureHeader_(snapshot, [
+    'upsert_key',
+    'forecast_date', 'target_date', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku', 'days_ahead',
+    'max_temp', 'min_humidity', 'avg_wind',
+    'precipitation', 'precipitation_0416',
+    'forecast_rain_0416', 'drying_score', 'suitability',
+    'data_source', 'synced_at_jst'
+  ]);
+
+  ensureHeader_(ss.getSheetByName('amedas_observation'), [
+    'upsert_key',
+    'date', 'observed_time_jst', 'station_id', 'station_name', 'spot_name',
+    'temperature', 'humidity', 'wind_speed', 'precipitation',
+    'data_source', 'collected_at', 'synced_at_jst'
+  ]);
+
+  ensureHeader_(ss.getSheetByName('nowcast_observation'), [
+    'upsert_key',
+    'date', 'observed_time_jst', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku',
+    'precip_mmh', 'any_rain', 'basetime',
+    'data_source', 'synced_at_jst'
+  ]);
+
   const rawHeaders = [
     'upsert_key', 'date', 'spot_name', 'town', 'district', 'buraku', 'days_ahead',
     'actual_precip_0416_mm', 'actual_precip_total_mm', 'actual_rain_0416',
@@ -143,17 +178,20 @@ function setupDashboard_(ss) {
   styleHeader_(sheet.getRange(4, 1, 1, 8));
   styleBody_(sheet.getRange(5, 1, 1, 8));
 
-  sheet.getRange(8, 1, 7, 2).setValues([
+  sheet.getRange(8, 1, 10, 2).setValues([
     ['主要グラフ', '元データ'],
     ['日別 的中率推移', 'summary_by_day'],
     ['何日前予報別 精度', 'summary_by_days_ahead'],
     ['地区別 外れ方', 'summary_by_area'],
     ['部落別ランキング', 'summary_by_buraku'],
     ['Rawログ監査', 'raw_feedback'],
+    ['予報履歴監査', 'forecast_snapshot'],
+    ['アメダス実測監査', 'amedas_observation'],
+    ['ナウキャスト実測監査', 'nowcast_observation'],
     ['干場別詳細', 'spot_detail']
   ]);
   styleHeader_(sheet.getRange(8, 1, 1, 2));
-  styleBody_(sheet.getRange(9, 1, 6, 2));
+  styleBody_(sheet.getRange(9, 1, 9, 2));
 
   sheet.getCharts().forEach(chart => sheet.removeChart(chart));
 

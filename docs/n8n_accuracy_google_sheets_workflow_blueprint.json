@@ -8,14 +8,116 @@
     "summary_by_days_ahead": "summary_by_days_ahead",
     "summary_by_area": "summary_by_area",
     "summary_by_buraku": "summary_by_buraku"
+    ,"forecast_snapshot": "forecast_snapshot"
+    ,"amedas_observation": "amedas_observation"
+    ,"nowcast_observation": "nowcast_observation"
     ,"spot_master": "spot_master"
     ,"spot_detail": "spot_detail"
   },
   "apis": {
     "raw": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90",
     "summary": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets/summary?days=90"
+    ,"forecast_snapshot": "https://rishiri-kelp-forecast-system.onrender.com/api/forecast/snapshots/sheets?max_days_ahead=6"
+    ,"amedas_observation": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/amedas/sheets"
+    ,"nowcast_observation": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/sheets"
     ,"spot_master": "https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets"
   },
+  "workflow_0a_amedas_observation_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "03:35",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/amedas/sheets",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split AMEDAS 04:00-16:00 observed weather rows into n8n items.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "amedas_observation",
+        "matchingColumn": "upsert_key",
+        "note": "upsert_key format: date|station_id|HH:MM. Run after AMEDAS archive collection at 03:00 JST."
+      }
+    }
+  ],
+  "workflow_0b_nowcast_observation_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "16:15",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/sheets",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split saved nowcast mesh observation rows into n8n items.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "nowcast_observation",
+        "matchingColumn": "upsert_key",
+        "note": "upsert_key format: date|HH:MM|spot_name. Rows depend on app Redis snapshots from 04:00-16:00 JST."
+      }
+    }
+  ],
+  "workflow_0_forecast_snapshot_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "16:20",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/forecast/snapshots/sheets?max_days_ahead=6",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split saved forecast snapshot rows into n8n items. upsert_key is already returned by the API.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "forecast_snapshot",
+        "matchingColumn": "upsert_key",
+        "note": "upsert_key format: forecast_date|spot_name|days_ahead. Run after the app's Redis snapshot at 16:05 JST."
+      }
+    }
+  ],
   "workflow_a_raw_sync": [
     {
       "node": "Schedule Trigger",
@@ -29,7 +131,7 @@
       "node": "HTTP Request",
       "settings": {
         "method": "GET",
-        "url": "={{$json.apis.raw || 'https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90'}}",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/accuracy/sheets?days=90",
         "responseFormat": "JSON"
       }
     },
@@ -84,6 +186,9 @@
     "Dashboard",
     "spot_master",
     "spot_detail",
+    "forecast_snapshot",
+    "amedas_observation",
+    "nowcast_observation",
     "raw_feedback",
     "summary_by_day",
     "summary_by_days_ahead",
@@ -100,6 +205,11 @@
       }
     },
     {
+      "node": "Code",
+      "purpose": "Split spot master rows before clearing the sheet; keep these items for the append step.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
       "node": "Google Sheets",
       "operation": "Clear Rows",
       "settings": {
@@ -108,14 +218,11 @@
       }
     },
     {
-      "node": "Code",
-      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
-    },
-    {
       "node": "Google Sheets",
       "operation": "Append Row",
       "settings": {
-        "sheetTab": "spot_master"
+        "sheetTab": "spot_master",
+        "note": "Append the items produced by the Code node, not the Clear Rows output."
       }
     }
   ],
