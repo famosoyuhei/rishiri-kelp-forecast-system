@@ -354,6 +354,62 @@ def test_forecast_snapshot_sheets_returns_saved_rows(monkeypatch):
     assert data["rows"][0]["forecast_rain_0416"] is False
 
 
+def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
+    import start
+    import line_integration
+
+    spots_file = TMP_DIR / "hoshiba_spots_forecast_manual.csv"
+    pd.DataFrame([
+        {
+            "name": "H_1631_1434", "lat": 45.1631, "lon": 141.1434,
+            "town": "利尻町", "district": "沓形", "buraku": "神居",
+        },
+    ]).to_csv(spots_file, index=False)
+
+    def fake_forecast(_lat, _lon, timeout=15):
+        return [{
+            "date": "2026-06-30",
+            "day_number": 1,
+            "max_temp": 18.5,
+            "min_humidity": 82,
+            "avg_wind": 3.2,
+            "precipitation": 0.0,
+            "precipitation_0416": 0.0,
+            "score": 84,
+            "suitability": "good",
+        }]
+
+    written = {}
+    monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
+    monkeypatch.setattr(line_integration, "get_forecast_for_spot", fake_forecast)
+    monkeypatch.setattr(start, "_obs_redis_mget", lambda keys: {})
+    monkeypatch.setattr(start, "_obs_redis_mset", lambda values: written.update(values) or len(values))
+    monkeypatch.delenv("LINE_ADMIN_NOTIFY_SECRET", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
+
+    response = start.app.test_client().post("/api/forecast/snapshots/run")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ok"
+    assert data["result"]["spots"] == 1
+    assert data["result"]["planned_records"] == 1
+    assert data["result"]["saved_records"] == 1
+    assert list(written.keys()) == ["forecast:hist:H_1631_1434:20260630"]
+
+
+def test_forecast_snapshot_manual_run_requires_secret_on_render(monkeypatch):
+    import start
+
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.delenv("LINE_ADMIN_NOTIFY_SECRET", raising=False)
+
+    response = start.app.test_client().post("/api/forecast/snapshots/run")
+
+    assert response.status_code == 503
+    assert response.get_json()["status"] == "LINE_ADMIN_NOTIFY_SECRET not configured"
+
+
 def test_amedas_observation_sheets_returns_window_rows(monkeypatch):
     import start
 

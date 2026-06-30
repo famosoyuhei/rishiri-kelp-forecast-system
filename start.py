@@ -6,6 +6,7 @@ Version: 2.6.0
 import os
 import sys
 import math
+import hmac
 import numpy as np
 import requests
 import pandas as pd
@@ -827,7 +828,7 @@ def _save_daily_forecast_snapshot():
         return
 
     from line_integration import get_forecast_for_spot as _gffs
-    saved = 0
+    planned_records = []
     errors = 0
     for name, lat, lon in spots:
         try:
@@ -852,17 +853,33 @@ def _save_daily_forecast_snapshot():
                 'drying_score':       fc.get('score'),
                 'suitability':        fc.get('suitability'),
             }
-            try:
-                existing = _obs_redis_get(redis_key) or []
-                if not any(e.get('forecast_date') == today_str for e in existing):
-                    existing.append(record)
-                    _obs_redis_set(redis_key, existing)
-                    saved += 1
-            except Exception as re:
-                app.logger.warning('[forecast_snapshot] Redis save error %s: %s', redis_key, re)
+            planned_records.append((redis_key, record))
         _time.sleep(0.1)  # Open-Meteo レート制限を避ける
 
+    saved = 0
+    redis_updates = {}
+    existing_histories = _obs_redis_mget([key for key, _record in planned_records])
+    for redis_key, record in planned_records:
+        existing = existing_histories.get(redis_key) or []
+        if not isinstance(existing, list):
+            existing = []
+        if any(e.get('forecast_date') == today_str for e in existing if isinstance(e, dict)):
+            continue
+        existing.append(record)
+        redis_updates[redis_key] = existing
+
+    if redis_updates:
+        saved = _obs_redis_mset(redis_updates)
+
     app.logger.info('[forecast_snapshot] done: saved=%d errors=%d spots=%d', saved, errors, len(spots))
+    return {
+        'status': 'ok',
+        'forecast_date': today_str,
+        'spots': len(spots),
+        'planned_records': len(planned_records),
+        'saved_records': saved,
+        'errors': errors,
+    }
 
 
 def _scheduled_forecast_snapshot():
@@ -1871,6 +1888,30 @@ def get_forecast_snapshots_for_sheets():
             'rows': rows,
         })
     except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/forecast/snapshots/run', methods=['POST'])
+@limiter.limit("2 per hour")
+def run_forecast_snapshot_batch():
+    """Run the daily forecast snapshot batch manually for catch-up operations."""
+    admin_secret = os.environ.get('LINE_ADMIN_NOTIFY_SECRET', '')
+    data = request.get_json(silent=True) or {}
+    provided = request.headers.get('X-Notify-Secret') or request.headers.get('X-Admin-Secret') or data.get('secret', '')
+    if admin_secret and not hmac.compare_digest(str(provided), admin_secret):
+        return jsonify({'status': 'unauthorized'}), 401
+    if not admin_secret and os.environ.get('RENDER'):
+        return jsonify({'status': 'LINE_ADMIN_NOTIFY_SECRET not configured'}), 503
+
+    try:
+        result = _save_daily_forecast_snapshot()
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'result': result,
+        })
+    except Exception as e:
+        app.logger.error('[forecast_snapshot] manual run error: %s', e)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
@@ -3320,6 +3361,36 @@ def _obs_redis_mget(keys: list[str], batch_size: int = 100) -> dict:
         except Exception as exc:
             app.logger.warning('[obs_redis] mget batch failed: %s', exc)
     return values
+
+
+def _obs_redis_mset(values: dict, ttl: int = _OBS_KEY_TTL, batch_size: int = 100) -> int:
+    """Observation Redis batch SET via Upstash pipeline."""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token or not values:
+        return 0
+
+    items = list(values.items())
+    saved = 0
+    for i in range(0, len(items), batch_size):
+        batch = items[i:i + batch_size]
+        try:
+            resp = requests.post(
+                f'{rest_url}/pipeline',
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+                json=[['SET', key, json.dumps(value, ensure_ascii=False), 'EX', ttl] for key, value in batch],
+                timeout=10,
+            )
+            results = resp.json()
+            if not isinstance(results, list):
+                continue
+            for item in results:
+                result = item.get('result') if isinstance(item, dict) else None
+                if result == 'OK':
+                    saved += 1
+        except Exception as exc:
+            app.logger.warning('[obs_redis] mset batch failed: %s', exc)
+    return saved
 
 
 def _obs_redis_scan_keys(pattern: str) -> list:
