@@ -19,6 +19,27 @@
 **すべての時刻は日本標準時（JST, UTC+9）で統一されています。**
 開発者が海外にいる場合でも、利尻島の現地時刻で運用してください。
 
+### 作業ワークツリー選択ルール（使用量節約・スコープ最小化）
+
+作業内容に応じて **対応する sparse ワークツリー** を使用してください。
+デスクトップの完全ワークツリーは「複数領域にまたがる場合のみ」使用します。
+
+| 作業内容 | 使用するワークツリー | パス |
+|---|---|---|
+| `start.py`・Flask API・デプロイ設定 | `app-core` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\app-core` |
+| `kelp_drying_map.html`・PWA・UI | `frontend-map` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\frontend-map` |
+| `line_integration.py`・LINE 通知・Webhook | `line-ops` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\line-ops` |
+| 予報精度検証・AMeDAS 分析 | `research-archive` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\research-archive` |
+| Google Sheets 連携・n8n | `accuracy-analysis` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\accuracy-analysis` |
+| LP・チラシ・QR コード・ユーザー案内 | `marketing` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\marketing` |
+| 上記を横断する変更 | デスクトップ完全 WT | `C:\Users\ichry\Desktop\rishiri_konbu_weather_tool` |
+
+各ワークツリーの詳細ルール・チェックリストは **`README_WORKTREE.md`**（各ワークツリー直下）を参照してください。
+
+**sparse ワークツリーはそれぞれ独立ブランチ（`codex/*`）です。**
+変更後は `main` へ PR を作成して squash merge してください。
+ブランチ一覧・更新コマンドは [`CODEX_WORKTREES.md`](CODEX_WORKTREES.md) を参照してください。
+
 ## 主要ドキュメント
 
 プロジェクトの詳細は以下の仕様書を参照してください。

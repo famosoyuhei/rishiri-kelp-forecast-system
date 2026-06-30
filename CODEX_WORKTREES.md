@@ -26,6 +26,28 @@ context and file-search noise.
 - Start in `research-archive` for historical weather analysis and forecast-accuracy investigations.
 - Use the full desktop worktree only when a task genuinely spans app code, generated artifacts, photos, and archives.
 
+## Sparse Definition Notes
+
+### app-core: HTML/UI files excluded (2026-06-30)
+
+The following files were removed from `app-core`'s sparse-checkout to keep it backend-only:
+
+| Removed file | Reason |
+| --- | --- |
+| `kelp_drying_map.html` | 7,100-line UI file; irrelevant to backend API work. Managed by `frontend-map`. |
+| `dashboard.html` | UI only. Managed by `frontend-map`. |
+| `mobile_forecast_interface.html` | UI only. Managed by `frontend-map`. |
+| `rishiri_island_lp.html` | Landing page. Managed by `marketing`. |
+| `offline.html` | PWA fallback page. Managed by `frontend-map`. |
+| `rishiri_wind_names.js` | Deprecated since v2.6.15; removed from all active sparse definitions. |
+| `favicon.svg` | Icon asset; no backend dependency. |
+| `static/img/logo.png` | Image asset; no backend dependency. |
+| `static/fonts/NotoSansJP.ttf` | Font asset; no backend dependency. |
+
+`app-core` retains `service-worker.js` and `manifest.json` as **read references** so that
+backend engineers can verify SW version-bump requirements and manifest rule-D compliance
+without switching worktrees.
+
 ## Refresh Commands
 
 Run these from the full desktop worktree if a sparse definition needs to be inspected:
