@@ -18,6 +18,24 @@ context and file-search noise.
 | `accuracy-analysis` | `codex/accuracy-analysis` | Existing accuracy/Sheets focused workspace |
 | `marketing` | `codex/marketing` | Existing launch and marketing workspace |
 
+## ワークツリー選択表
+
+やりたいことからワークツリーを即判断するための早見表です。
+
+| やりたいこと | 開くワークツリー |
+| --- | --- |
+| `start.py` / Flask API / デプロイ設定の修正 | `app-core` |
+| 地図 UI / `kelp_drying_map.html` / PWA / `service-worker.js` の修正 | `frontend-map` |
+| LINE Webhook / 通知 / `line_integration.py` の修正 | `line-ops` |
+| 精度検証 / AMeDAS / 研究スクリプト | `research-archive` |
+| Google Sheets 連携 / n8n ワークフロー / 精度分析レポート | `accuracy-analysis` |
+| LP / マーケティング文言 / 画像素材 / QR コード | `marketing` |
+| 複数領域にまたがる大規模変更 | フルワークツリー（デスクトップ） |
+
+> **迷ったら**: タスクで最初に触るファイルがどこの sparse に含まれるかで判断してください。
+> 作業中に別領域のファイルが必要になった場合は、そのワークツリーを別途開くか、
+> フルワークツリーに切り替えてください。
+
 ## Default Choice
 
 - Start in `app-core` for backend or production behavior changes.
