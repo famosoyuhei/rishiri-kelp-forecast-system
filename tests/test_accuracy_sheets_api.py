@@ -356,7 +356,8 @@ def test_forecast_snapshot_sheets_returns_saved_rows(monkeypatch):
 
 def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
     import start
-    import line_integration
+    import sys
+    import types
 
     spots_file = TMP_DIR / "hoshiba_spots_forecast_manual.csv"
     pd.DataFrame([
@@ -381,7 +382,11 @@ def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
 
     written = {}
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
-    monkeypatch.setattr(line_integration, "get_forecast_for_spot", fake_forecast)
+    monkeypatch.setitem(
+        sys.modules,
+        "line_integration",
+        types.SimpleNamespace(get_forecast_for_spot=fake_forecast),
+    )
     monkeypatch.setattr(start, "_obs_redis_mget", lambda keys: {})
     monkeypatch.setattr(start, "_obs_redis_mset", lambda values: written.update(values) or len(values))
     monkeypatch.delenv("LINE_ADMIN_NOTIFY_SECRET", raising=False)
