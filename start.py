@@ -1773,62 +1773,70 @@ def _load_forecast_snapshot_rows(forecast_date_yyyymmdd: str, max_days_ahead: in
 
     rows = []
     missing_keys = []
+    lookup_plan = []
+    redis_keys = []
 
     for name in spots:
-        meta = spot_meta.get(name, {})
         for days_ahead in range(0, max_days_ahead + 1):
             target_dt = forecast_dt + _td(days=days_ahead)
             target_yyyymmdd = target_dt.strftime('%Y%m%d')
             redis_key = f'forecast:hist:{name}:{target_yyyymmdd}'
-            hist = _obs_redis_get(redis_key) or []
-            entries = [
-                entry for entry in hist
-                if str(entry.get('forecast_date', '')) == forecast_date_yyyymmdd
-            ]
+            lookup_plan.append((name, days_ahead, target_dt, target_yyyymmdd, redis_key))
+            redis_keys.append(redis_key)
 
-            if not entries:
-                fc_pattern = os.path.join(
-                    FORECAST_HISTORY_DIR,
-                    name,
-                    f'forecast_{forecast_date_yyyymmdd}_for_{target_yyyymmdd}.json',
-                )
-                for fc_file in _glob.glob(fc_pattern):
-                    try:
-                        with open(fc_file, 'r', encoding='utf-8') as f:
-                            entries.append(json.load(f))
-                    except Exception as exc:
-                        app.logger.warning('[forecast_snapshot_sheets] local read failed %s: %s', fc_file, exc)
+    redis_histories = _obs_redis_mget(redis_keys)
 
-            if not entries:
-                missing_keys.append(f'{forecast_date_yyyymmdd}|{name}|{days_ahead}')
-                continue
+    for name, days_ahead, target_dt, target_yyyymmdd, redis_key in lookup_plan:
+        meta = spot_meta.get(name, {})
+        hist = redis_histories.get(redis_key) or []
+        entries = [
+            entry for entry in hist
+            if str(entry.get('forecast_date', '')) == forecast_date_yyyymmdd
+        ]
 
-            # There should be one entry per forecast date; use the latest if duplicates exist.
-            fc = entries[-1]
-            target_date = fc.get('target_date') or target_dt.isoformat()
-            fc_precip_0416 = fc.get('precipitation_0416', fc.get('precipitation'))
-            row = {
-                'upsert_key': f'{forecast_date_yyyymmdd}|{name}|{days_ahead}',
-                'forecast_date': f'{forecast_date_yyyymmdd[:4]}-{forecast_date_yyyymmdd[4:6]}-{forecast_date_yyyymmdd[6:]}',
-                'target_date': target_date,
-                'spot_name': name,
-                'spot_type': _spot_type_from_name(name),
-                'town': meta.get('town'),
-                'district': meta.get('district'),
-                'buraku': meta.get('buraku'),
-                'days_ahead': days_ahead,
-                'max_temp': fc.get('max_temp'),
-                'min_humidity': fc.get('min_humidity'),
-                'avg_wind': fc.get('avg_wind'),
-                'precipitation': fc.get('precipitation'),
-                'precipitation_0416': fc_precip_0416,
-                'forecast_rain_0416': (fc_precip_0416 or 0) > 0,
-                'drying_score': fc.get('drying_score'),
-                'suitability': fc.get('suitability'),
-                'data_source': 'redis_forecast_history' if hist else 'local_forecast_history',
-                'synced_at_jst': synced_at,
-            }
-            rows.append({col: _json_safe_value(row.get(col)) for col in FORECAST_SNAPSHOT_COLUMNS})
+        if not entries:
+            fc_pattern = os.path.join(
+                FORECAST_HISTORY_DIR,
+                name,
+                f'forecast_{forecast_date_yyyymmdd}_for_{target_yyyymmdd}.json',
+            )
+            for fc_file in _glob.glob(fc_pattern):
+                try:
+                    with open(fc_file, 'r', encoding='utf-8') as f:
+                        entries.append(json.load(f))
+                except Exception as exc:
+                    app.logger.warning('[forecast_snapshot_sheets] local read failed %s: %s', fc_file, exc)
+
+        if not entries:
+            missing_keys.append(f'{forecast_date_yyyymmdd}|{name}|{days_ahead}')
+            continue
+
+        # There should be one entry per forecast date; use the latest if duplicates exist.
+        fc = entries[-1]
+        target_date = fc.get('target_date') or target_dt.isoformat()
+        fc_precip_0416 = fc.get('precipitation_0416', fc.get('precipitation'))
+        row = {
+            'upsert_key': f'{forecast_date_yyyymmdd}|{name}|{days_ahead}',
+            'forecast_date': f'{forecast_date_yyyymmdd[:4]}-{forecast_date_yyyymmdd[4:6]}-{forecast_date_yyyymmdd[6:]}',
+            'target_date': target_date,
+            'spot_name': name,
+            'spot_type': _spot_type_from_name(name),
+            'town': meta.get('town'),
+            'district': meta.get('district'),
+            'buraku': meta.get('buraku'),
+            'days_ahead': days_ahead,
+            'max_temp': fc.get('max_temp'),
+            'min_humidity': fc.get('min_humidity'),
+            'avg_wind': fc.get('avg_wind'),
+            'precipitation': fc.get('precipitation'),
+            'precipitation_0416': fc_precip_0416,
+            'forecast_rain_0416': (fc_precip_0416 or 0) > 0,
+            'drying_score': fc.get('drying_score'),
+            'suitability': fc.get('suitability'),
+            'data_source': 'redis_forecast_history' if hist else 'local_forecast_history',
+            'synced_at_jst': synced_at,
+        }
+        rows.append({col: _json_safe_value(row.get(col)) for col in FORECAST_SNAPSHOT_COLUMNS})
 
     expected_rows = len(spots) * (max_days_ahead + 1)
     summary = {
@@ -3280,6 +3288,38 @@ def _obs_redis_set(key: str, data, ttl: int = _OBS_KEY_TTL) -> bool:
         return isinstance(results, list) and bool(results) and results[0].get('result') == 'OK'
     except Exception:
         return False
+
+
+def _obs_redis_mget(keys: list[str], batch_size: int = 100) -> dict:
+    """Observation Redis batch GET via Upstash pipeline."""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token or not keys:
+        return {}
+
+    values = {}
+    for i in range(0, len(keys), batch_size):
+        batch = keys[i:i + batch_size]
+        try:
+            resp = requests.post(
+                f'{rest_url}/pipeline',
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+                json=[['GET', key] for key in batch],
+                timeout=10,
+            )
+            results = resp.json()
+            if not isinstance(results, list):
+                continue
+            for key, item in zip(batch, results):
+                raw = item.get('result') if isinstance(item, dict) else None
+                if raw:
+                    try:
+                        values[key] = json.loads(raw)
+                    except Exception:
+                        values[key] = None
+        except Exception as exc:
+            app.logger.warning('[obs_redis] mget batch failed: %s', exc)
+    return values
 
 
 def _obs_redis_scan_keys(pattern: str) -> list:
