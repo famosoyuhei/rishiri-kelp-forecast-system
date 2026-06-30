@@ -66,6 +66,51 @@ The following files were removed from `app-core`'s sparse-checkout to keep it ba
 backend engineers can verify SW version-bump requirements and manifest rule-D compliance
 without switching worktrees.
 
+## 標準作業フロー（Claude Code / Codex 共通）
+
+すべての作業はこの8ステップで進めてください。
+AIエージェントが別領域のファイルに誤って触れるリスクを防ぎます。
+
+```
+1. 現在のワークツリーを確認する
+   git worktree list
+   → 作業するワークツリーが「ワークツリー選択表」と一致しているか確認
+
+2. README_WORKTREE.md と CLAUDE.md を確認する
+   - 編集対象ファイルと編集禁止ファイルを把握する
+   - 今回の作業に関係するルール（ミニルール A〜H / LINE ルール L1〜L9 等）を確認する
+
+3. 対象ファイルだけを探索する
+   - sparse-checkout の範囲外ファイルは開かない
+   - Grep / Glob は対象ワークツリー内に限定する
+
+4. 修正する
+   - 編集禁止ファイルには触れない
+   - 本番コード以外（ドキュメント・テスト）の変更は別コミットに分ける
+
+5. 関連テストのみ実行する
+   - そのワークツリーの README_WORKTREE.md に記載のテストだけを実行する
+   - 全テストスイートは不要（スコープ外テストの失敗に引きずられない）
+
+6. git diff を確認する
+   git diff --name-only
+   → 想定外のファイルが含まれていないかチェック
+   → 本番コード（start.py / kelp_drying_map.html / line_integration.py）が
+     意図せず変更されていないか確認
+
+7. コミットする
+   - ドキュメント変更と本番コード変更は分けてコミットする
+   - メッセージ形式: `<type>: <summary>` （例: `fix:` / `feat:` / `docs:`）
+
+8. 必要なら main にマージする
+   - sparse ワークツリーのブランチ（codex/*）から PR を作成する
+   - squash merge で main に取り込む
+   - マージ後は README_WORKTREE.md のマージ前チェックリストを通過したか確認する
+```
+
+> **ショートカット**: ステップ1〜2 で「このタスクはどのワークツリーか？」に迷ったら
+> 上の「ワークツリー選択表」に戻ってください。
+
 ## Refresh Commands
 
 Run these from the full desktop worktree if a sparse definition needs to be inspected:
