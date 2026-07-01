@@ -12,6 +12,8 @@ import requests
 import pandas as pd
 import json
 from datetime import datetime, timedelta, timezone
+from html import escape
+from urllib.parse import urlencode
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from scipy.optimize import fsolve
@@ -524,6 +526,159 @@ def rishiri_island_landing():
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+@app.route('/oauth/threads/callback')
+def threads_oauth_callback():
+    """Exchange a Threads OAuth code for a long-lived token.
+
+    This admin-only helper avoids copying the short-lived authorization code
+    through Postman. It is intentionally not linked from the public UI.
+    """
+    error = request.args.get('error') or request.args.get('error_message')
+    code = request.args.get('code')
+    app_id = os.environ.get('THREADS_APP_ID', '').strip()
+    app_secret = os.environ.get('THREADS_APP_SECRET', '').strip()
+    redirect_uri = os.environ.get('THREADS_REDIRECT_URI', request.base_url).strip()
+
+    def oauth_page(title, body, status=200):
+        response = app.response_class(
+            f"""<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{escape(title)}</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 40px; line-height: 1.6; color: #111827; }}
+    main {{ max-width: 880px; margin: 0 auto; }}
+    h1 {{ font-size: 24px; margin-bottom: 16px; }}
+    textarea {{ width: 100%; min-height: 140px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }}
+    code, pre {{ background: #f3f4f6; border-radius: 6px; padding: 2px 4px; }}
+    pre {{ padding: 12px; overflow: auto; white-space: pre-wrap; }}
+    .warn {{ color: #92400e; }}
+    .ok {{ color: #047857; }}
+  </style>
+</head>
+<body>
+<main>
+{body}
+</main>
+</body>
+</html>""",
+            status=status,
+            mimetype='text/html',
+        )
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
+    if error:
+        return oauth_page(
+            'Threads OAuth Error',
+            f'<h1>Threads OAuth Error</h1><p class="warn">{escape(error)}</p>',
+            status=400,
+        )
+
+    if not code:
+        auth_url = 'https://threads.net/oauth/authorize?' + urlencode({
+            'client_id': app_id or 'THREADS_APP_ID',
+            'redirect_uri': redirect_uri,
+            'scope': 'threads_basic,threads_content_publish',
+            'response_type': 'code',
+        })
+        return oauth_page(
+            'Threads OAuth Callback',
+            '<h1>Threads OAuth Callback</h1>'
+            '<p>This endpoint is ready. Start authorization from this URL after Render environment variables are set.</p>'
+            f'<pre>{auth_url}</pre>',
+        )
+
+    missing = [name for name, value in (
+        ('THREADS_APP_ID', app_id),
+        ('THREADS_APP_SECRET', app_secret),
+    ) if not value]
+    if missing:
+        return oauth_page(
+            'Threads OAuth Not Configured',
+            '<h1>Threads OAuth Not Configured</h1>'
+            '<p class="warn">Set these Render environment variables first:</p>'
+            f'<pre>{escape(", ".join(missing))}</pre>'
+            f'<p>Redirect URI used by this request:</p><pre>{escape(redirect_uri)}</pre>',
+            status=500,
+        )
+
+    try:
+        short_resp = requests.post(
+            'https://graph.threads.net/oauth/access_token',
+            data={
+                'client_id': app_id,
+                'client_secret': app_secret,
+                'grant_type': 'authorization_code',
+                'redirect_uri': redirect_uri,
+                'code': code,
+            },
+            timeout=15,
+        )
+        short_data = short_resp.json()
+    except Exception as exc:
+        return oauth_page(
+            'Threads Token Exchange Failed',
+            '<h1>Threads Token Exchange Failed</h1>'
+            f'<p class="warn">Short-lived token request failed: {escape(str(exc))}</p>',
+            status=502,
+        )
+
+    if not short_resp.ok or 'access_token' not in short_data:
+        return oauth_page(
+            'Threads Token Exchange Failed',
+            '<h1>Threads Token Exchange Failed</h1>'
+            '<p class="warn">Short-lived token response was not successful.</p>'
+            f'<pre>{escape(json.dumps(short_data, ensure_ascii=False, indent=2))}</pre>',
+            status=400,
+        )
+
+    try:
+        long_resp = requests.get(
+            'https://graph.threads.net/access_token',
+            params={
+                'grant_type': 'th_exchange_token',
+                'client_secret': app_secret,
+                'access_token': short_data['access_token'],
+            },
+            timeout=15,
+        )
+        long_data = long_resp.json()
+    except Exception as exc:
+        return oauth_page(
+            'Threads Long-Lived Token Failed',
+            '<h1>Threads Long-Lived Token Failed</h1>'
+            f'<p class="warn">Long-lived token request failed: {escape(str(exc))}</p>',
+            status=502,
+        )
+
+    if not long_resp.ok or 'access_token' not in long_data:
+        return oauth_page(
+            'Threads Long-Lived Token Failed',
+            '<h1>Threads Long-Lived Token Failed</h1>'
+            '<p class="warn">Long-lived token response was not successful.</p>'
+            f'<pre>{escape(json.dumps(long_data, ensure_ascii=False, indent=2))}</pre>',
+            status=400,
+        )
+
+    expires_in = long_data.get('expires_in')
+    token = long_data['access_token']
+    user_id = long_data.get('user_id') or short_data.get('user_id', '')
+    return oauth_page(
+        'Threads Token Ready',
+        '<h1 class="ok">Threads long-lived token ready</h1>'
+        '<p>Copy this token into the n8n Threads Bearer credential. Do not paste it into chat or Google Sheets.</p>'
+        f'<textarea readonly>{escape(token)}</textarea>'
+        f'<p>User ID: <code>{escape(str(user_id))}</code></p>'
+        f'<p>Expires in seconds: <code>{escape(str(expires_in))}</code></p>'
+        '<p>After copying it, close this browser tab.</p>',
+    )
 
 @app.route("/drying-map")
 @app.route("/map")
