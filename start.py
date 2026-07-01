@@ -7,6 +7,7 @@ import os
 import sys
 import math
 import hmac
+import threading
 import numpy as np
 import requests
 import pandas as pd
@@ -42,6 +43,10 @@ if _ul_rest and _ul_token:
     _ul_host = _ul_rest.replace('https://', '').replace('http://', '')
     _limiter_storage_uri = f'rediss://default:{_ul_token}@{_ul_host}:6379'
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri=_limiter_storage_uri)
+
+_THREADS_OAUTH_CODE_CACHE = {}
+_THREADS_OAUTH_CODE_CACHE_LOCK = threading.Lock()
+_THREADS_OAUTH_CODE_CACHE_TTL = 600
 
 # Configuration — all paths are BASE_DIR-relative so the app works regardless of cwd
 CSV_FILE             = os.path.join(BASE_DIR, "hoshiba_spots.csv")
@@ -609,6 +614,37 @@ def threads_oauth_callback():
             status=500,
         )
 
+    def token_ready_page(token, user_id, expires_in, note=''):
+        note_html = f'<p>{escape(note)}</p>' if note else ''
+        return oauth_page(
+            'Threads Token Ready',
+            '<h1 class="ok">Threads long-lived token ready</h1>'
+            f'{note_html}'
+            '<p>Copy this token into the n8n Threads Bearer credential. Do not paste it into chat or Google Sheets.</p>'
+            f'<textarea readonly>{escape(token)}</textarea>'
+            f'<p>User ID: <code>{escape(str(user_id))}</code></p>'
+            f'<p>Expires in seconds: <code>{escape(str(expires_in))}</code></p>'
+            '<p>After copying it, close this browser tab.</p>',
+        )
+
+    now_ts = datetime.now(tz=timezone.utc).timestamp()
+    with _THREADS_OAUTH_CODE_CACHE_LOCK:
+        expired = [
+            cache_code for cache_code, value in _THREADS_OAUTH_CODE_CACHE.items()
+            if now_ts - value.get('created_at', now_ts) > _THREADS_OAUTH_CODE_CACHE_TTL
+        ]
+        for cache_code in expired:
+            _THREADS_OAUTH_CODE_CACHE.pop(cache_code, None)
+
+        cached = _THREADS_OAUTH_CODE_CACHE.get(code)
+        if cached and cached.get('status') == 'ok':
+            return token_ready_page(
+                cached.get('token', ''),
+                cached.get('user_id', ''),
+                cached.get('expires_in', ''),
+                note='This is the cached result for an already-used authorization code.',
+            )
+
     try:
         short_resp = requests.post(
             'https://graph.threads.net/oauth/access_token',
@@ -670,15 +706,15 @@ def threads_oauth_callback():
     expires_in = long_data.get('expires_in')
     token = long_data['access_token']
     user_id = long_data.get('user_id') or short_data.get('user_id', '')
-    return oauth_page(
-        'Threads Token Ready',
-        '<h1 class="ok">Threads long-lived token ready</h1>'
-        '<p>Copy this token into the n8n Threads Bearer credential. Do not paste it into chat or Google Sheets.</p>'
-        f'<textarea readonly>{escape(token)}</textarea>'
-        f'<p>User ID: <code>{escape(str(user_id))}</code></p>'
-        f'<p>Expires in seconds: <code>{escape(str(expires_in))}</code></p>'
-        '<p>After copying it, close this browser tab.</p>',
-    )
+    with _THREADS_OAUTH_CODE_CACHE_LOCK:
+        _THREADS_OAUTH_CODE_CACHE[code] = {
+            'status': 'ok',
+            'created_at': now_ts,
+            'token': token,
+            'user_id': user_id,
+            'expires_in': expires_in,
+        }
+    return token_ready_page(token, user_id, expires_in)
 
 @app.route("/drying-map")
 @app.route("/map")
