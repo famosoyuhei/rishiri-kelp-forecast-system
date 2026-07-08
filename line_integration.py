@@ -1306,9 +1306,14 @@ def parse_command(text: str) -> dict:
         return {'cmd': 'day_spot', 'day': _DAY_KEYWORDS[parts[0]], 'label': parts[1]}
 
     # Area + optional day: "沓形 明日", "仙法志", "沓形 今日"
+    # NOTE: "今週"/"weekly" map to day=None in _DAY_KEYWORDS (meaning "weekly",
+    # not "unspecified"). That must route to a real weekly area summary —
+    # collapsing it to day 0 here silently turned "鬼脇 今週" into "鬼脇 今日".
     if len(parts) == 2 and parts[1] in _DAY_KEYWORDS:
         day = _DAY_KEYWORDS[parts[1]]
-        return {'cmd': 'area', 'area': parts[0], 'day': day if day is not None else 0}
+        if day is None:
+            return {'cmd': 'area_weekly', 'area': parts[0]}
+        return {'cmd': 'area', 'area': parts[0], 'day': day}
     if len(parts) == 1:
         # Could be area name (non-keyword, non-spot-id)
         return {'cmd': 'area', 'area': text, 'day': None}
@@ -1669,6 +1674,49 @@ def handle_area_query(area: str, day: int | None) -> str:
         return '\n'.join(lines)
 
     return format_area_summary(area, target_day, spots_forecasts)
+
+
+def format_area_weekly_summary(area: str, days_data: list) -> str:
+    """Format a 7-day area-level overview for LINE.
+
+    days_data: list of dicts, one per forecast day, each with keys
+        date, day_number, good_count, total
+    """
+    lines = [f'【{area} 今週の予報】']
+    for d in days_data:
+        date_lbl = _date_label(d['date'], d['day_number'])
+        lines.append(f"{date_lbl} 干せそう: {d['good_count']}/{d['total']}地点")
+    lines.append(_LINE_DISCLAIMER)
+    return '\n'.join(lines)
+
+
+def handle_area_weekly(area: str) -> str:
+    """Handle '鬼脇 今週' style commands: 7-day area-level overview."""
+    spots = find_spots_by_area(area)
+    if not spots:
+        return (
+            f'「{area}」に一致する地区・部落が見つかりません。\n'
+            '町名・地区名・部落名で入力してください。\n例: 沓形、仙法志、鴛泊'
+        )
+    # Fetch forecast for up to 10 spots (avoid too many API calls)
+    sample = spots[:10]
+    all_forecasts = [fcs for fcs in (get_forecast_for_spot(s['lat'], s['lon']) for s in sample) if fcs]
+
+    if not all_forecasts:
+        return f'{area}: 予報データを取得できませんでした。'
+
+    num_days = min(len(fcs) for fcs in all_forecasts)
+    days_data = []
+    for i in range(num_days):
+        day_fcs = [fcs[i] for fcs in all_forecasts]
+        good_count = sum(1 for fc in day_fcs if fc['suitability'] in ('excellent', 'good'))
+        days_data.append({
+            'date': day_fcs[0]['date'],
+            'day_number': i,
+            'good_count': good_count,
+            'total': len(day_fcs),
+        })
+    return format_area_weekly_summary(area, days_data)
 
 
 def handle_subscribe(source_type: str, source_id: str, target: str,
@@ -2244,6 +2292,8 @@ def process_event(event: dict) -> None:
         response = handle_spot_query(cmd['spot_id'])
     elif cmd['cmd'] == 'area':
         response = handle_area_query(cmd['area'], cmd.get('day'))
+    elif cmd['cmd'] == 'area_weekly':
+        response = handle_area_weekly(cmd['area'])
     elif cmd['cmd'] == 'subscribe':
         response = handle_subscribe(source_type, source_id, cmd['target'],
                                     cmd.get('nickname', ''))

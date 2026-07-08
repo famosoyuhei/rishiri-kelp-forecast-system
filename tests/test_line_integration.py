@@ -111,6 +111,20 @@ def test_parse_area(text, area, day):
     assert result["day"] == day
 
 
+@pytest.mark.parametrize("text,area", [
+    ("鬼脇 今週", "鬼脇"),
+    ("鬼脇　今週", "鬼脇"),  # full-width space, as sent from LINE rich menu / IME
+    ("沓形 weekly", "沓形"),
+])
+def test_parse_area_weekly(text, area):
+    """'<area> 今週' must route to a weekly area summary, not silently
+    collapse to day=0 (today) — regression test for the bug where
+    '鬼脇 今週' returned today's forecast instead of the week's."""
+    result = li.parse_command(text)
+    assert result["cmd"] == "area_weekly"
+    assert result["area"] == area
+
+
 @pytest.mark.parametrize("text,target", [
     ("通知登録 H_1631_1434", "H_1631_1434"),
     ("通知登録 沓形", "沓形"),
