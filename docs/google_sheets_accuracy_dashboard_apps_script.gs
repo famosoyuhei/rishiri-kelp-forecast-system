@@ -17,6 +17,8 @@ const RISHIRI_TABS = [
   'forecast_snapshot',
   'amedas_observation',
   'nowcast_observation',
+  'nowcast_precip_daily_summary',
+  'forecast_precip_accuracy_by_horizon',
   'raw_feedback',
   'summary_by_day',
   'summary_by_days_ahead',
@@ -63,9 +65,13 @@ function setupN8nSetupTab_(ss) {
     ['Forecast snapshot API', 'https://rishiri-kelp-forecast-system.onrender.com/api/forecast/snapshots/sheets?max_days_ahead=6'],
     ['AMEDAS observation API', 'https://rishiri-kelp-forecast-system.onrender.com/api/observations/amedas/sheets'],
     ['Nowcast observation API', 'https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/sheets'],
+    ['Nowcast daily summary API', 'https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/daily-summary/sheets'],
+    ['Forecast precip accuracy API', 'https://rishiri-kelp-forecast-system.onrender.com/api/validation/forecast-precip/accuracy-by-horizon/sheets'],
     ['Forecast snapshot tab', 'forecast_snapshot'],
     ['AMEDAS observation tab', 'amedas_observation'],
     ['Nowcast observation tab', 'nowcast_observation'],
+    ['Nowcast daily summary tab', 'nowcast_precip_daily_summary'],
+    ['Forecast precip accuracy tab', 'forecast_precip_accuracy_by_horizon'],
     ['Raw tab', 'raw_feedback'],
     ['Summary tabs', 'summary_by_day, summary_by_days_ahead, summary_by_area, summary_by_buraku'],
     ['Raw Matching Column', 'upsert_key'],
@@ -115,6 +121,40 @@ function formatDataTabs_(ss) {
     'town', 'district', 'buraku',
     'precip_mmh', 'any_rain', 'basetime',
     'data_source', 'synced_at_jst'
+  ]);
+
+  ensureHeader_(ss.getSheetByName('nowcast_precip_daily_summary'), [
+    'upsert_key',
+    'date', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku',
+    'observed_rain_0416',
+    'observed_precip_sum_0416_mm',
+    'observed_precip_max_mmh',
+    'rainy_snapshot_count',
+    'snapshot_count',
+    'coverage_pct',
+    'first_rain_time',
+    'last_rain_time',
+    'data_source',
+    'synced_at_jst'
+  ]);
+
+  ensureHeader_(ss.getSheetByName('forecast_precip_accuracy_by_horizon'), [
+    'summary_key',
+    'target_date', 'forecast_date', 'days_ahead',
+    'spot_count',
+    'tp_count', 'tn_count', 'fp_count', 'fn_count',
+    'hit_rate_pct',
+    'precision_pct',
+    'recall_pct',
+    'false_alarm_rate_pct',
+    'miss_rate_pct',
+    'forecast_rain_spots',
+    'actual_rain_spots',
+    'forecast_precip_sum_0416_mm',
+    'observed_precip_sum_0416_mm',
+    'data_source',
+    'synced_at_jst'
   ]);
 
   const rawHeaders = [

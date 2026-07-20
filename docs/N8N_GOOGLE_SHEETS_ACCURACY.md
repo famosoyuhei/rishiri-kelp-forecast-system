@@ -12,6 +12,8 @@
 - アメダス2地点の04:00-16:00実測は03:00 JSTに前日分をRedisへ保存する。
 - 全地点メッシュのナウキャスト降水実測は04:00-16:00 JSTに10分間隔でRedisへ保存する。
 - n8nは16:20 JST以降に保存済み予報履歴を読み取り、Google Sheetsの `forecast_snapshot` へ転記する。
+- n8nは16:25 JST以降にナウキャスト日次要約を `nowcast_precip_daily_summary` へ転記する。
+- n8nは16:30 JST以降に当日実測と0〜6日前予報の降水比較を `forecast_precip_accuracy_by_horizon` へ転記する。
 - Google Sheetsには行データを保存し、ピボットテーブルやグラフで可視化する。
 - 個別干場は1干場1シートにせず、`spot_detail` のプルダウンで切り替える。
 
@@ -79,6 +81,43 @@ GET /api/observations/nowcast/sheets
 - 04:00-16:00 JSTにRedisへ保存されたナウキャストスナップショット
 - 全地点の所属250mメッシュ降水強度 `precip_mmh`
 - JMA nowcastはここでは過去アーカイブ取得しないため、当日の04:00-16:00にスケジューラーが動いていることが前提
+
+### ナウキャスト日次降水要約
+
+```text
+GET /api/observations/nowcast/daily-summary/sheets
+```
+
+主なクエリ:
+
+- `date`: 任意。`YYYY-MM-DD` または `YYYYMMDD`。省略時は昨日。
+- `spot`: 任意。`H_1631_1434` など単一地点に絞る。
+
+返却形式:
+
+- 04:00-16:00 JSTの10分間隔ナウキャスト実測を地点別に日次集計する。
+- `observed_rain_0416`: 04:00-16:00に一度でも降水強度が0より大きかったか。
+- `observed_precip_sum_0416_mm`: 10分間隔の `precip_mmh` をmm換算した合計。
+- `coverage_pct`: 期待スナップショット数に対する取得率。原則100%の行だけを精度比較に使う。
+
+### 降水予報の何日前別精度
+
+```text
+GET /api/validation/forecast-precip/accuracy-by-horizon/sheets
+```
+
+主なクエリ:
+
+- `target_date` または `date`: 任意。`YYYY-MM-DD` または `YYYYMMDD`。省略時は昨日。
+- `max_days_ahead`: 0〜6。既定は6。
+- `spot`: 任意。単一地点に絞る。
+
+返却形式:
+
+- `forecast_snapshot` 相当のRedis予報履歴と `nowcast_precip_daily_summary` 相当の実測を比較する。
+- `days_ahead=1` は前日の翌日予報、`days_ahead=6` は6日前の6日後予報。
+- TP/TN/FP/FN、的中率、適中率、再現率、空振り率、見逃し率を返す。
+- 降水以外のカテゴリーはアメダス2地点を基準にし、全干場の降水精度はこのAPIを主軸にする。
 
 ### Raw 精度行データ
 
@@ -185,6 +224,53 @@ data_source
 synced_at_jst
 ```
 
+Nowcast daily summaryタブは `upsert_key` をMatching Columnにする。
+
+```text
+upsert_key
+date
+spot_name
+spot_type
+town
+district
+buraku
+observed_rain_0416
+observed_precip_sum_0416_mm
+observed_precip_max_mmh
+rainy_snapshot_count
+snapshot_count
+coverage_pct
+first_rain_time
+last_rain_time
+data_source
+synced_at_jst
+```
+
+Forecast precip accuracy by horizonタブは `summary_key` をMatching Columnにする。
+
+```text
+summary_key
+target_date
+forecast_date
+days_ahead
+spot_count
+tp_count
+tn_count
+fp_count
+fn_count
+hit_rate_pct
+precision_pct
+recall_pct
+false_alarm_rate_pct
+miss_rate_pct
+forecast_rain_spots
+actual_rain_spots
+forecast_precip_sum_0416_mm
+observed_precip_sum_0416_mm
+data_source
+synced_at_jst
+```
+
 Rawタブは `upsert_key` をMatching Columnにする。
 
 ```text
@@ -266,6 +352,38 @@ n8n標準ノードだけで構成する。HTTP Request nodeはResponse Formatを
    - Sheet tabは `nowcast_observation`。
    - Matching Columnは `upsert_key`。
 
+### Workflow 0C: ナウキャスト日次降水要約同期
+
+1. Schedule Trigger
+   - 毎日 16:25 JST 以降に実行。
+   - 04:00-16:00 JSTの全ナウキャスト保存が完了してから実行する。
+
+2. HTTP Request
+   - Method: `GET`
+   - URL: `https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/daily-summary/sheets`
+   - Response: JSON
+
+3. Google Sheets
+   - Sheet tabは `nowcast_precip_daily_summary`。
+   - Matching Columnは `upsert_key`。
+   - `summary.complete=true` と `summary.coverage_pct=100` を確認する。
+
+### Workflow 0D: 降水予報の何日前別精度同期
+
+1. Schedule Trigger
+   - 毎日 16:30 JST 以降に実行。
+   - ナウキャスト日次要約の後に実行する。
+
+2. HTTP Request
+   - Method: `GET`
+   - URL: `https://rishiri-kelp-forecast-system.onrender.com/api/validation/forecast-precip/accuracy-by-horizon/sheets?max_days_ahead=6`
+   - Response: JSON
+
+3. Google Sheets
+   - Sheet tabは `forecast_precip_accuracy_by_horizon`。
+   - Matching Columnは `summary_key`。
+   - `days_ahead` 0〜6 が揃っているか確認する。
+
 ### Workflow A: Rawログ同期
 
 1. Schedule Trigger
@@ -318,6 +436,8 @@ n8n標準ノードだけで構成する。HTTP Request nodeはResponse Formatを
 
 - 日別の降水予報的中率
 - `days_ahead` 別の乾燥判定的中率
+- `days_ahead` 別の全干場メッシュ降水的中率
+- `days_ahead` 別の空振り率と見逃し率
 - 部落別の外れやすさ
 - `forecast_score` と実際の `actual_label` の散布図
 - false positive: 予報は「可」だが実際は「不可」

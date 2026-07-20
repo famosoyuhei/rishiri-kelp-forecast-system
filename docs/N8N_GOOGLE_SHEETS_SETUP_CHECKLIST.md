@@ -12,6 +12,8 @@
   - `forecast_snapshot`
   - `amedas_observation`
   - `nowcast_observation`
+  - `nowcast_precip_daily_summary`
+  - `forecast_precip_accuracy_by_horizon`
   - `raw_feedback`
   - `summary_by_day`
   - `summary_by_days_ahead`
@@ -85,7 +87,41 @@ return rows.map(row => ({ json: row }));
   - Matching Column: `upsert_key`
 - [ ] 手動実行して `summary.snapshot_count` と `summary.total_rows` を確認する
 
-## 6. Raw同期ワークフロー
+## 6. ナウキャスト日次降水要約同期ワークフロー
+
+- [ ] Schedule Triggerを作る
+  - Timezone: `Asia/Tokyo`
+  - 時刻: `16:25`
+  - 04:00-16:00 JSTのナウキャスト保存後に実行する
+- [ ] HTTP Request nodeを作る
+  - Method: `GET`
+  - URL: `https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/daily-summary/sheets`
+  - Response Format: `JSON`
+- [ ] Code nodeで `rows` 配列をn8n itemへ展開する
+- [ ] Google Sheets nodeを作る
+  - Operation: `Append or Update Row`
+  - Sheet tab: `nowcast_precip_daily_summary`
+  - Matching Column: `upsert_key`
+- [ ] 手動実行して `summary.complete=true` と `summary.coverage_pct=100` を確認する
+
+## 7. 降水予報の何日前別精度同期ワークフロー
+
+- [ ] Schedule Triggerを作る
+  - Timezone: `Asia/Tokyo`
+  - 時刻: `16:30`
+  - ナウキャスト日次降水要約同期の後に実行する
+- [ ] HTTP Request nodeを作る
+  - Method: `GET`
+  - URL: `https://rishiri-kelp-forecast-system.onrender.com/api/validation/forecast-precip/accuracy-by-horizon/sheets?max_days_ahead=6`
+  - Response Format: `JSON`
+- [ ] Code nodeで `rows` 配列をn8n itemへ展開する
+- [ ] Google Sheets nodeを作る
+  - Operation: `Append or Update Row`
+  - Sheet tab: `forecast_precip_accuracy_by_horizon`
+  - Matching Column: `summary_key`
+- [ ] 手動実行して `summary.complete_horizons` に0〜6日前が揃っていることを確認する
+
+## 8. Raw同期ワークフロー
 
 - [ ] Schedule Triggerを作る
   - Timezone: `Asia/Tokyo`
@@ -109,7 +145,7 @@ return rows.map(row => ({ json: row }));
   - Matching Column: `upsert_key`
 - [ ] 手動実行してエラーがないことを確認する
 
-## 7. Summary同期ワークフロー
+## 9. Summary同期ワークフロー
 
 - [ ] Schedule Triggerを作る
   - Timezone: `Asia/Tokyo`
@@ -142,7 +178,7 @@ return rows.map(row => ({ json: row }));
 | `by_area` | `summary_by_area` | `summary_key` |
 | `by_buraku` | `summary_by_buraku` | `summary_key` |
 
-## 8. Spot master同期ワークフロー
+## 10. Spot master同期ワークフロー
 
 - [ ] HTTP Request nodeを作る
   - Method: `GET`
@@ -153,11 +189,14 @@ return rows.map(row => ({ json: row }));
 - [ ] `spot_detail` のプルダウンに現在地点が表示されることを確認する
 - [ ] 削除済み地点がプルダウン候補から消えることを確認する
 
-## 9. ダッシュボード確認
+## 11. ダッシュボード確認
 
 - [ ] `forecast_snapshot` に同じ `upsert_key` の重複が増えていない
 - [ ] `amedas_observation` に同じ `upsert_key` の重複が増えていない
 - [ ] `nowcast_observation` に同じ `upsert_key` の重複が増えていない
+- [ ] `nowcast_precip_daily_summary` に同じ `upsert_key` の重複が増えていない
+- [ ] `forecast_precip_accuracy_by_horizon` に同じ `summary_key` の重複が増えていない
+- [ ] `forecast_precip_accuracy_by_horizon` に0〜6日前の行が日別に揃っている
 - [ ] DashboardタブのKPI値が表示される
 - [ ] 日別 的中率推移グラフが表示される
 - [ ] 何日前予報別 精度グラフが表示される
@@ -165,7 +204,7 @@ return rows.map(row => ({ json: row }));
 - [ ] Summaryタブに同じ `summary_key` の重複が増えていない
 - [ ] `spot_detail` で干場を切り替えられる
 
-## 10. 安全確認
+## 12. 安全確認
 
 - [ ] n8nから `/api/forecast` を334地点へ連続呼び出ししていない
 - [ ] LINE通知ワークフローはまだ有効化していない

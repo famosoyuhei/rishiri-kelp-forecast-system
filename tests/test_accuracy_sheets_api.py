@@ -50,7 +50,7 @@ def test_accuracy_sheets_rows_include_upsert_key(monkeypatch):
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
 
     client = start.app.test_client()
-    response = client.get("/api/validation/accuracy/sheets?days=30")
+    response = client.get("/api/validation/accuracy/sheets?days=90")
     data = response.get_json()
 
     assert response.status_code == 200
@@ -134,7 +134,7 @@ def test_accuracy_sheets_summary_includes_summary_keys(monkeypatch):
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
 
     client = start.app.test_client()
-    response = client.get("/api/validation/accuracy/sheets/summary?days=30")
+    response = client.get("/api/validation/accuracy/sheets/summary?days=90")
     data = response.get_json()
 
     assert response.status_code == 200
@@ -205,7 +205,7 @@ def test_accuracy_reliability_reports_recent_completeness(monkeypatch):
     monkeypatch.setattr(start, "FEEDBACK_FILE", str(feedback_file))
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
 
-    response = start.app.test_client().get("/api/validation/accuracy/reliability?days=30&recent_days=1")
+    response = start.app.test_client().get("/api/validation/accuracy/reliability?days=90&recent_days=1")
     data = response.get_json()
 
     assert response.status_code == 200
@@ -250,7 +250,7 @@ def test_deleted_spot_keeps_snapshot_metadata(monkeypatch):
     monkeypatch.setattr(start, "FEEDBACK_FILE", str(feedback_file))
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
 
-    response = start.app.test_client().get("/api/validation/accuracy/sheets?days=30")
+    response = start.app.test_client().get("/api/validation/accuracy/sheets?days=90")
     row = response.get_json()["rows"][0]
 
     assert response.status_code == 200
@@ -506,3 +506,117 @@ def test_nowcast_observation_sheets_returns_mesh_rows(monkeypatch):
     assert data["rows"][0]["upsert_key"] == "20260629|04:00|A_1783_1383"
     assert data["rows"][0]["spot_type"] == "amedas"
     assert data["rows"][0]["any_rain"] is True
+
+
+def test_nowcast_daily_summary_sheets_returns_per_spot_rows(monkeypatch):
+    import start
+
+    spots_file = TMP_DIR / "hoshiba_spots_nowcast_summary.csv"
+    pd.DataFrame([
+        {
+            "name": "H_1631_1434", "lat": 45.1631, "lon": 141.1434,
+            "town": "利尻町", "district": "沓形", "buraku": "神居",
+        },
+        {
+            "name": "A_1783_1383", "lat": 45.1783, "lon": 141.1383,
+            "town": "利尻町", "district": "沓形", "buraku": "泉町",
+        },
+    ]).to_csv(spots_file, index=False)
+
+    snapshots = [
+        {
+            "time": "04:10",
+            "basetime": "20260628191000",
+            "spots": {"H_1631_1434": 0.0, "A_1783_1383": 1.2},
+        },
+        {
+            "time": "04:20",
+            "basetime": "20260628192000",
+            "spots": {"H_1631_1434": 0.6, "A_1783_1383": 0.0},
+        },
+    ]
+
+    monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: snapshots if key == "nowcast:daily:20260629" else None)
+
+    response = start.app.test_client().get("/api/observations/nowcast/daily-summary/sheets?date=2026-06-29")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ok"
+    assert data["summary"]["snapshot_count"] == 2
+    assert data["summary"]["total_rows"] == 2
+    assert data["summary"]["rain_spots"] == 2
+    rows = {row["spot_name"]: row for row in data["rows"]}
+    assert rows["H_1631_1434"]["observed_rain_0416"] is True
+    assert rows["H_1631_1434"]["observed_precip_sum_0416_mm"] == 0.1
+    assert rows["A_1783_1383"]["first_rain_time"] == "04:10"
+
+
+def test_forecast_precip_accuracy_by_horizon_compares_forecast_and_nowcast(monkeypatch):
+    import start
+
+    spots_file = TMP_DIR / "hoshiba_spots_precip_accuracy.csv"
+    pd.DataFrame([
+        {
+            "name": "H_1631_1434", "lat": 45.1631, "lon": 141.1434,
+            "town": "利尻町", "district": "沓形", "buraku": "神居",
+        },
+        {
+            "name": "H_1700_1400", "lat": 45.17, "lon": 141.14,
+            "town": "利尻町", "district": "沓形", "buraku": "泉町",
+        },
+    ]).to_csv(spots_file, index=False)
+
+    snapshots = [
+        {
+            "time": "04:10",
+            "basetime": "20260628191000",
+            "spots": {"H_1631_1434": 1.2, "H_1700_1400": 0.0},
+        },
+        {
+            "time": "04:20",
+            "basetime": "20260628192000",
+            "spots": {"H_1631_1434": 0.0, "H_1700_1400": 0.0},
+        },
+    ]
+
+    histories = {
+        "forecast:hist:H_1631_1434:20260629": [
+            {"forecast_date": "20260628", "target_date": "2026-06-29", "precipitation_0416": 0.0},
+            {"forecast_date": "20260629", "target_date": "2026-06-29", "precipitation_0416": 0.3},
+        ],
+        "forecast:hist:H_1700_1400:20260629": [
+            {"forecast_date": "20260628", "target_date": "2026-06-29", "precipitation_0416": 0.0},
+            {"forecast_date": "20260629", "target_date": "2026-06-29", "precipitation_0416": 0.0},
+        ],
+    }
+
+    def fake_redis_get(key):
+        if key == "nowcast:daily:20260629":
+            return snapshots
+        return None
+
+    def fake_redis_mget(keys):
+        return {key: histories.get(key) for key in keys if key in histories}
+
+    monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
+    monkeypatch.setattr(start, "_obs_redis_get", fake_redis_get)
+    monkeypatch.setattr(start, "_obs_redis_mget", fake_redis_mget)
+
+    response = start.app.test_client().get(
+        "/api/validation/forecast-precip/accuracy-by-horizon/sheets?target_date=2026-06-29&max_days_ahead=1"
+    )
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["status"] == "ok"
+    assert data["summary"]["horizon_rows"] == 2
+    rows = {row["days_ahead"]: row for row in data["rows"]}
+    assert rows[0]["spot_count"] == 2
+    assert rows[0]["tp_count"] == 1
+    assert rows[0]["tn_count"] == 1
+    assert rows[0]["hit_rate_pct"] == 100.0
+    assert rows[1]["fn_count"] == 1
+    assert rows[1]["tn_count"] == 1
+    assert rows[1]["hit_rate_pct"] == 50.0

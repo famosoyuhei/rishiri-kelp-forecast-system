@@ -11,6 +11,8 @@
     ,"forecast_snapshot": "forecast_snapshot"
     ,"amedas_observation": "amedas_observation"
     ,"nowcast_observation": "nowcast_observation"
+    ,"nowcast_precip_daily_summary": "nowcast_precip_daily_summary"
+    ,"forecast_precip_accuracy_by_horizon": "forecast_precip_accuracy_by_horizon"
     ,"spot_master": "spot_master"
     ,"spot_detail": "spot_detail"
   },
@@ -20,6 +22,8 @@
     ,"forecast_snapshot": "https://rishiri-kelp-forecast-system.onrender.com/api/forecast/snapshots/sheets?max_days_ahead=6"
     ,"amedas_observation": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/amedas/sheets"
     ,"nowcast_observation": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/sheets"
+    ,"nowcast_precip_daily_summary": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/daily-summary/sheets"
+    ,"forecast_precip_accuracy_by_horizon": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/forecast-precip/accuracy-by-horizon/sheets?max_days_ahead=6"
     ,"spot_master": "https://rishiri-kelp-forecast-system.onrender.com/api/integration/spots/sheets"
   },
   "workflow_0a_amedas_observation_sync": [
@@ -118,6 +122,70 @@
       }
     }
   ],
+  "workflow_0c_nowcast_precip_daily_summary_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "16:25",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/observations/nowcast/daily-summary/sheets",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split per-spot daily nowcast precipitation summary rows into n8n items.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "nowcast_precip_daily_summary",
+        "matchingColumn": "upsert_key",
+        "note": "Run after 04:00-16:00 JST nowcast snapshots are complete. Check summary.complete before trusting the day."
+      }
+    }
+  ],
+  "workflow_0d_forecast_precip_accuracy_by_horizon_sync": [
+    {
+      "node": "Schedule Trigger",
+      "settings": {
+        "mode": "Every Day",
+        "time": "16:30",
+        "timezone": "Asia/Tokyo"
+      }
+    },
+    {
+      "node": "HTTP Request",
+      "settings": {
+        "method": "GET",
+        "url": "https://rishiri-kelp-forecast-system.onrender.com/api/validation/forecast-precip/accuracy-by-horizon/sheets?max_days_ahead=6",
+        "responseFormat": "JSON"
+      }
+    },
+    {
+      "node": "Code",
+      "purpose": "Split target-date horizon summary rows into n8n items.",
+      "code": "const rows = $json.rows || [];\nreturn rows.map(row => ({ json: row }));"
+    },
+    {
+      "node": "Google Sheets",
+      "operation": "Append or Update Row",
+      "settings": {
+        "sheetTab": "forecast_precip_accuracy_by_horizon",
+        "matchingColumn": "summary_key",
+        "note": "summary_key format: target_date|days_ahead|forecast_date. Use this as the all-field precipitation reliability table."
+      }
+    }
+  ],
   "workflow_a_raw_sync": [
     {
       "node": "Schedule Trigger",
@@ -189,6 +257,8 @@
     "forecast_snapshot",
     "amedas_observation",
     "nowcast_observation",
+    "nowcast_precip_daily_summary",
+    "forecast_precip_accuracy_by_horizon",
     "raw_feedback",
     "summary_by_day",
     "summary_by_days_ahead",

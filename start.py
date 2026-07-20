@@ -2121,6 +2121,40 @@ NOWCAST_OBSERVATION_COLUMNS = [
     'data_source', 'synced_at_jst',
 ]
 
+NOWCAST_DAILY_SUMMARY_COLUMNS = [
+    'upsert_key',
+    'date', 'spot_name', 'spot_type',
+    'town', 'district', 'buraku',
+    'observed_rain_0416',
+    'observed_precip_sum_0416_mm',
+    'observed_precip_max_mmh',
+    'rainy_snapshot_count',
+    'snapshot_count',
+    'coverage_pct',
+    'first_rain_time',
+    'last_rain_time',
+    'data_source',
+    'synced_at_jst',
+]
+
+FORECAST_PRECIP_ACCURACY_BY_HORIZON_COLUMNS = [
+    'summary_key',
+    'target_date', 'forecast_date', 'days_ahead',
+    'spot_count',
+    'tp_count', 'tn_count', 'fp_count', 'fn_count',
+    'hit_rate_pct',
+    'precision_pct',
+    'recall_pct',
+    'false_alarm_rate_pct',
+    'miss_rate_pct',
+    'forecast_rain_spots',
+    'actual_rain_spots',
+    'forecast_precip_sum_0416_mm',
+    'observed_precip_sum_0416_mm',
+    'data_source',
+    'synced_at_jst',
+]
+
 
 def _load_amedas_observation_rows(date_yyyymmdd: str) -> tuple[list[dict], dict]:
     """Return AMEDAS 04:00-16:00 observed weather rows for Sheets."""
@@ -2245,6 +2279,229 @@ def _load_nowcast_observation_rows(date_yyyymmdd: str, spot_name: str | None = N
     return rows, summary
 
 
+def _load_nowcast_daily_summary_rows(date_yyyymmdd: str, spot_name: str | None = None) -> tuple[list[dict], dict]:
+    """Return per-spot daily precipitation summaries from saved JMA nowcast snapshots."""
+    synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    snapshots = _obs_redis_get(f'nowcast:daily:{date_yyyymmdd}') or []
+    spot_meta = _load_spot_metadata_map()
+    all_spots = sorted(spot_meta.keys())
+    if spot_name:
+        all_spots = [name for name in all_spots if name == spot_name]
+
+    observed = {
+        name: {
+            'values': [],
+            'rain_times': [],
+        }
+        for name in all_spots
+    }
+    snapshot_times = []
+
+    for snap in snapshots:
+        time_str = snap.get('time') or ''
+        if not ('04:00' <= time_str <= '16:00'):
+            continue
+        snapshot_times.append(time_str)
+        spots = snap.get('spots') or {}
+        for name in all_spots:
+            if name not in spots:
+                continue
+            try:
+                precip = float(spots.get(name) or 0.0)
+            except (TypeError, ValueError):
+                precip = 0.0
+            observed[name]['values'].append(precip)
+            if precip > 0:
+                observed[name]['rain_times'].append(time_str)
+
+    unique_times = sorted(set(snapshot_times))
+    expected_snapshots = len(unique_times)
+    rows = []
+    missing_spots = []
+    for name in all_spots:
+        meta = spot_meta.get(name, {})
+        values = observed[name]['values']
+        rain_times = observed[name]['rain_times']
+        if expected_snapshots and len(values) < expected_snapshots:
+            missing_spots.append(name)
+        # JMA nowcast values are mm/h samples. 10-minute interval depth is mm/h / 6.
+        precip_sum_mm = round(sum(values) / 6.0, 3)
+        coverage_pct = round(len(values) / expected_snapshots * 100, 1) if expected_snapshots else None
+        row = {
+            'upsert_key': f'{date_yyyymmdd}|{name}',
+            'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+            'spot_name': name,
+            'spot_type': _spot_type_from_name(name),
+            'town': meta.get('town'),
+            'district': meta.get('district'),
+            'buraku': meta.get('buraku'),
+            'observed_rain_0416': bool(rain_times),
+            'observed_precip_sum_0416_mm': precip_sum_mm,
+            'observed_precip_max_mmh': max(values) if values else 0.0,
+            'rainy_snapshot_count': len(rain_times),
+            'snapshot_count': len(values),
+            'coverage_pct': coverage_pct,
+            'first_rain_time': rain_times[0] if rain_times else None,
+            'last_rain_time': rain_times[-1] if rain_times else None,
+            'data_source': 'jma_hrpns_nowcast_redis_daily_summary',
+            'synced_at_jst': synced_at,
+        }
+        rows.append({col: _json_safe_value(row.get(col)) for col in NOWCAST_DAILY_SUMMARY_COLUMNS})
+
+    expected_rows = len(all_spots)
+    complete_rows = sum(1 for row in rows if row.get('snapshot_count') == expected_snapshots)
+    summary = {
+        'date': f'{date_yyyymmdd[:4]}-{date_yyyymmdd[4:6]}-{date_yyyymmdd[6:]}',
+        'window': '04:00-16:00 JST',
+        'spot_filter': spot_name or 'all',
+        'snapshot_count': expected_snapshots,
+        'expected_spots': len(all_spots),
+        'expected_rows': expected_rows,
+        'total_rows': len(rows),
+        'complete_rows': complete_rows,
+        'coverage_pct': round(complete_rows / expected_rows * 100, 1) if expected_rows else None,
+        'complete': bool(expected_rows and complete_rows >= expected_rows and expected_snapshots > 0),
+        'rain_spots': sum(1 for row in rows if row.get('observed_rain_0416') is True),
+        'missing_spots_sample': missing_spots[:20],
+    }
+    return rows, summary
+
+
+def _safe_pct(numerator: int | float, denominator: int | float) -> float | None:
+    if not denominator:
+        return None
+    return round(float(numerator) / float(denominator) * 100, 1)
+
+
+def _load_forecast_precip_accuracy_by_horizon_rows(
+    target_date_yyyymmdd: str,
+    max_days_ahead: int = 6,
+    spot_name: str | None = None,
+) -> tuple[list[dict], dict]:
+    """Compare saved forecast precipitation against saved JMA nowcast daily summaries."""
+    from datetime import datetime as _dt
+
+    synced_at = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
+    target_dt = _dt.strptime(target_date_yyyymmdd, '%Y%m%d').date()
+    actual_rows, actual_summary = _load_nowcast_daily_summary_rows(target_date_yyyymmdd, spot_name)
+    actual_by_spot = {
+        row['spot_name']: row
+        for row in actual_rows
+        if row.get('snapshot_count', 0) and row.get('coverage_pct') == 100.0
+    }
+
+    spots = sorted(actual_by_spot.keys())
+    redis_keys = [f'forecast:hist:{name}:{target_date_yyyymmdd}' for name in spots]
+    redis_histories = _obs_redis_mget(redis_keys)
+
+    buckets = {}
+    missing_forecast_spots = []
+    for name in spots:
+        hist = redis_histories.get(f'forecast:hist:{name}:{target_date_yyyymmdd}') or []
+        usable_for_spot = 0
+        for fc in hist:
+            forecast_date = str(fc.get('forecast_date') or '').replace('-', '')
+            if len(forecast_date) != 8:
+                continue
+            try:
+                forecast_dt = _dt.strptime(forecast_date, '%Y%m%d').date()
+            except ValueError:
+                continue
+            days_ahead = (target_dt - forecast_dt).days
+            if days_ahead < 0 or days_ahead > max_days_ahead:
+                continue
+            forecast_precip = fc.get('precipitation_0416', fc.get('precipitation')) or 0.0
+            try:
+                forecast_precip = float(forecast_precip)
+            except (TypeError, ValueError):
+                forecast_precip = 0.0
+            forecast_rain = forecast_precip > 0
+            actual = actual_by_spot[name]
+            actual_rain = bool(actual.get('observed_rain_0416'))
+            actual_precip = actual.get('observed_precip_sum_0416_mm') or 0.0
+            key = (forecast_date, days_ahead)
+            if key not in buckets:
+                buckets[key] = {
+                    'forecast_date': forecast_date,
+                    'days_ahead': days_ahead,
+                    'spot_count': 0,
+                    'tp_count': 0,
+                    'tn_count': 0,
+                    'fp_count': 0,
+                    'fn_count': 0,
+                    'forecast_rain_spots': 0,
+                    'actual_rain_spots': 0,
+                    'forecast_precip_sum_0416_mm': 0.0,
+                    'observed_precip_sum_0416_mm': 0.0,
+                }
+            bucket = buckets[key]
+            bucket['spot_count'] += 1
+            bucket['forecast_rain_spots'] += 1 if forecast_rain else 0
+            bucket['actual_rain_spots'] += 1 if actual_rain else 0
+            bucket['forecast_precip_sum_0416_mm'] += forecast_precip
+            bucket['observed_precip_sum_0416_mm'] += float(actual_precip or 0.0)
+            if forecast_rain and actual_rain:
+                bucket['tp_count'] += 1
+            elif (not forecast_rain) and (not actual_rain):
+                bucket['tn_count'] += 1
+            elif forecast_rain and (not actual_rain):
+                bucket['fp_count'] += 1
+            else:
+                bucket['fn_count'] += 1
+            usable_for_spot += 1
+        if usable_for_spot == 0:
+            missing_forecast_spots.append(name)
+
+    rows = []
+    for (forecast_date, days_ahead), bucket in sorted(buckets.items(), key=lambda item: (item[0][1], item[0][0])):
+        target_date = f'{target_date_yyyymmdd[:4]}-{target_date_yyyymmdd[4:6]}-{target_date_yyyymmdd[6:]}'
+        forecast_date_fmt = f'{forecast_date[:4]}-{forecast_date[4:6]}-{forecast_date[6:]}'
+        tp = bucket['tp_count']
+        tn = bucket['tn_count']
+        fp = bucket['fp_count']
+        fn = bucket['fn_count']
+        total = bucket['spot_count']
+        correct = tp + tn
+        row = {
+            'summary_key': f'{target_date_yyyymmdd}|{forecast_date}|{days_ahead}',
+            'target_date': target_date,
+            'forecast_date': forecast_date_fmt,
+            'days_ahead': days_ahead,
+            'spot_count': total,
+            'tp_count': tp,
+            'tn_count': tn,
+            'fp_count': fp,
+            'fn_count': fn,
+            'hit_rate_pct': _safe_pct(correct, total),
+            'precision_pct': _safe_pct(tp, tp + fp),
+            'recall_pct': _safe_pct(tp, tp + fn),
+            'false_alarm_rate_pct': _safe_pct(fp, fp + tn),
+            'miss_rate_pct': _safe_pct(fn, fn + tp),
+            'forecast_rain_spots': bucket['forecast_rain_spots'],
+            'actual_rain_spots': bucket['actual_rain_spots'],
+            'forecast_precip_sum_0416_mm': round(bucket['forecast_precip_sum_0416_mm'], 3),
+            'observed_precip_sum_0416_mm': round(bucket['observed_precip_sum_0416_mm'], 3),
+            'data_source': 'redis_forecast_history_vs_jma_hrpns_nowcast_summary',
+            'synced_at_jst': synced_at,
+        }
+        rows.append({col: _json_safe_value(row.get(col)) for col in FORECAST_PRECIP_ACCURACY_BY_HORIZON_COLUMNS})
+
+    expected_spots = actual_summary.get('expected_spots', 0)
+    complete_horizons = sum(1 for row in rows if row.get('spot_count') == expected_spots)
+    summary = {
+        'target_date': f'{target_date_yyyymmdd[:4]}-{target_date_yyyymmdd[4:6]}-{target_date_yyyymmdd[6:]}',
+        'spot_filter': spot_name or 'all',
+        'max_days_ahead': max_days_ahead,
+        'expected_spots': expected_spots,
+        'actual_summary_complete': actual_summary.get('complete'),
+        'horizon_rows': len(rows),
+        'complete_horizons': complete_horizons,
+        'complete': bool(rows and actual_summary.get('complete') and complete_horizons == len(rows)),
+        'missing_forecast_spots_sample': missing_forecast_spots[:20],
+    }
+    return rows, summary
+
+
 @app.route('/api/observations/amedas/sheets')
 def get_amedas_observations_for_sheets():
     """AMEDAS 04:00-16:00 observed weather rows for n8n -> Google Sheets."""
@@ -2278,6 +2535,52 @@ def get_nowcast_observations_for_sheets():
             'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
             'sync_mode': 'append_or_update_observation_rows',
             'columns': NOWCAST_OBSERVATION_COLUMNS,
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/observations/nowcast/daily-summary/sheets')
+def get_nowcast_daily_summary_for_sheets():
+    """Per-spot nowcast precipitation daily summaries for n8n -> Google Sheets."""
+    try:
+        date_yyyymmdd = _normalize_yyyymmdd(request.args.get('date'))
+        spot_name = request.args.get('spot') or None
+        rows, summary = _load_nowcast_daily_summary_rows(date_yyyymmdd, spot_name)
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'sync_mode': 'append_or_update_daily_summary_rows',
+            'columns': NOWCAST_DAILY_SUMMARY_COLUMNS,
+            'summary': summary,
+            'rows': rows,
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/validation/forecast-precip/accuracy-by-horizon/sheets')
+def get_forecast_precip_accuracy_by_horizon_for_sheets():
+    """Forecast-vs-nowcast precipitation accuracy by forecast horizon."""
+    try:
+        target_date = _normalize_yyyymmdd(
+            request.args.get('target_date') or request.args.get('date'),
+            (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d'),
+        )
+        max_days_ahead = min(max(int(request.args.get('max_days_ahead', 6)), 0), 6)
+        spot_name = request.args.get('spot') or None
+        rows, summary = _load_forecast_precip_accuracy_by_horizon_rows(
+            target_date,
+            max_days_ahead,
+            spot_name,
+        )
+        return jsonify({
+            'status': 'ok',
+            'generated_at_jst': datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00'),
+            'sync_mode': 'append_or_update_horizon_summary_rows',
+            'columns': FORECAST_PRECIP_ACCURACY_BY_HORIZON_COLUMNS,
             'summary': summary,
             'rows': rows,
         })
