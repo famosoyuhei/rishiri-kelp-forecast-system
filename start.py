@@ -1279,12 +1279,10 @@ def get_forecast():
                     if is_coastal and is_onshore:
                         hour_data['wind_speed'] += 1.0
 
-                # フェーンボーナス（ISLAND_METEOROLOGY_RESEARCH §11 G6）
-                # 山背風: angle_diff > 150° かつ風速 > 3 m/s → 乾燥促進フラグ
+                # フェーン/風下強度（ISLAND_METEOROLOGY_RESEARCH §11 G6）
+                # _leeward_intensity() が _compute_foehn_hours() と共有する唯一の判定式。
                 wind_spd = hour_data.get('wind_speed', 0) or 0
-                hour_data['foehn_effect'] = (
-                    angle_diff is not None and angle_diff > 150 and wind_spd > 3.0
-                )
+                hour_data['foehn_intensity'] = _leeward_intensity(angle_diff, wind_spd)
 
             # Calculate enhanced vertical p-velocity estimation using 700hPa data
             for j, hour_data in enumerate(hourly_data):
@@ -1333,10 +1331,10 @@ def get_forecast():
             solar_values = [h.get('solar_radiation') for h in hourly_data if h.get('solar_radiation') is not None]
             avg_solar = sum(solar_values) / len(solar_values) if solar_values else None
 
-            # フェーン（山背風・風下）時間数を先に算出しておく。
+            # フェーン（山背風・風下）実効時間数を先に算出しておく。
             # avg_solar のスコア入力補正（_apply_leeward_solar_boost）と、
             # 後段のスコアボーナス（_apply_local_risk_adjustments）の両方で使う。
-            foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
+            foehn_hours = sum(h.get('foehn_intensity', 0.0) for h in hourly_data)
 
             # 風下側「山陰晴れ」補正: Open-Meteoの5kmメッシュは風下の雲消散を
             # 解像できないため、フェーン時間の比率に応じてスコア入力用の日射量のみ
@@ -4451,12 +4449,43 @@ def _compute_fog_from_dewpoint(
     return level, note, method
 
 
+def _leeward_intensity(angle_diff: float | None, wind_speed_ms: float | None) -> float:
+    """
+    風下強度 (0.0〜1.0)。_compute_foehn_hours() と get_forecast() の両方が呼ぶ
+    唯一の判定式（フェーン/風下判定のロジックはここだけを変更すること）。
+
+    angle_diff（wind_toward と mountain_az の角度差）が90°（風上/風下の境界）
+    以下なら0。90°→180°（真後ろ）へ線形に0→1（風下度）。風速は3m/s以上でフル
+    寄与、それ未満は比例減衰（ハードカットオフなし）。
+
+    【背景】旧実装は「angle_diff>150° かつ 風速>3m/s」を毎時間同時に満たす
+    必要がある離散AND条件だったため、日平均では明確な山背風パターン（例:
+    日代表角度差150.5°）でも、風向が時間ごとに振れる実データでは単一時間が
+    両条件を同時に満たさず foehn_hours=0 のまま検知漏れするケースがあった
+    （2026-07-21 実測50日バックテストで確認、49点グリッド中12点が該当）。
+    連続値化によりこのノイズ耐性を確保する。
+
+    Parameters
+    ----------
+    angle_diff    : wind_toward と mountain_az の角度差 [°] (0〜180)
+    wind_speed_ms : 風速 [m/s]
+
+    Returns
+    -------
+    風下強度 (0.0〜1.0)
+    """
+    if angle_diff is None or wind_speed_ms is None or angle_diff <= 90:
+        return 0.0
+    leeward_factor = min(1.0, (angle_diff - 90) / 90.0)
+    wind_factor = min(1.0, wind_speed_ms / 3.0)
+    return leeward_factor * wind_factor
+
+
 def _compute_foehn_hours(
         wind_dir_raw: list, wind_spd_kmh_raw: list, mountain_az: float
-) -> int:
+) -> float:
     """
-    山背風フェーン時間数を算出。
-    wind_toward（wind_dir + 180°）と mountain_az の角度差 > 150° かつ風速 > 3 m/s。
+    実効フェーン(風下)時間数を算出。各時間の _leeward_intensity() を合計する。
 
     Parameters
     ----------
@@ -4466,44 +4495,45 @@ def _compute_foehn_hours(
 
     Returns
     -------
-    フェーン効果が発生した時間数 (int)
+    実効フェーン時間数 (float, 0.0〜len(list))
     """
-    count = 0
+    total = 0.0
     for _wd, _wkm in zip(wind_dir_raw or [], wind_spd_kmh_raw or []):
         if _wd is None or _wkm is None:
             continue
         _adiff = abs((_wd + 180) % 360 - mountain_az)
         if _adiff > 180:
             _adiff = 360 - _adiff
-        if _adiff > 150 and (_wkm / 3.6) > 3.0:
-            count += 1
-    return count
+        total += _leeward_intensity(_adiff, _wkm / 3.6)
+    return total
 
 
 def _apply_leeward_solar_boost(
-        avg_solar: float | None, foehn_hours: int, total_hours: int
+        avg_solar: float | None, foehn_hours: float, total_hours: int
 ) -> float | None:
     """
     山背風（風下）時間の割合に応じて、スコア計算専用の日射量を控えめに底上げする。
 
     Open-Meteoの5kmメッシュは利尻山による風下側の雲消散（風上:風下 降水比 推定
     3〜5倍、ISLAND_METEOROLOGY_RESEARCH.md §3・§4）を解像できない。フェーン判定
-    時間（_compute_foehn_hours）の日中時間帯に占める比率に比例して、最大+30%まで
+    時間（_compute_foehn_hours）の日中時間帯に占める比率に比例して、最大+50%まで
     日射量を補正する（晴天ceiling付き）。
 
     表示用の hour_data['solar_radiation'] / daily_summary['avg_solar_radiation']
     は変更しない。呼び出し側は calculate_enhanced_drying_score() の
     avg_solar_radiation 引数にだけ、この関数の戻り値を渡すこと。
 
-    定数（0.30倍率上限, 900 W/m² ceiling）は実測検証データがまだ無いための
-    保守的な初期値。将来 /api/validation/accuracy での検証後にチューニングする。
+    定数（0.50倍率上限, 900 W/m² ceiling）は2026-07-21の50日間実測バックテスト
+    （風下側積算気温が風上より高い日が98%）を踏まえた引き上げ値。フェーン検知
+    自体を離散AND条件から連続値（_leeward_intensity）に変更した上での値であり、
+    引き続き /api/validation/accuracy での検証後にチューニングする。
 
     /api/forecast と _compute_score_field の両方がここを呼ぶ（スコア統一ルール）。
 
     Parameters
     ----------
     avg_solar   : 作業時間帯の平均日射量 [W/m²]（生値）
-    foehn_hours : フェーン判定された時間数
+    foehn_hours : 実効フェーン時間数（_compute_foehn_hours の戻り値、float）
     total_hours : 作業時間帯の総時間数（分母）
 
     Returns
@@ -4513,7 +4543,7 @@ def _apply_leeward_solar_boost(
     if avg_solar is None or foehn_hours <= 0 or total_hours <= 0:
         return avg_solar
     foehn_fraction = min(1.0, foehn_hours / total_hours)
-    boosted = avg_solar * (1.0 + 0.30 * foehn_fraction)
+    boosted = avg_solar * (1.0 + 0.50 * foehn_fraction)
     return min(boosted, 900.0)
 
 
@@ -4521,7 +4551,7 @@ def _apply_local_risk_adjustments(
         score: float, *,
         cape_risk:    dict,
         fog_summary:  str,
-        foehn_hours:  int,
+        foehn_hours:  float,
         sst_fog_risk: str,
         fog_note:     str   = '',
         dewpt_method: str   = 'dewpoint_depression',
@@ -4538,7 +4568,7 @@ def _apply_local_risk_adjustments(
     score        : 基礎スコア（precipitation gate 適用後、local risk 未適用）
     cape_risk    : assess_cape_risk() の戻り値
     fog_summary  : 'low' / 'medium' / 'high'
-    foehn_hours  : 山背風フェーン時間数
+    foehn_hours  : 実効山背風フェーン時間数（_compute_foehn_hours の戻り値、float）
     sst_fog_risk : assess_sst_fog_risk() の戻り値
     fog_note     : 霧の説明文（空文字で自動生成）
     dewpt_method : 'dewpoint_depression' or 'humidity_estimate'（UI 表示用）
@@ -4555,7 +4585,11 @@ def _apply_local_risk_adjustments(
     score = max(0, min(100, score + _fog_pen))
 
     # 3. フェーン + SST ─────────────────────────────────────────────────────
-    _foehn_adj = min(8, foehn_hours * 2)
+    # 上限・係数は stage_analysis 側（get_forecast() L1362）と統一。
+    # 旧: min(8, foehn_hours*2)。2026-07-21の50日間実測バックテストで
+    # 「stage_analysis より控えめ（実測根拠が薄いため）」という前提が崩れたため
+    # 引き上げ（フェーン検知自体も離散AND条件→連続値 _leeward_intensity に変更済み）。
+    _foehn_adj = min(15, foehn_hours * 3)
     _sst_adj   = -5 if sst_fog_risk in ('very_high', 'high') else 0
     score = max(0, min(100, score + _foehn_adj + _sst_adj))
 
@@ -4566,7 +4600,7 @@ def _apply_local_risk_adjustments(
     if cape_risk['score_penalty'] < 0:
         notes.append(f'CAPE対流リスク({cape_risk["risk"]}): {cape_risk["score_penalty"]:+d}点')
     if _foehn_adj > 0:
-        notes.append(f'山背風フェーン({foehn_hours}時間): +{_foehn_adj}点')
+        notes.append(f'山背風フェーン({foehn_hours:.1f}時間): +{_foehn_adj:.0f}点')
     if _sst_adj < 0:
         notes.append(f'SST霧リスク({sst_fog_risk}): {_sst_adj:+d}点')
 
