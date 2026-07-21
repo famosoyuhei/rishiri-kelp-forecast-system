@@ -533,10 +533,11 @@ _compute_score_field   ─┘
 | **気温補正** | ❌ 削除 | Open-Meteoが既に0.7°C/100mで標高補正済み |
 | **風速補正** | ✅ 実装（加算型・簡易版） | 森林減衰・海岸増強（Open-Meteoは未実施） |
 | **湿度補正** | ✅ 実装（固定値・簡易版） | 森林保水・海岸潮湿効果 |
-| **onshore wind判定** | ✅ 実装（表示のみ） | 風向と山頂方位角の角度差を計算し表示 |
-| **霧リスクスコア** | 🔲 未実装（要対応） | 露点降下量からの高精度霧判定 |
+| **onshore wind判定** | ✅ 実装（補正適用済み） | `wind_mountain_angle_diff < 90°`時のみ海岸湿度/風速補正を適用（`get_forecast()` L1269-1280） |
+| **霧リスクスコア** | ✅ 実装 | 露点降下量<2°Cで`_apply_local_risk_adjustments()`にスコア減算（G4） |
 | **フロード数診断** | 🔲 未実装（要対応） | 流れ体制（越山/回り込み）の切り替え |
-| **山背風フェーンボーナス** | 🔲 未実装（要対応） | 角度差>150°の乾燥促進をスコアへ反映 |
+| **山背風フェーンボーナス** | ✅ 実装 | `wind_mountain_angle_diff > 150°`かつ風速>3m/sで`_apply_local_risk_adjustments()`に+2点/h（最大+8点）を反映（G6） |
+| **風下側「山陰晴れ」日射補正**（v2.6.29〜） | ✅ 実装 | フェーン判定時間の比率に応じ、スコア入力用`avg_solar_radiation`のみ最大+30%補正（`_apply_leeward_solar_boost()`）。表示天気は不変 |
 
 #### 現行の補正値（start.py `get_forecast()` 内、約L847-L863）
 
@@ -559,11 +560,12 @@ if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
 
 **気象地形補正（[ISLAND_METEOROLOGY_RESEARCH.md §11](ISLAND_METEOROLOGY_RESEARCH.md)より）**
 
-1. **霧リスクスコア** — `dewpoint_2m`データは既取得済み。`(temp - dewpoint) < 2°C` → 霧高リスクとしてスコア減算
-2. **onshore限定補正** — 海岸補正を`wind_mountain_angle_diff < 90°`（onshore方向）の時のみ適用
-3. **山背風（フェーン）ボーナス** — `wind_mountain_angle_diff > 150°`かつ風速>3 m/s → 乾燥スコア+10〜15点
-4. **フロード数 Fr = U/(Nh)** — 850/700 hPaデータは既取得済み。Fr < 0.4 → 回り込みモード、Fr > 1 → 越山モードで補正切替
-5. **カタバ風スコア** — 早朝01:30通知用：雲量<20% + 地上風速<3 m/s → 夜間カタバ風（乾燥）を加点
+1. ~~**霧リスクスコア**~~ — ✅実装済み（`_apply_local_risk_adjustments()`）
+2. ~~**onshore限定補正**~~ — ✅実装済み（`get_forecast()` L1269-1280）
+3. ~~**山背風（フェーン）ボーナス**~~ — ✅実装済み（`_apply_local_risk_adjustments()`、最大+8点）
+3-b. ~~**風下側「山陰晴れ」日射補正**~~ — ✅実装済み（v2.6.29、`_apply_leeward_solar_boost()`。フェーン時間比率で`avg_solar_radiation`を最大+30%補正しK1スコアに反映。ユーザー実地フィードバック「風下側は曇り予報でも実際は晴れて乾く」への対応）
+4. **フロード数 Fr = U/(Nh)** — 850/700 hPaデータは既取得済み。Fr < 0.4 → 回り込みモード、Fr > 1 → 越山モードで補正切替（未実装）
+5. **カタバ風スコア** — 早朝01:30通知用：雲量<20% + 地上風速<3 m/s → 夜間カタバ風（乾燥）を加点（未実装）
 
 **昆布乾燥スコア改善（[KOMBU_DRYING_RESEARCH.md §10](KOMBU_DRYING_RESEARCH.md)より）**
 
@@ -592,8 +594,7 @@ if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
 - **onshore wind判定（現行）**:
   - 利尻山頂を極とした放射方向で海の方向を計算
   - 気象学的方位角（北=0°、東=90°、南=180°、西=270°）
-  - 風向と山頂方位角の角度差（`wind_mountain_angle_diff`）として計算・表示中
-  - スコアへの反映は未実装（次フェーズ）
+  - 風向と山頂方位角の角度差（`wind_mountain_angle_diff`）を計算し、海岸湿度/風速補正・フェーンボーナス・風下側日射補正（v2.6.29〜）に反映済み
 
 **標高データの統合**:
 - Open-Meteo Elevation API（Copernicus GLO-90 DEM）を使用
@@ -860,6 +861,16 @@ LINE通知登録時に各ユーザーが干場に呼び名をつけられる。
 ---
 
 ## 更新履歴
+
+### v2.6.29 (2026年7月21日)
+- **風下側「山陰晴れ」日射補正を追加** (`start.py`)
+  - **背景**: 漁業者からの実地フィードバック「南西風のとき曇り予報でも風下の鴛泊は実際は晴れて乾く。北東風なら逆に沓形が晴れる」（利尻山が風下側の雲を遮る効果）。既存の山背風フェーンボーナス（G6）はスコアに最大+8点の後付け補正のみで、K1日射スコア（最大±35点）が使う`avg_solar_radiation`自体はOpen-Meteoの生値のままだったため、風下でも「曇り扱い」のまま乾燥判定されるギャップがあった。
+  - `_apply_leeward_solar_boost(avg_solar, foehn_hours, total_hours)` を新規追加（`_compute_foehn_hours()` の直後）。フェーン判定時間の日中時間帯に占める比率に応じて、**スコア計算専用**の日射量を最大+30%補正（900W/m² ceiling）。
+  - 表示用の `hour_data['solar_radiation']` / `daily_summary['avg_solar_radiation']` は一切変更しない — Open-Meteoの天気表示と、風下効果を織り込んだスコア判定を分離。
+  - `/api/forecast`（`get_forecast()`）と `_compute_score_field()`（島内分布49点）の両方から呼び出し、スコア統一ルールに準拠。
+  - 定数（+30%上限・900W/m² ceiling）は実測検証データがまだ無いための保守的な初期値。`/api/validation/accuracy` での検証後にチューニング予定。
+  - テスト: `tests/test_leeward_solar_boost.py`
+- Service Worker バージョン: `v2-6-29`
 
 ### v2.6.16〜v2.6.19 (2026年6月14日)
 - **降水量判定を 04:00-16:00 積算に統一** (`start.py`)
