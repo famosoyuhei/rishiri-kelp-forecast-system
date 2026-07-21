@@ -1333,9 +1333,19 @@ def get_forecast():
             solar_values = [h.get('solar_radiation') for h in hourly_data if h.get('solar_radiation') is not None]
             avg_solar = sum(solar_values) / len(solar_values) if solar_values else None
 
+            # フェーン（山背風・風下）時間数を先に算出しておく。
+            # avg_solar のスコア入力補正（_apply_leeward_solar_boost）と、
+            # 後段のスコアボーナス（_apply_local_risk_adjustments）の両方で使う。
+            foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
+
+            # 風下側「山陰晴れ」補正: Open-Meteoの5kmメッシュは風下の雲消散を
+            # 解像できないため、フェーン時間の比率に応じてスコア入力用の日射量のみ
+            # 控えめに底上げする。表示用の avg_solar / hour_data はそのまま。
+            avg_solar_for_score = _apply_leeward_solar_boost(avg_solar, foehn_hours, len(hourly_data))
+
             # Enhanced drying score calculation (K1/K2/K8: solar + Arrhenius temp + 0mm rule)
             score = calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation,
-                                                    lat, lon, avg_solar_radiation=avg_solar,
+                                                    lat, lon, avg_solar_radiation=avg_solar_for_score,
                                                     pop_max=pop_max)
 
             # Stage-based drying assessment according to specification
@@ -1351,7 +1361,6 @@ def get_forecast():
 
             # --- フェーンボーナス: stage_analysis のみ ───────────────────────
             # drying_score への適用は _apply_local_risk_adjustments() で統一実施。
-            foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
             foehn_bonus = min(15, foehn_hours * 3)  # 最大+15点
             if foehn_hours > 0:
                 stage_analysis['overall_score'] = min(
@@ -4471,6 +4480,43 @@ def _compute_foehn_hours(
     return count
 
 
+def _apply_leeward_solar_boost(
+        avg_solar: float | None, foehn_hours: int, total_hours: int
+) -> float | None:
+    """
+    山背風（風下）時間の割合に応じて、スコア計算専用の日射量を控えめに底上げする。
+
+    Open-Meteoの5kmメッシュは利尻山による風下側の雲消散（風上:風下 降水比 推定
+    3〜5倍、ISLAND_METEOROLOGY_RESEARCH.md §3・§4）を解像できない。フェーン判定
+    時間（_compute_foehn_hours）の日中時間帯に占める比率に比例して、最大+30%まで
+    日射量を補正する（晴天ceiling付き）。
+
+    表示用の hour_data['solar_radiation'] / daily_summary['avg_solar_radiation']
+    は変更しない。呼び出し側は calculate_enhanced_drying_score() の
+    avg_solar_radiation 引数にだけ、この関数の戻り値を渡すこと。
+
+    定数（0.30倍率上限, 900 W/m² ceiling）は実測検証データがまだ無いための
+    保守的な初期値。将来 /api/validation/accuracy での検証後にチューニングする。
+
+    /api/forecast と _compute_score_field の両方がここを呼ぶ（スコア統一ルール）。
+
+    Parameters
+    ----------
+    avg_solar   : 作業時間帯の平均日射量 [W/m²]（生値）
+    foehn_hours : フェーン判定された時間数
+    total_hours : 作業時間帯の総時間数（分母）
+
+    Returns
+    -------
+    スコア計算用に補正された日射量。補正対象外なら avg_solar をそのまま返す。
+    """
+    if avg_solar is None or foehn_hours <= 0 or total_hours <= 0:
+        return avg_solar
+    foehn_fraction = min(1.0, foehn_hours / total_hours)
+    boosted = avg_solar * (1.0 + 0.30 * foehn_fraction)
+    return min(boosted, 900.0)
+
+
 def _apply_local_risk_adjustments(
         score: float, *,
         cape_risk:    dict,
@@ -4609,6 +4655,23 @@ def _compute_score_field(day: int) -> dict:
         solar_avg    = _safe_avg(win.get('shortwave_radiation', []))
         elev         = grid_elevations[i] if i < len(grid_elevations) else 0.0
 
+        # フェーン（格子点→利尻山頂の方位角を動的計算）
+        # スコア計算（solar boost）と local_risk_adjustments の両方で使うため先に算出。
+        _dlat_f = _SUMMIT_LAT - g['lat']
+        _dlon_f = _SUMMIT_LON - g['lon']
+        _maz_f  = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
+        _foehn_h = _compute_foehn_hours(
+            win.get('wind_direction_10m', []),
+            win.get('wind_speed_10m', []),
+            _maz_f,
+        )
+
+        # 風下側「山陰晴れ」補正（/api/forecast と同一のスコア統一ルール経由）
+        # 表示用の solar_avg はそのまま。スコア入力だけ控えめに底上げする。
+        solar_avg_for_score = _apply_leeward_solar_boost(
+            solar_avg, _foehn_h, len(win.get('wind_direction_10m', []))
+        )
+
         score = calculate_enhanced_drying_score(
             temp_max=temp_max,
             humidity=humidity_min,
@@ -4616,7 +4679,7 @@ def _compute_score_field(day: int) -> dict:
             precipitation=precip_sum or 0,
             lat=g['lat'],
             lon=g['lon'],
-            avg_solar_radiation=solar_avg,
+            avg_solar_radiation=solar_avg_for_score,
             pop_max=pop_max,
             elevation=elev,          # バッチ取得済み標高を渡す（個別API呼び出しをスキップ）
         )
@@ -4631,16 +4694,6 @@ def _compute_score_field(day: int) -> dict:
         # 霧（露点降下法 / 湿度推定フォールバック）
         _fog_sum_f, _fog_note_f, _dewpt_method = _compute_fog_from_dewpoint(
             temp_vals, dewpt_vals, humidity_min
-        )
-
-        # フェーン（格子点→利尻山頂の方位角を動的計算）
-        _dlat_f = _SUMMIT_LAT - g['lat']
-        _dlon_f = _SUMMIT_LON - g['lon']
-        _maz_f  = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
-        _foehn_h = _compute_foehn_hours(
-            win.get('wind_direction_10m', []),
-            win.get('wind_speed_10m', []),
-            _maz_f,
         )
 
         # SST（島共通）
