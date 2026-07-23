@@ -1109,19 +1109,12 @@ def get_forecast():
     spot_theta = calculate_spot_theta(lat, lon)
 
     # Calculate mountain azimuth (spot→peak direction)
-    import math
-    RISHIRI_SAN_LAT = 45.1821
-    RISHIRI_SAN_LON = 141.2421
-    delta_lat = RISHIRI_SAN_LAT - lat
-    delta_lon = RISHIRI_SAN_LON - lon
-    # atan2(dy, dx) gives mathematical angle (East=0°, counterclockwise)
-    # Convert to azimuth (North=0°, clockwise): azimuth = 90° - math_angle
-    math_angle = math.degrees(math.atan2(delta_lat, delta_lon))
-    mountain_azimuth = 90 - math_angle
-    if mountain_azimuth < 0:
-        mountain_azimuth += 360
-    elif mountain_azimuth >= 360:
-        mountain_azimuth -= 360
+    # mountain_azimuth() は利尻山頂(SUMMIT_LAT/LON, JMA公式座標)を使う共通関数。
+    mountain_az = mountain_azimuth(lat, lon)
+
+    # 山頂(R_1800_2392)の気温予報を取得（MeteoSwiss式フェーン強度計算の参照点）。
+    # 30分キャッシュ共有のため、どの干場のリクエストでも実質1回/30分の追加コストのみ。
+    summit_forecast = _get_summit_hourly_temps()
 
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
@@ -1198,7 +1191,7 @@ def get_forecast():
                     # Wind direction = where wind comes FROM, so wind blows TOWARD (wind_dir + 180°)
                     if wind_dir is not None:
                         wind_toward = (wind_dir + 180) % 360  # Direction wind is blowing toward
-                        angle_diff = abs(wind_toward - mountain_azimuth)
+                        angle_diff = abs(wind_toward - mountain_az)
                         if angle_diff > 180:
                             angle_diff = 360 - angle_diff
                         wind_mountain_angle_diff = angle_diff
@@ -1279,13 +1272,6 @@ def get_forecast():
                     if is_coastal and is_onshore:
                         hour_data['wind_speed'] += 1.0
 
-                # フェーンボーナス（ISLAND_METEOROLOGY_RESEARCH §11 G6）
-                # 山背風: angle_diff > 150° かつ風速 > 3 m/s → 乾燥促進フラグ
-                wind_spd = hour_data.get('wind_speed', 0) or 0
-                hour_data['foehn_effect'] = (
-                    angle_diff is not None and angle_diff > 150 and wind_spd > 3.0
-                )
-
             # Calculate enhanced vertical p-velocity estimation using 700hPa data
             for j, hour_data in enumerate(hourly_data):
                 omega = estimate_vertical_p_velocity_700hpa(hourly_data, j, hourly, start_hour + j)
@@ -1333,10 +1319,26 @@ def get_forecast():
             solar_values = [h.get('solar_radiation') for h in hourly_data if h.get('solar_radiation') is not None]
             avg_solar = sum(solar_values) / len(solar_values) if solar_values else None
 
-            # フェーン（山背風・風下）時間数を先に算出しておく。
+            # フェーン（山背風・風下）実効時間数を先に算出しておく（MeteoSwiss式、06時基準）。
             # avg_solar のスコア入力補正（_apply_leeward_solar_boost）と、
             # 後段のスコアボーナス（_apply_local_risk_adjustments）の両方で使う。
-            foehn_hours = sum(1 for h in hourly_data if h.get('foehn_effect'))
+            _hour_0600 = next((h for h in hourly_data if h.get('time') == '06:00'), None)
+            _summit_temp_0600 = None
+            if summit_forecast is not None:
+                _summit_time_str = f'{date_str}T06:00'
+                try:
+                    _s_idx = summit_forecast['time'].index(_summit_time_str)
+                    _summit_temp_0600 = summit_forecast['temperature_2m'][_s_idx]
+                except (ValueError, IndexError):
+                    _summit_temp_0600 = None
+            foehn_hours = _compute_foehn_intensity_hours(
+                angle_diff_0600=_hour_0600.get('wind_mountain_angle_diff') if _hour_0600 else None,
+                wind_speed_ms_0600=_hour_0600.get('wind_speed') if _hour_0600 else None,
+                spot_temp_0600=_hour_0600.get('temperature') if _hour_0600 else None,
+                spot_elevation=elevation,
+                summit_temp_0600=_summit_temp_0600,
+                total_hours=len(hourly_data),
+            )
 
             # 風下側「山陰晴れ」補正: Open-Meteoの5kmメッシュは風下の雲消散を
             # 解像できないため、フェーン時間の比率に応じてスコア入力用の日射量のみ
@@ -1475,7 +1477,7 @@ def get_forecast():
             'location': 'Rishiri Island',
             'coordinates': {'lat': lat, 'lon': lon},
             'spot_theta': round(spot_theta, 1),  # 干場の極座標θ（仕様書 lines 72-73）
-            'mountain_azimuth': round(mountain_azimuth, 1),  # 干場→山頂方位角
+            'mountain_azimuth': round(mountain_az, 1),  # 干場→山頂方位角
             'forecasts': forecasts,
             'timestamp': datetime.now(tz=JST).isoformat(),
             'status': 'success'
@@ -4451,59 +4453,140 @@ def _compute_fog_from_dewpoint(
     return level, note, method
 
 
-def _compute_foehn_hours(
-        wind_dir_raw: list, wind_spd_kmh_raw: list, mountain_az: float
-) -> int:
+
+# ── フェーン(風下)判定: 山頂(R_1800_2392)との温位差ベース ─────────────────────
+# JMA公式座標 45°10'43"N 141°14'31"E（南峰、標高1,721m）。
+# 旧: get_forecast()は45.1821/141.2421（島中心）、_compute_score_field()は
+#     45.1800/141.2392（丸め座標、GSI標高で1551m相当）を別々に使用しており
+#     不整合だった上、真の山頂から最大約260m水平にズレていた（2026-07-22検証）。
+SUMMIT_LAT = 45.1786
+SUMMIT_LON = 141.2419
+SUMMIT_ELEVATION_M = 1721.0
+
+_DRY_ADIABATIC_LAPSE = 0.0098  # °C/m
+
+# 較正定数: 2026-06-01〜07-20の50日間実測アーカイブデータ（49点グリッド×2400地点日）
+# における温位差 theta_spot - theta_summit の分布 p50/p99。
+# LOW(p50)=「典型的な非フェーン時の背景差」、HIGH(p99)=「観測された最強クラスの信号」。
+# FOEHN_PARAMETERIZATION_RESEARCH_20260722.md 参照。将来 /api/validation/accuracy で要再較正。
+_FOEHN_SIGNAL_LOW = -6.65
+_FOEHN_SIGNAL_HIGH = -5.266
+
+
+def mountain_azimuth(lat: float, lon: float) -> float:
+    """観測点から利尻山頂(SUMMIT_LAT/LON)への気象学的方位角 [°]（北=0, 時計回り）。"""
+    delta_lat = SUMMIT_LAT - lat
+    delta_lon = SUMMIT_LON - lon
+    math_angle = math.degrees(math.atan2(delta_lat, delta_lon))
+    az = 90 - math_angle
+    return az % 360
+
+
+def _compute_foehn_intensity_hours(
+        angle_diff_0600: float | None, wind_speed_ms_0600: float | None,
+        spot_temp_0600: float | None, spot_elevation: float,
+        summit_temp_0600: float | None, total_hours: int,
+) -> float:
     """
-    山背風フェーン時間数を算出。
-    wind_toward（wind_dir + 180°）と mountain_az の角度差 > 150° かつ風速 > 3 m/s。
+    MeteoSwissの客観的フェーン指数（Dürr, 2008；2008年から17年運用中）を参考にした
+    フェーン(風下)強度。幾何学的な角度×風速ランプ（旧設計）ではなく、
+    **山頂リファレンス点(R_1800_2392)との温位差**で強さを判定する。
+
+    FOEHN_PARAMETERIZATION_RESEARCH_20260722.md §結論、
+    FOEHN_PHYSICS_AUDIT_20260721.md（旧設計が「弱い風下日でも過大補正」だった問題）参照。
+
+    角度差(06時)>90°（風下側）をゲート条件とし、それを満たした場合のみ
+    山頂との温位差 theta_spot - theta_summit を _FOEHN_SIGNAL_LOW〜HIGH で
+    0〜1に正規化し、風速係数（3m/s以上でフル、未満は比例減衰）を掛ける。
+    06時の代表値のみを使う（日中平均は谷風・海風収束のノイズが乗るため、
+    06時の総観規模の風がフェーン判定に最も意味を持つ）。
 
     Parameters
     ----------
-    wind_dir_raw    : 風向リスト [°] (where wind comes FROM)
-    wind_spd_kmh_raw: 風速リスト [km/h]
-    mountain_az     : 観測点から利尻山頂への気象学的方位角 [°] (北=0, 時計回り)
+    angle_diff_0600    : 06時の風向と山頂方位角の角度差 [°]
+    wind_speed_ms_0600  : 06時の風速 [m/s]
+    spot_temp_0600      : 06時のこの地点の気温予報 [°C]
+    spot_elevation      : この地点の標高 [m]
+    summit_temp_0600    : 06時の山頂(R_1800_2392)気温予報 [°C]
+    total_hours          : 作業時間帯の総時間数（戻り値のスケール合わせ）
 
     Returns
     -------
-    フェーン効果が発生した時間数 (int)
+    実効フェーン時間数 (float)。_apply_leeward_solar_boost() /
+    _apply_local_risk_adjustments() にそのまま渡せる。
     """
-    count = 0
-    for _wd, _wkm in zip(wind_dir_raw or [], wind_spd_kmh_raw or []):
-        if _wd is None or _wkm is None:
-            continue
-        _adiff = abs((_wd + 180) % 360 - mountain_az)
-        if _adiff > 180:
-            _adiff = 360 - _adiff
-        if _adiff > 150 and (_wkm / 3.6) > 3.0:
-            count += 1
-    return count
+    if angle_diff_0600 is None or angle_diff_0600 <= 90:
+        return 0.0
+    if wind_speed_ms_0600 is None or spot_temp_0600 is None or summit_temp_0600 is None:
+        return 0.0
+    theta_spot = spot_temp_0600 + _DRY_ADIABATIC_LAPSE * spot_elevation
+    theta_summit = summit_temp_0600 + _DRY_ADIABATIC_LAPSE * SUMMIT_ELEVATION_M
+    signal = theta_spot - theta_summit
+    ratio = max(0.0, min(1.0, (signal - _FOEHN_SIGNAL_LOW) / (_FOEHN_SIGNAL_HIGH - _FOEHN_SIGNAL_LOW)))
+    intensity = ratio * min(1.0, wind_speed_ms_0600 / 3.0)
+    return intensity * total_hours
+
+
+def _get_summit_hourly_temps() -> dict | None:
+    """
+    利尻山頂(R_1800_2392, SUMMIT_LAT/LON)の気温予報を取得。
+    _compute_foehn_intensity_hours() の山頂リファレンスとして使う。
+
+    _field_cache_get/set()（Redis+インメモリのハイブリッドキャッシュ、
+    _compute_score_field 用に既にある仕組みを流用）でTTL30分キャッシュし、
+    どの干場の /api/forecast が呼ばれても同じキャッシュを共有する
+    （新規のAPI呼び出しは実質1リクエスト/30分のみ）。
+
+    Returns
+    -------
+    {'time': [...], 'temperature_2m': [...]} または取得失敗時 None。
+    """
+    cache_key = 'summit_forecast_temps'
+    cached = _field_cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        url = (
+            f'https://api.open-meteo.com/v1/forecast'
+            f'?latitude={SUMMIT_LAT}&longitude={SUMMIT_LON}'
+            f'&hourly=temperature_2m&timezone=Asia%2FTokyo&forecast_days=7'
+        )
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        hourly = resp.json().get('hourly', {})
+        result = {'time': hourly.get('time', []), 'temperature_2m': hourly.get('temperature_2m', [])}
+        _field_cache_set(cache_key, result, ttl=1800)
+        return result
+    except Exception as e:
+        app.logger.warning('[summit_forecast] fetch failed: %s', e)
+        return None
 
 
 def _apply_leeward_solar_boost(
-        avg_solar: float | None, foehn_hours: int, total_hours: int
+        avg_solar: float | None, foehn_hours: float, total_hours: int
 ) -> float | None:
     """
     山背風（風下）時間の割合に応じて、スコア計算専用の日射量を控えめに底上げする。
 
     Open-Meteoの5kmメッシュは利尻山による風下側の雲消散（風上:風下 降水比 推定
     3〜5倍、ISLAND_METEOROLOGY_RESEARCH.md §3・§4）を解像できない。フェーン判定
-    時間（_compute_foehn_hours）の日中時間帯に占める比率に比例して、最大+30%まで
-    日射量を補正する（晴天ceiling付き）。
+    時間（_compute_foehn_intensity_hours）の日中時間帯に占める比率に比例して、
+    最大+50%まで日射量を補正する（晴天ceiling付き）。
 
     表示用の hour_data['solar_radiation'] / daily_summary['avg_solar_radiation']
     は変更しない。呼び出し側は calculate_enhanced_drying_score() の
     avg_solar_radiation 引数にだけ、この関数の戻り値を渡すこと。
 
-    定数（0.30倍率上限, 900 W/m² ceiling）は実測検証データがまだ無いための
-    保守的な初期値。将来 /api/validation/accuracy での検証後にチューニングする。
+    定数（0.50倍率上限, 900 W/m² ceiling）は2026-07-21〜22の実測バックテスト
+    （MeteoSwiss式の山頂温位差ベース検知に切り替え後）を踏まえた値。
+    将来 /api/validation/accuracy での検証後にチューニングする。
 
     /api/forecast と _compute_score_field の両方がここを呼ぶ（スコア統一ルール）。
 
     Parameters
     ----------
     avg_solar   : 作業時間帯の平均日射量 [W/m²]（生値）
-    foehn_hours : フェーン判定された時間数
+    foehn_hours : 実効フェーン時間数（_compute_foehn_intensity_hours の戻り値、float）
     total_hours : 作業時間帯の総時間数（分母）
 
     Returns
@@ -4513,7 +4596,7 @@ def _apply_leeward_solar_boost(
     if avg_solar is None or foehn_hours <= 0 or total_hours <= 0:
         return avg_solar
     foehn_fraction = min(1.0, foehn_hours / total_hours)
-    boosted = avg_solar * (1.0 + 0.30 * foehn_fraction)
+    boosted = avg_solar * (1.0 + 0.50 * foehn_fraction)
     return min(boosted, 900.0)
 
 
@@ -4521,7 +4604,7 @@ def _apply_local_risk_adjustments(
         score: float, *,
         cape_risk:    dict,
         fog_summary:  str,
-        foehn_hours:  int,
+        foehn_hours:  float,
         sst_fog_risk: str,
         fog_note:     str   = '',
         dewpt_method: str   = 'dewpoint_depression',
@@ -4538,7 +4621,7 @@ def _apply_local_risk_adjustments(
     score        : 基礎スコア（precipitation gate 適用後、local risk 未適用）
     cape_risk    : assess_cape_risk() の戻り値
     fog_summary  : 'low' / 'medium' / 'high'
-    foehn_hours  : 山背風フェーン時間数
+    foehn_hours  : 実効山背風フェーン時間数（_compute_foehn_intensity_hours の戻り値、float）
     sst_fog_risk : assess_sst_fog_risk() の戻り値
     fog_note     : 霧の説明文（空文字で自動生成）
     dewpt_method : 'dewpoint_depression' or 'humidity_estimate'（UI 表示用）
@@ -4555,7 +4638,8 @@ def _apply_local_risk_adjustments(
     score = max(0, min(100, score + _fog_pen))
 
     # 3. フェーン + SST ─────────────────────────────────────────────────────
-    _foehn_adj = min(8, foehn_hours * 2)
+    # 上限・係数は stage_analysis 側（get_forecast() 内 foehn_bonus）と統一。
+    _foehn_adj = min(15, foehn_hours * 3)
     _sst_adj   = -5 if sst_fog_risk in ('very_high', 'high') else 0
     score = max(0, min(100, score + _foehn_adj + _sst_adj))
 
@@ -4566,7 +4650,7 @@ def _apply_local_risk_adjustments(
     if cape_risk['score_penalty'] < 0:
         notes.append(f'CAPE対流リスク({cape_risk["risk"]}): {cape_risk["score_penalty"]:+d}点')
     if _foehn_adj > 0:
-        notes.append(f'山背風フェーン({foehn_hours}時間): +{_foehn_adj}点')
+        notes.append(f'山背風フェーン({foehn_hours:.1f}時間): +{_foehn_adj:.0f}点')
     if _sst_adj < 0:
         notes.append(f'SST霧リスク({sst_fog_risk}): {_sst_adj:+d}点')
 
@@ -4614,7 +4698,7 @@ def _compute_score_field(day: int) -> dict:
         'precipitation', 'precipitation_probability', 'shortwave_radiation',
         'dewpoint_2m',          # 露点温度: 霧リスク判定に使用 (/api/forecast と同一ロジック)
         'cape',                 # CAPE 対流不安定リスク（assess_cape_risk() に供給）
-        'wind_direction_10m',   # フェーン判定（山背風: angle_diff > 150° + wind > 3 m/s）
+        'wind_direction_10m',   # フェーン判定（06時角度ゲート + 山頂R_1800_2392との温位差）
     ]
 
     # 標高を一括取得（1HTTPリクエスト ≈ 2s）
@@ -4630,9 +4714,19 @@ def _compute_score_field(day: int) -> dict:
     # 利尻島は直径約20km。SST の島内空間変動は小さいため、
     # 島中心1点で代表し全48格子点に共通適用する。
     _ISLAND_LAT,  _ISLAND_LON  = 45.1821, 141.2421   # 利尻島地理中心
-    _SUMMIT_LAT,  _SUMMIT_LON  = 45.1800, 141.2392   # 利尻山頂（R_1800_2392）
     _sst_field = get_sea_surface_temperature(_ISLAND_LAT, _ISLAND_LON)
     _sst_today_field = _sst_field[day] if day < len(_sst_field) else None
+
+    # 山頂(R_1800_2392)の06時気温をMeteoSwiss式フェーン強度の参照点として抽出。
+    # grid には山頂自身が既に含まれており（同じ _fetch_open_meteo_multi 呼び出しで
+    # 取得済み）、新規APIコールは不要。
+    _summit_idx = next((idx for idx, gp in enumerate(grid) if gp.get('label') == '利尻山頂'), None)
+    _summit_temp_0600 = None
+    if _summit_idx is not None:
+        _summit_win = _extract_day_window(api_results[_summit_idx].get('hourly', {}), target_date)
+        _summit_temps = _summit_win.get('temperature_2m', [])
+        if len(_summit_temps) > 2:
+            _summit_temp_0600 = _summit_temps[2]  # 04:00始まり窓の3番目=06:00
 
     points = []
     counts = {'excellent': 0, 'fair': 0, 'poor': 0}
@@ -4655,15 +4749,30 @@ def _compute_score_field(day: int) -> dict:
         solar_avg    = _safe_avg(win.get('shortwave_radiation', []))
         elev         = grid_elevations[i] if i < len(grid_elevations) else 0.0
 
-        # フェーン（格子点→利尻山頂の方位角を動的計算）
+        # フェーン（MeteoSwiss式、山頂R_1800_2392との06時温位差ベース）
         # スコア計算（solar boost）と local_risk_adjustments の両方で使うため先に算出。
-        _dlat_f = _SUMMIT_LAT - g['lat']
-        _dlon_f = _SUMMIT_LON - g['lon']
-        _maz_f  = (90 - math.degrees(math.atan2(_dlat_f, _dlon_f))) % 360
-        _foehn_h = _compute_foehn_hours(
-            win.get('wind_direction_10m', []),
-            win.get('wind_speed_10m', []),
-            _maz_f,
+        _maz_f = mountain_azimuth(g['lat'], g['lon'])
+        _wind_dirs_f = win.get('wind_direction_10m', [])
+        _wind_kmh_f  = win.get('wind_speed_10m', [])
+        _angle_diff_0600 = None
+        _wind_ms_0600 = None
+        _spot_temp_0600 = None
+        if len(_wind_dirs_f) > 2 and _wind_dirs_f[2] is not None:
+            _wind_toward_0600 = (_wind_dirs_f[2] + 180) % 360
+            _angle_diff_0600 = abs(_wind_toward_0600 - _maz_f)
+            if _angle_diff_0600 > 180:
+                _angle_diff_0600 = 360 - _angle_diff_0600
+        if len(_wind_kmh_f) > 2 and _wind_kmh_f[2] is not None:
+            _wind_ms_0600 = _wind_kmh_f[2] / 3.6
+        if len(temp_vals) > 2:
+            _spot_temp_0600 = temp_vals[2]
+        _foehn_h = _compute_foehn_intensity_hours(
+            angle_diff_0600=_angle_diff_0600,
+            wind_speed_ms_0600=_wind_ms_0600,
+            spot_temp_0600=_spot_temp_0600,
+            spot_elevation=elev,
+            summit_temp_0600=_summit_temp_0600,
+            total_hours=len(_wind_dirs_f),
         )
 
         # 風下側「山陰晴れ」補正（/api/forecast と同一のスコア統一ルール経由）
