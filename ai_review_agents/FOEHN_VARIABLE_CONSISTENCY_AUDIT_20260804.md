@@ -156,28 +156,38 @@ eventual consistencyがあるとされる。そのため、山頂キャッシュ
 30分と短いため、発生頻度自体は低いと推定されるが、A項（座標不整合）と異なり
 まだ実測での定量評価をしていない。
 
-**対応**: 2026-08-04、診断ログのみ追加（`_log_foehn_diagnostics()`、`start.py`）。
-予報値・キャッシュ動作・フェーン判定結果は一切変更しない副作用フリー関数として実装：
-- `_get_summit_hourly_temps()`の戻り値に`_fetched_at`（ISO時刻）・`_cache_hit`
-  （bool）を追加（キャッシュ本体・TTL・既存呼び出し側の`'time'`/`'temperature_2m'`
-  参照には影響しない）
-- `get_forecast()`で干場データの実取得時刻（`_spot_fetch_ts`）を記録
-- 干場気温・山頂気温・温位差・正規化比・`foehn_hours`・診断専用の分類ラベル
-  （windward/none/weak/moderate/strong、スコア計算には不使用）を、以下の条件を
-  1つでも満たす場合のみ`app.logger.info()`で記録: 山頂キャッシュ20分(1200秒)以上
-  古い／正規化比が較正しきい値の両端15%以内／このリクエストでキャッシュを新規取得
-  （just refreshed）／山背風条件（角度差>90°）成立時。欠損時は無条件で
-  `app.logger.warning()`。
-- 4パターン（風下×新規取得／風上×キャッシュヒット非該当／欠損／風下×20分超過
-  キャッシュ）を独立テストし、意図通りトリガー・抑制されることを確認済み
-  （下記「実装検証」参照）
+**対応（第1版、2026-08-04）**: 診断ログのみ追加（`_log_foehn_diagnostics()`、`start.py`）、
+`app.logger.info()`で出力。しかしデフォルトのログレベル（Flask標準のWARNING）では
+出力されないという制約が残っていた（`start.py`既存の18箇所の`app.logger.info()`
+すべてに共通する元からの制約）。
 
-**既知の制約**: デフォルトのログレベル（Flask標準のWARNING）では`app.logger.info()`は
-出力されない。これは今回追加した診断ログに限らず、`start.py`に既存する18箇所の
-`app.logger.info()`呼び出しすべてに当てはまる、元からの制約。実際にログを可視化する
-には、デプロイ環境でログレベルをINFOに上げる運用変更が別途必要（今回のスコープ外、
-かつ既存の他のinfoログにも影響するため今回は変更していない）。欠損時の
-`app.logger.warning()`はデフォルト設定でも出力される。
+**対応（第2版、2026-08-05）**: 実運用で観測可能にするため、`app.logger`とは完全に
+独立した専用ロガー`_FOEHN_DIAG_LOGGER`（`rishiri_kelp.foehn_diagnostics`、
+`propagate=False`）を新設。環境変数`FOEHN_DIAGNOSTICS_ENABLED`
+（`1`/`true`/`yes`/`on`、大小無視）が設定されている場合のみINFOを有効化し、
+未設定時は従来どおり抑制（＝第1版と同じ既定動作）。欠損時のWARNINGは
+環境変数の設定に関わらず常に出力。ロガー設定（ハンドラ追加・レベル設定）は
+モジュールロード時に`_configure_foehn_diagnostics_logger()`で一度だけ実行し、
+`if not _FOEHN_DIAG_LOGGER.handlers`ガードで多重ハンドラ追加（＝ログ重複）を防止。
+併せてログフィールド名を明確化: `theta_diff`→`theta_diff_spot_minus_summit`
+（正の値＝干場側の温位が山頂側より高い、の符号を明記）、`classification`→
+`daily_foehn_hours_class`（06時単独の瞬間分類ではなく、`foehn_hours`という
+日単位の集約値に基づく分類であることを明記）。トリガーフラグ名も
+`triggers(...)`→`time_gap_indicators(...)`に変更し、「モデル世代ズレを検出した」
+という断定を避け、取得時刻差に基づく可能性の指標であることを明示した。
+
+**実装検証（第2版）**:
+- 環境変数OFF（未設定）: INFO抑制・WARNING（欠損時）は出力を確認
+- 環境変数ON（`FOEHN_DIAGNOSTICS_ENABLED=true`）: リーワード×キャッシュ新規取得
+  でINFO発火、風上×キャッシュヒット×非古いケースは有効時でも抑制されることを確認
+  （トリガー条件がenabledフラグと独立して機能）
+- `_configure_foehn_diagnostics_logger()`を複数回呼んでもハンドラ数が1のまま
+  （多重追加なし）であることを確認
+- `app.logger`の実効レベルはWARINGのまま変化なし（既存18箇所のinfoログの
+  出力状態に影響しないことを確認）
+- 実サーバーで`/api/forecast`（フェーン補正中の干場）を叩き、レスポンス構造・値
+  （drying_score=93、foehn_adjustment=15等）が変更前と完全一致することを再確認
+- `tests/test_leeward_solar_boost.py`17/17、`check_consistency.py`全通過
 
 ---
 

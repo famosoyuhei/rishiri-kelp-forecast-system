@@ -7,6 +7,7 @@ import os
 import sys
 import math
 import hmac
+import logging
 import threading
 import numpy as np
 import requests
@@ -4588,6 +4589,40 @@ def _get_summit_hourly_temps() -> dict | None:
         return None
 
 
+_FOEHN_DIAG_LOGGER_NAME = 'rishiri_kelp.foehn_diagnostics'
+_FOEHN_DIAG_LOGGER = logging.getLogger(_FOEHN_DIAG_LOGGER_NAME)
+
+
+def _configure_foehn_diagnostics_logger() -> None:
+    """
+    フェーン診断専用ロガーの設定を起動時に一度だけ行う（2026-08-04追加）。
+
+    app.logger とは完全に独立（propagate=False）にすることで、既存の
+    app.logger.info() 18箇所の出力状態には一切影響しない。環境変数
+    `FOEHN_DIAGNOSTICS_ENABLED`（'1'/'true'/'yes'/'on'、大小無視）が
+    設定されている場合のみ INFO を有効化し、未設定時は従来どおり抑制する
+    （WARNINGは有効/無効に関わらず常に出力— ハンドラのレベルをWARNING未満に
+    しないため）。
+
+    多重ハンドラ追加防止: モジュール再インポート等でこの関数が複数回呼ばれても、
+    既にハンドラが付いていれば追加しない（ログ重複防止）。
+    """
+    enabled = os.environ.get('FOEHN_DIAGNOSTICS_ENABLED', '').strip().lower() in (
+        '1', 'true', 'yes', 'on',
+    )
+    _FOEHN_DIAG_LOGGER.setLevel(logging.INFO if enabled else logging.WARNING)
+    if not _FOEHN_DIAG_LOGGER.handlers:
+        _handler = logging.StreamHandler()
+        _handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s [foehn-diag] %(message)s'
+        ))
+        _FOEHN_DIAG_LOGGER.addHandler(_handler)
+    _FOEHN_DIAG_LOGGER.propagate = False
+
+
+_configure_foehn_diagnostics_logger()  # 起動時（モジュールロード時）に一度だけ実行
+
+
 def _log_foehn_diagnostics(
         *, spot_id: str, date_str: str, spot_fetch_ts,
         summit_forecast: dict | None,
@@ -4596,18 +4631,26 @@ def _log_foehn_diagnostics(
         summit_temp_0600: float | None, foehn_hours: float, total_hours: int,
 ) -> None:
     """
-    診断ログ専用（2026-08-04追加）。山頂気温の30分キャッシュ（_get_summit_hourly_temps）
-    と、干場側の毎回フレッシュ取得の間で、Open-Meteoのモデル実行世代がズレていないかを
-    検知するためのログ出力のみを行う。予報値・キャッシュ動作・フェーン判定ロジックは
-    一切変更しない（戻り値なし、例外は握りつぶす副作用フリー関数）。
+    診断ログ専用（2026-08-04追加、2026-08-05専用ロガー化）。山頂気温の30分キャッシュ
+    （_get_summit_hourly_temps）と、干場側の毎回フレッシュ取得の間の取得時刻差を記録し、
+    Open-Meteoのモデル実行世代がズレている**可能性**を評価するための材料を残す。
+    取得時刻差だけでは実際にモデル世代がズレているかどうかを断定できないため、
+    このログは「世代ズレを検出した」という判定ではなく、あくまで時刻差ベースの
+    診断情報として扱うこと。
+
+    予報値・キャッシュ動作・フェーン判定ロジックは一切変更しない
+    （戻り値なし、例外は握りつぶす副作用フリー関数）。
     FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md 項目E参照。
 
-    詳細ログ（INFO）を出す条件（通常時にログを増やしすぎないための抑制）:
+    出力先は _FOEHN_DIAG_LOGGER（app.loggerとは独立、環境変数
+    FOEHN_DIAGNOSTICS_ENABLED でINFO出力のON/OFFを制御）。
+
+    詳細ログ（INFO、有効時のみ）を出す条件（通常時にログを増やしすぎないための抑制）:
       - 山頂キャッシュが20分(1200秒)以上古い
       - フェーン正規化比が較正しきい値（LOW/HIGH）付近（両端15%以内）
       - このリクエストで山頂キャッシュを新規取得した直後（cache miss）
       - 山背風条件（06時角度差>90°、風下側）成立時
-    欠損時は条件によらず常にWARNINGで記録する。
+    欠損時は環境変数の設定に関わらず常にWARNINGで記録する。
     """
     try:
         now = datetime.now(JST)
@@ -4618,8 +4661,8 @@ def _log_foehn_diagnostics(
             angle_diff_0600 is None
         )
         if missing:
-            app.logger.warning(
-                '[foehn-diag] MISSING spot=%s target=%sT06:00 angle_diff=%s '
+            _FOEHN_DIAG_LOGGER.warning(
+                'MISSING spot=%s target=%sT06:00 angle_diff=%s '
                 'wind=%s spot_temp=%s summit_temp=%s summit_forecast_available=%s',
                 spot_id, date_str, angle_diff_0600, wind_speed_ms_0600,
                 spot_temp_0600, summit_temp_0600, summit_forecast is not None,
@@ -4628,6 +4671,7 @@ def _log_foehn_diagnostics(
 
         cache_hit = bool(summit_forecast.get('_cache_hit'))
         fetched_at_str = summit_forecast.get('_fetched_at')
+        # 山頂キャッシュがこのログ出力時点で何秒前に取得されたか（経過秒数）。
         cache_age_s = None
         if fetched_at_str:
             try:
@@ -4637,22 +4681,27 @@ def _log_foehn_diagnostics(
 
         # 診断専用の再計算（_compute_foehn_intensity_hours() の内部式を複製したもの。
         # 本番のフェーン判定には使わず、ログ表示のためだけの並行計算）。
+        # 符号定義: 正の値 = 干場側の温位が山頂側より高い（フェーン時に典型的な符号）。
         theta_spot = spot_temp_0600 + _DRY_ADIABATIC_LAPSE * spot_elevation
         theta_summit = summit_temp_0600 + _DRY_ADIABATIC_LAPSE * SUMMIT_ELEVATION_M
-        signal = theta_spot - theta_summit
-        ratio = max(0.0, min(1.0, (signal - _FOEHN_SIGNAL_LOW) / (_FOEHN_SIGNAL_HIGH - _FOEHN_SIGNAL_LOW)))
+        theta_diff_spot_minus_summit = theta_spot - theta_summit
+        ratio = max(0.0, min(1.0, (
+            theta_diff_spot_minus_summit - _FOEHN_SIGNAL_LOW
+        ) / (_FOEHN_SIGNAL_HIGH - _FOEHN_SIGNAL_LOW)))
 
+        # daily_foehn_hours_class: foehn_hours（06時スナップショットの強度を日中時間帯に
+        # 換算した「日単位」の集約値）に基づく分類。06時単独の瞬間分類ではない点に注意。
         is_leeward = angle_diff_0600 > 90
         if not is_leeward:
-            classification = 'windward'
+            daily_foehn_hours_class = 'windward'
         elif foehn_hours <= 0:
-            classification = 'none'
+            daily_foehn_hours_class = 'none'
         elif foehn_hours <= total_hours * 0.25:
-            classification = 'weak'
+            daily_foehn_hours_class = 'weak'
         elif foehn_hours <= total_hours * 0.6:
-            classification = 'moderate'
+            daily_foehn_hours_class = 'moderate'
         else:
-            classification = 'strong'
+            daily_foehn_hours_class = 'strong'
 
         near_threshold = is_leeward and (ratio <= 0.15 or ratio >= 0.85)
         cache_stale = cache_age_s is not None and cache_age_s >= 1200
@@ -4661,22 +4710,23 @@ def _log_foehn_diagnostics(
         if not (cache_stale or near_threshold or just_refreshed or is_leeward):
             return  # 風上・閾値から離れている・キャッシュ新鮮 → 通常時はログを増やさない
 
-        app.logger.info(
-            '[foehn-diag] spot=%s target=%sT06:00 spot_fetch_at=%s '
+        _FOEHN_DIAG_LOGGER.info(
+            'spot=%s target=%sT06:00 spot_fetch_at=%s '
             'summit_fetched_at=%s cache_hit=%s cache_age_s=%s '
-            'spot_temp=%.2f summit_temp=%.2f theta_diff=%.3f ratio=%.3f '
-            'foehn_hours=%.2f/%d classification=%s '
-            'triggers(stale=%s,near_threshold=%s,just_refreshed=%s,leeward=%s)',
+            'spot_temp=%.2f summit_temp=%.2f theta_diff_spot_minus_summit=%.3f ratio=%.3f '
+            'foehn_hours=%.2f/%d daily_foehn_hours_class=%s '
+            'time_gap_indicators(cache_age_ge_20min=%s,ratio_near_calib_bound=%s,'
+            'cache_just_refreshed=%s,leeward_gate=%s)',
             spot_id, date_str,
             spot_fetch_ts.isoformat() if spot_fetch_ts else None,
             fetched_at_str, cache_hit,
             round(cache_age_s, 1) if cache_age_s is not None else None,
-            spot_temp_0600, summit_temp_0600, signal, ratio,
-            foehn_hours, total_hours, classification,
+            spot_temp_0600, summit_temp_0600, theta_diff_spot_minus_summit, ratio,
+            foehn_hours, total_hours, daily_foehn_hours_class,
             cache_stale, near_threshold, just_refreshed, is_leeward,
         )
     except Exception as e:
-        app.logger.debug('[foehn-diag] logging failed (non-fatal): %s', e)
+        _FOEHN_DIAG_LOGGER.debug('logging failed (non-fatal): %s', e)
 
 
 def _apply_leeward_solar_boost(
