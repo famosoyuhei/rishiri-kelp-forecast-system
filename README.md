@@ -223,16 +223,22 @@ Microsoft Excelの契約は不要です。無料のGoogle Sheetsとn8nで、予�
 | `LINE_CHANNEL_ACCESS_TOKEN` | （Consoleで発行） | メッセージ送信用 |
 | `LINE_ADMIN_NOTIFY_SECRET` | （任意の長いランダム文字列） | 通知API認証用 |
 
-#### 3. Render Cron Job 設定（UTC表記）
+#### 3. GitHub Actions 定時通知設定（UTC表記）
 
 | JST | UTC | body例 |
 |-----|-----|--------|
 | 毎日 16:00 | 07:00 | `{"kind":"evening","secret":"<シークレット>"}` |
 | 毎日 01:30 | 16:30（前日） | `{"kind":"morning","secret":"<シークレット>"}` |
 
+実装: `.github/workflows/line-notifications.yml`
+
+GitHub Secrets に `LINE_ADMIN_NOTIFY_SECRET` を登録し、Render の同名環境変数と同じ値にします。
+Actions は先に `/health` で Render free plan のスリープを起こしてから、通知APIを呼びます。
+
 ```
 POST https://<ドメイン>/api/line/notify
 Content-Type: application/json
+X-Notify-Secret: <シークレット>
 ```
 
 #### 4. Webアプリに友だち追加バナーを表示（オプション）

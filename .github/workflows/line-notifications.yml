@@ -1,0 +1,77 @@
+name: LINE Forecast Notifications
+
+on:
+  schedule:
+    # 16:00 JST evening forecast.
+    - cron: "0 7 * * *"
+    # 01:30 JST morning forecast.
+    - cron: "30 16 * * *"
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "Notification kind to send"
+        required: true
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - evening
+
+permissions:
+  contents: read
+
+concurrency:
+  group: line-notifications-${{ github.event.schedule || inputs.kind }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NOTIFY_URL: https://rishiri-kelp-forecast-system.onrender.com/api/line/notify
+      HEALTH_URL: https://rishiri-kelp-forecast-system.onrender.com/health
+    steps:
+      - name: Pick notification kind
+        id: kind
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            kind="${{ inputs.kind }}"
+          elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
+            kind="evening"
+          else
+            kind="morning"
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+      - name: Wake service
+        run: |
+          curl --fail --show-error --silent --retry 5 --retry-delay 15 "$HEALTH_URL"
+
+      - name: Send LINE notification
+        shell: bash
+        env:
+          LINE_ADMIN_NOTIFY_SECRET: ${{ secrets.LINE_ADMIN_NOTIFY_SECRET }}
+          KIND: ${{ steps.kind.outputs.kind }}
+        run: |
+          if [ -z "$LINE_ADMIN_NOTIFY_SECRET" ]; then
+            echo "LINE_ADMIN_NOTIFY_SECRET GitHub secret is not configured." >&2
+            exit 1
+          fi
+
+          body="$(jq -n --arg kind "$KIND" '{kind: $kind}')"
+          response="$(curl --show-error --silent --write-out '\n%{http_code}' \
+            --request POST "$NOTIFY_URL" \
+            --header 'Content-Type: application/json' \
+            --header "X-Notify-Secret: $LINE_ADMIN_NOTIFY_SECRET" \
+            --data "$body")"
+
+          http_code="$(printf '%s' "$response" | tail -n 1)"
+          response_body="$(printf '%s' "$response" | sed '$d')"
+          echo "$response_body"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "LINE notification failed with HTTP $http_code" >&2
+            exit 1
+          fi
