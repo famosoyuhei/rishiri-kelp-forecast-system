@@ -4563,19 +4563,21 @@ def _get_summit_hourly_temps() -> dict | None:
     cache_key = 'summit_forecast_temps'
     cached = _field_cache_get(cache_key)
     if cached is not None:
-        # 診断用フィールドだけ上書きしたコピーを返す（キャッシュ本体は変更しない）。
-        # dict型であることを確認してからコピーする（本番のRedis経由キャッシュが
-        # 想定外の型を返すケースがあったため、2026-08-05に防御を追加）。
-        if isinstance(cached, dict):
+        # dict型であることを確認してからコピーする。本番のRedis経由キャッシュが
+        # 想定外の型（'time'/'temperature_2m'キーを持たない、例: list）を返す
+        # 既知の問題があるため（2026-08-05発見、_fc_redis_set()のUpstash REST
+        # ペイロード形式に起因する疑いあり、要別途調査）、その場合は不正な値を
+        # 使わず「取得失敗」として扱い、フェーン計算側の既存フォールバック
+        # （summit_forecast=None → foehn_hours=0）に委ねる。
+        if isinstance(cached, dict) and 'time' in cached and 'temperature_2m' in cached:
             cached_copy = dict(cached)
             cached_copy['_cache_hit'] = True
             return cached_copy
         app.logger.warning(
-            '[summit_forecast] cache returned unexpected type %s (repr[:200]=%r), '
-            'bypassing diagnostics copy',
+            '[summit_forecast] cache returned malformed value, type=%s (repr[:200]=%r); '
+            'treating as cache miss and re-fetching',
             type(cached).__name__, repr(cached)[:200],
         )
-        return cached
     try:
         url = (
             f'https://api.open-meteo.com/v1/forecast'
