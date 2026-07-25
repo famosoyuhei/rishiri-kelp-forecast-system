@@ -4564,9 +4564,18 @@ def _get_summit_hourly_temps() -> dict | None:
     cached = _field_cache_get(cache_key)
     if cached is not None:
         # 診断用フィールドだけ上書きしたコピーを返す（キャッシュ本体は変更しない）。
-        cached_copy = dict(cached)
-        cached_copy['_cache_hit'] = True
-        return cached_copy
+        # dict型であることを確認してからコピーする（本番のRedis経由キャッシュが
+        # 想定外の型を返すケースがあったため、2026-08-05に防御を追加）。
+        if isinstance(cached, dict):
+            cached_copy = dict(cached)
+            cached_copy['_cache_hit'] = True
+            return cached_copy
+        app.logger.warning(
+            '[summit_forecast] cache returned unexpected type %s (repr[:200]=%r), '
+            'bypassing diagnostics copy',
+            type(cached).__name__, repr(cached)[:200],
+        )
+        return cached
     try:
         url = (
             f'https://api.open-meteo.com/v1/forecast'
