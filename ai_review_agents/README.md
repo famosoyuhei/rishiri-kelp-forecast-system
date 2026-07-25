@@ -49,6 +49,7 @@
 | `AGENT_accuracy_spreadsheet_auditor.md` | 🧮 精度分析スプレッドシート監査担当 | Google Sheets・n8n・精度Dashboard |
 | `AGENT_foehn_physics_audit.md` | 🏔️ フェーン物理監査担当 | 山背風補正の物理的妥当性・実測比較 |
 | `AGENT_foehn_parameterization_research.md` | 🌍 フェーン地形パラメタリゼーション技術調査担当 | 世界の運用気象機関のフェーン予報手法調査 |
+| `AGENT_foehn_variable_consistency_audit.md` | 🧩 フェーン多変数整合性監査担当 | スコア/日射/降水/気温/湿度/エマグラム間の矛盾チェック |
 
 ### 統括（1名）
 
