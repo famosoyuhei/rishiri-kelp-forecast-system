@@ -2836,6 +2836,8 @@
                                 乾燥適性: ${getSuitabilityText(forecast.daily_summary.suitability)} (${forecast.daily_summary.drying_score}点)
                             </div>
 
+                            ${renderRiskNotes(forecast.daily_summary?.local_risk_adjustments)}
+
                             ${renderWindWarning(forecast.daily_summary?.wind_warning)}
 
                             <div class="schedule-recommendation" style="margin: 15px 0; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 5px;">
@@ -3382,6 +3384,17 @@
                 </div>`;
             }
             return '';
+        }
+
+        function renderRiskNotes(lra) {
+            // local_risk_adjustments.notes: 霧/CAPE/山背風フェーン/SSTの内訳説明文。
+            // サーバー側で数値のみ埋め込んだ固定書式の文字列（ルールF: 外部APIの生データ非注入）。
+            if (!lra || !Array.isArray(lra.notes) || lra.notes.length === 0) return '';
+            const items = lra.notes.map(n => `<li>${n}</li>`).join('');
+            return `<div class="risk-notes-badge" style="margin: 10px 0; padding: 8px 10px; background: rgba(15,118,110,0.08); border-radius: 5px; font-size: 0.9em;">
+                <strong>📋 スコア補正の内訳</strong>
+                <ul style="margin: 4px 0 0 18px; padding: 0;">${items}</ul>
+            </div>`;
         }
 
         function getSSICategory(ssi) {

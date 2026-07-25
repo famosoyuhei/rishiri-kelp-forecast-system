@@ -1361,33 +1361,27 @@ def get_forecast():
             max_cape = max(cape_values) if cape_values else None
             cape_risk = assess_cape_risk(max_cape)
 
-            # --- フェーンボーナス: stage_analysis のみ ───────────────────────
+            # --- フェーンボーナス（表示用の内訳値のみ算出）───────────────────
             # drying_score への適用は _apply_local_risk_adjustments() で統一実施。
-            foehn_bonus = min(15, foehn_hours * 3)  # 最大+15点
-            if foehn_hours > 0:
-                stage_analysis['overall_score'] = min(
-                    100, stage_analysis['overall_score'] + foehn_bonus
-                )
+            # 2026-08-04: 以前はここで stage_analysis['overall_score'] にも同じ
+            # 補正を直接加算していたが、stage_analysis['predicted_completion_time']
+            # は calculate_stage_based_drying_assessment() 内で「補正前」の
+            # overall_score から既に文字列として確定済みのため、事後にスコア数値
+            # だけ動かしても予測乾燥時間の文言は更新されず、
+            # 「スコアは上がったのに予測乾燥時間が変わらない」というUI矛盾を生んでいた。
+            # stage_analysis はフロントエンドで表示されない内部診断値のため、
+            # 二重に補正するのをやめ、calculate_stage_based_drying_assessment() が
+            # 返した生の値のまま保持する（FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md B項）。
+            foehn_bonus = min(15, foehn_hours * 3)  # 最大+15点（表示用の内訳値）
 
-            # --- 霧リスク: stage_analysis のみ ──────────────────────────────
+            # --- 霧リスク（fog_summary は _apply_local_risk_adjustments の入力）──
             fog_summary, _fog_note_fc = _compute_fog_from_hourly_flags(hourly_data)
-            _fog_sa_pen = {'high': -15, 'medium': -7, 'low': 0}[fog_summary]
-            if _fog_sa_pen < 0:
-                stage_analysis['overall_score'] = max(
-                    0, stage_analysis['overall_score'] + _fog_sa_pen
-                )
 
-            # --- SST & 霧リスク: stage_analysis のみ ─────────────────────────
+            # --- SST（sst_today/sst_fog_risk は表示 + _apply_local_risk_adjustments の入力）
             sst_today = sst_list[i] if i < len(sst_list) else None
             sst_fog_risk = assess_sst_fog_risk(sst_today, temp_max)
-            if sst_fog_risk in ('very_high', 'high'):
-                stage_analysis['overall_score'] = max(
-                    0, stage_analysis['overall_score'] - 10
-                )
 
-            # ─── 4補正を drying_score に一括適用（共通経路）─────────────────
-            # 係数は stage_analysis より控えめ（実測根拠が薄いため）:
-            #   fog: medium -5 / high -10   foehn: +2/h max+8   SST: -5
+            # ─── 4補正を drying_score に一括適用（唯一の適用経路）───────────
             # 新補正追加時は _apply_local_risk_adjustments() だけを変更すること。
             score, local_risk_adjustments = _apply_local_risk_adjustments(
                 score,
