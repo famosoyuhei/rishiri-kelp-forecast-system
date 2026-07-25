@@ -1975,7 +1975,7 @@ def handle_unknown() -> str:
 # Notification broadcast
 # ---------------------------------------------------------------------------
 
-def notify_all(kind: str) -> dict:
+def notify_all(kind: str, notice: str = '') -> dict:
     """
     Push forecast notifications to all enabled subscribers.
 
@@ -2089,7 +2089,8 @@ def notify_all(kind: str) -> dict:
             continue
 
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
-        full_msg = header + '\n\n'.join(msgs) + _NOTIFY_FOOTER
+        notice_text = f'{notice.strip()}\n\n' if notice and notice.strip() else ''
+        full_msg = header + notice_text + '\n\n'.join(msgs) + _NOTIFY_FOOTER
 
         # Per-user dedup: even if notify_all() is called twice (e.g. two
         # containers overlap during deploy), each user gets at most 1 message
@@ -2494,7 +2495,8 @@ def handle_notify():
     if kind not in ('evening', 'morning'):
         return jsonify({'status': 'kind must be evening or morning'}), 400
 
-    result = notify_all(kind)
+    notice = str(data.get('notice', '') or '')[:500]
+    result = notify_all(kind, notice=notice)
     return jsonify({'status': 'ok', **result})
 
 

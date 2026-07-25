@@ -16,6 +16,11 @@ on:
         options:
           - morning
           - evening
+      notice:
+        description: "Optional one-time notice inserted before the forecast"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -61,6 +66,10 @@ jobs:
           fi
 
           body="$(jq -n --arg kind "$KIND" '{kind: $kind}')"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            notice='${{ inputs.notice }}'
+            body="$(jq -n --arg kind "$KIND" --arg notice "$notice" '{kind: $kind, notice: $notice}')"
+          fi
           response="$(curl --show-error --silent --write-out '\n%{http_code}' \
             --request POST "$NOTIFY_URL" \
             --header 'Content-Type: application/json' \

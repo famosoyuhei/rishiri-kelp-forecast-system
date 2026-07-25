@@ -417,6 +417,67 @@ def test_notify_all_caches_same_spot_within_run(tmp_sub_file, monkeypatch):
     assert len(calls) == 1
 
 
+def test_notify_all_includes_optional_notice(tmp_sub_file, monkeypatch):
+    """Manual resend can include a one-time operator notice."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+    monkeypatch.setattr(
+        li,
+        "get_forecast_for_spot",
+        lambda lat, lon: [
+            {
+                "date": "2026-07-01",
+                "day_number": 0,
+                "suitability": "good",
+                "score": 80,
+                "precipitation": 0,
+                "min_humidity": 70,
+                "avg_wind": 3.5,
+                "pop": None,
+            },
+            {
+                "date": "2026-07-02",
+                "day_number": 1,
+                "suitability": "good",
+                "score": 82,
+                "precipitation": 0,
+                "min_humidity": 68,
+                "avg_wind": 3.2,
+                "pop": None,
+            },
+        ],
+    )
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_notice", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening", notice="本日の16時通知は外部API制限のため遅れて再送しています。")
+
+    assert result["sent"] == 1
+    assert "外部API制限" in pushed[0]
+
+
 # ---------------------------------------------------------------------------
 # parse_command — new commands
 # ---------------------------------------------------------------------------
