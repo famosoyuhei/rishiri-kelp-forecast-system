@@ -19,6 +19,13 @@ from urllib.parse import urlencode
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from scipy.optimize import fsolve
+from open_meteo_guard import (
+    OpenMeteoCircuitOpenError,
+    OpenMeteoRateLimitError,
+    ensure_request_allowed,
+    guarded_get,
+    is_enabled as open_meteo_circuit_enabled,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JST = timezone(timedelta(hours=9))  # 日本標準時 (UTC+9)
@@ -1020,16 +1027,41 @@ def _save_daily_forecast_snapshot():
         return
 
     from line_integration import get_forecast_for_spot as _gffs
+    from open_meteo_guard import OpenMeteoCircuitOpenError as _OMCircuitOpen
+    from open_meteo_guard import OpenMeteoRateLimitError as _OMRateLimit
     planned_records = []
     errors = 0
-    for name, lat, lon in spots:
+    processed_spots = 0
+    aborted_spots = 0
+    rate_limited = False
+    for idx, (name, lat, lon) in enumerate(spots):
         try:
-            fcs = _gffs(lat, lon, timeout=15)
+            ensure_request_allowed(
+                'history',
+                logger=app.logger,
+                processed_count=processed_spots,
+                remaining_count=max(0, len(spots) - idx),
+            )
+            try:
+                fcs = _gffs(lat, lon, timeout=15, source='history')
+            except TypeError as te:
+                if 'source' not in str(te):
+                    raise
+                fcs = _gffs(lat, lon, timeout=15)
+        except (_OMRateLimit, _OMCircuitOpen) as e:
+            rate_limited = True
+            aborted_spots = max(0, len(spots) - idx)
+            app.logger.warning(
+                '[forecast_snapshot] Open-Meteo limited; stopping batch processed=%d aborted=%d: %s',
+                processed_spots, aborted_spots, e,
+            )
+            break
         except Exception as e:
             app.logger.warning('[forecast_snapshot] fetch error %s: %s', name, e)
             errors += 1
             _time.sleep(1)
             continue
+        processed_spots += 1
         for fc in fcs:
             target_date_str = fc['date'].replace('-', '')
             redis_key = f'forecast:hist:{name}:{target_date_str}'
@@ -1063,11 +1095,17 @@ def _save_daily_forecast_snapshot():
     if redis_updates:
         saved = _obs_redis_mset(redis_updates)
 
-    app.logger.info('[forecast_snapshot] done: saved=%d errors=%d spots=%d', saved, errors, len(spots))
+    status = 'rate_limited' if rate_limited else 'ok'
+    app.logger.info(
+        '[forecast_snapshot] done: status=%s saved=%d errors=%d spots=%d processed=%d aborted=%d',
+        status, saved, errors, len(spots), processed_spots, aborted_spots,
+    )
     return {
-        'status': 'ok',
+        'status': status,
         'forecast_date': today_str,
         'spots': len(spots),
+        'processed_spots': processed_spots,
+        'aborted_spots': aborted_spots,
         'planned_records': len(planned_records),
         'saved_records': saved,
         'errors': errors,
@@ -1109,26 +1147,35 @@ def get_forecast():
     lat = float(request.args.get('lat', 45.178269))
     lon = float(request.args.get('lon', 141.228528))
 
-    # Get elevation for accurate DEM correction
-    elevation = get_elevation(lat, lon)
+    try:
+        ensure_request_allowed('forecast', logger=app.logger)
 
-    # Calculate spot theta for wind angle difference calculation
-    spot_theta = calculate_spot_theta(lat, lon)
+        # Get elevation for accurate DEM correction
+        elevation = get_elevation(lat, lon, source='forecast')
 
-    # Calculate mountain azimuth (spot→peak direction)
-    # mountain_azimuth() は利尻山頂(SUMMIT_LAT/LON, JMA公式座標)を使う共通関数。
-    mountain_az = mountain_azimuth(lat, lon)
+        # Calculate spot theta for wind angle difference calculation
+        spot_theta = calculate_spot_theta(lat, lon)
 
-    # 山頂(R_1800_2392)の気温予報を取得（MeteoSwiss式フェーン強度計算の参照点）。
-    # 30分キャッシュ共有のため、どの干場のリクエストでも実質1回/30分の追加コストのみ。
-    summit_forecast = _get_summit_hourly_temps()
+        # Calculate mountain azimuth (spot→peak direction)
+        # mountain_azimuth() は利尻山頂(SUMMIT_LAT/LON, JMA公式座標)を使う共通関数。
+        mountain_az = mountain_azimuth(lat, lon)
+
+        # 山頂(R_1800_2392)の気温予報を取得（MeteoSwiss式フェーン強度計算の参照点）。
+        # 30分キャッシュ共有のため、どの干場のリクエストでも実質1回/30分の追加コストのみ。
+        summit_forecast = _get_summit_hourly_temps(source='forecast')
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        return {
+            'error': 'Enhanced forecast data unavailable',
+            'message': str(e),
+            'status': 'error'
+        }, 503
 
     try:
         # Enhanced weather data with hourly details including moisture and boundary layer
         # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
 
-        response = requests.get(url, timeout=10)
+        response = guarded_get(url, source='forecast', logger=app.logger, timeout=10)
         response.raise_for_status()
         # 診断ログ用: 干場データを実際に取得した時刻（山頂キャッシュとの世代ズレ検知に使用、
         # FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md 項目E）。既存レスポンス・挙動には影響しない。
@@ -1150,7 +1197,7 @@ def get_forecast():
         }
 
         # SST（海面水温）取得 — 7日分をまとめて取得（WINDY_RESEARCH §6 W6）
-        sst_list = get_sea_surface_temperature(lat, lon)
+        sst_list = get_sea_surface_temperature(lat, lon, source='forecast')
 
         # Enhanced kelp drying forecasts
         forecasts = []
@@ -1611,7 +1658,7 @@ def is_coastal_area(lat, lon):
 
 _elevation_cache: dict = {}  # key=(round(lat,2), round(lon,2)) → metres
 
-def get_elevation(lat, lon):
+def get_elevation(lat, lon, source: str | None = None):
     """
     Get elevation from Open-Meteo Elevation API (Copernicus GLO-90 DEM).
     Results are cached in-process at 0.01° resolution (~1 km) to avoid
@@ -1623,7 +1670,10 @@ def get_elevation(lat, lon):
 
     try:
         url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
-        response = requests.get(url, timeout=5)
+        if source:
+            response = guarded_get(url, source=source, logger=app.logger, timeout=5)
+        else:
+            response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
 
@@ -1632,6 +1682,8 @@ def get_elevation(lat, lon):
             result = max(0, elevation)
             _elevation_cache[cache_key] = result
             return result
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        raise
     except Exception:
         pass
 
@@ -4207,7 +4259,7 @@ def _build_rishiri_grid() -> list:
     return _grid
 
 
-def _fetch_elevations_batch(lats: list, lons: list) -> list:
+def _fetch_elevations_batch(lats: list, lons: list, source: str | None = None) -> list:
     """
     Open-Meteo Elevation API で複数地点の標高を一括取得（単一HTTPリクエスト）。
 
@@ -4231,7 +4283,10 @@ def _fetch_elevations_batch(lats: list, lons: list) -> list:
         lat_str = ','.join(f'{lat:.4f}' for lat in lats)
         lon_str = ','.join(f'{lon:.4f}' for lon in lons)
         url = f'https://api.open-meteo.com/v1/elevation?latitude={lat_str}&longitude={lon_str}'
-        resp = requests.get(url, timeout=10)
+        if source:
+            resp = guarded_get(url, source=source, logger=app.logger, timeout=10)
+        else:
+            resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         raw = data.get('elevation', [])
@@ -4252,6 +4307,8 @@ def _fetch_elevations_batch(lats: list, lons: list) -> list:
             print(f'[elevation-batch] {missing}/{n} points missing; 0m fallback applied')
         return result
 
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        raise
     except Exception as e:
         print(f'[elevation-batch] batch request failed ({e}); '
               f'using 0m fallback for all {n} points. '
@@ -4393,12 +4450,28 @@ def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
             f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless'
         )
         try:
-            r = requests.get(url, timeout=15)
+            r = guarded_get(url, source='field', logger=app.logger, timeout=15)
             r.raise_for_status()
             return r.json()
+        except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+            raise
         except Exception as exc:
             print(f'[field-multi] {lat:.4f},{lon:.4f} failed: {exc}')
             return {'hourly': {}}
+
+    if open_meteo_circuit_enabled():
+        results = []
+        total = len(lats)
+        for idx, lat_lon in enumerate(zip(lats, lons)):
+            try:
+                results.append(_fetch_one(lat_lon))
+            except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+                app.logger.info(
+                    '[open_meteo] {"source":"field","event":"circuit_open","processed_count":%d,"remaining_count":%d}',
+                    idx, max(0, total - idx - 1),
+                )
+                raise
+        return results
 
     with _cf.ThreadPoolExecutor(max_workers=10) as ex:
         return list(ex.map(_fetch_one, zip(lats, lons)))
@@ -4604,7 +4677,7 @@ def _compute_foehn_intensity_hours(
     return intensity * total_hours
 
 
-def _get_summit_hourly_temps() -> dict | None:
+def _get_summit_hourly_temps(source: str | None = None) -> dict | None:
     """
     利尻山頂(R_1800_2392, SUMMIT_LAT/LON)の気温予報を取得。
     _compute_foehn_intensity_hours() の山頂リファレンスとして使う。
@@ -4640,7 +4713,10 @@ def _get_summit_hourly_temps() -> dict | None:
             f'?latitude={SUMMIT_LAT}&longitude={SUMMIT_LON}'
             f'&hourly=temperature_2m&timezone=Asia%2FTokyo&forecast_days=7'
         )
-        resp = requests.get(url, timeout=10)
+        if source:
+            resp = guarded_get(url, source=source, logger=app.logger, timeout=10)
+        else:
+            resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         hourly = resp.json().get('hourly', {})
         result = {
@@ -4651,6 +4727,8 @@ def _get_summit_hourly_temps() -> dict | None:
         }
         _field_cache_set(cache_key, result, ttl=1800)
         return result
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        raise
     except Exception as e:
         app.logger.warning('[summit_forecast] fetch failed: %s', e)
         return None
@@ -4937,10 +5015,15 @@ def _compute_score_field(day: int) -> dict:
 
     # 標高を一括取得（1HTTPリクエスト ≈ 2s）
     # 個別取得(48×get_elevation() ≈ 72s)を回避する核心の高速化
-    grid_elevations = _fetch_elevations_batch(lats, lons)
+    try:
+        grid_elevations = _fetch_elevations_batch(lats, lons, source='field')
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        return {'error': f'Open-Meteo rate limited: {e}'}
 
     try:
         api_results = _fetch_open_meteo_multi(lats, lons, hourly_vars)
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        return {'error': f'Open-Meteo rate limited: {e}'}
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
 
@@ -4948,7 +5031,10 @@ def _compute_score_field(day: int) -> dict:
     # 利尻島は直径約20km。SST の島内空間変動は小さいため、
     # 島中心1点で代表し全48格子点に共通適用する。
     _ISLAND_LAT,  _ISLAND_LON  = 45.1821, 141.2421   # 利尻島地理中心
-    _sst_field = get_sea_surface_temperature(_ISLAND_LAT, _ISLAND_LON)
+    try:
+        _sst_field = get_sea_surface_temperature(_ISLAND_LAT, _ISLAND_LON, source='field')
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        return {'error': f'Open-Meteo rate limited: {e}'}
     _sst_today_field = _sst_field[day] if day < len(_sst_field) else None
 
     # 山頂(R_1800_2392)の06時気温をMeteoSwiss式フェーン強度の参照点として抽出。
@@ -5468,6 +5554,11 @@ def get_analysis_field():
         cached_copy = dict(cached)
         cached_copy['cache'] = {'hit': True}
         return jsonify(cached_copy)
+
+    try:
+        ensure_request_allowed('field', logger=app.logger)
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 503
 
     target_date = _field_target_date(day)
 
@@ -8479,7 +8570,7 @@ def assess_cape_risk(cape_value):
         return {'risk': 'none',   'score_penalty': 0, 'warning': None}
 
 
-def get_sea_surface_temperature(lat, lon):
+def get_sea_surface_temperature(lat, lon, source: str | None = None):
     """
     Open-Meteo Marine API から海面水温 (SST) を取得（WINDY_RESEARCH.md §6 W6）
     SST < 15°C のとき海霧リスク高（ISLAND_METEOROLOGY_RESEARCH §7）
@@ -8492,11 +8583,16 @@ def get_sea_surface_temperature(lat, lon):
             f"&timezone=Asia/Tokyo"
             f"&forecast_days=7"
         )
-        response = requests.get(url, timeout=8)
+        if source:
+            response = guarded_get(url, source=source, logger=app.logger, timeout=8)
+        else:
+            response = requests.get(url, timeout=8)
         response.raise_for_status()
         data = response.json()
         sst_list = data.get('daily', {}).get('sea_surface_temperature', [])
         return sst_list  # list of 7 values (°C)
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        raise
     except Exception:
         return [None] * 7
 
