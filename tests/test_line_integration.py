@@ -208,6 +208,7 @@ def _sample_fc(day_number=0, suitability="good", score=72, precip=0.0):
         "precipitation": precip,
         "min_humidity": 88.0,
         "avg_wind": 2.5,
+        "wind_direction_period": None,
         "pop": 10,
         "score": score,
         "suitability": suitability,
@@ -512,6 +513,340 @@ def test_notify_all_sends_notice_when_forecast_unavailable(tmp_sub_file, monkeyp
 
     assert result["sent"] == 1
     assert "予報本文を取得できませんでした" in pushed[0]
+
+
+def test_notify_all_sends_fallback_notice_without_manual_notice(tmp_sub_file, monkeypatch):
+    """
+    手動notice無しでも、全干場の予報取得に失敗した場合は無言スキップにせず
+    事情説明の簡易通知を送る（重複通知防止だけでなく、429対策リトライ後の
+    最終フォールバックとしても機能する）。
+    """
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)  # skip real retry delays
+    monkeypatch.setattr(
+        li, "find_spot_by_id",
+        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                      "buraku": "", "district": "", "town": ""},
+    )
+    monkeypatch.setattr(li, "get_forecast_for_spot", lambda lat, lon: [])
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_no_notice", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening")  # no notice=
+
+    assert result["sent"] == 1
+    assert result["skipped"] == 0
+    assert "予報本文を取得できませんでした" in pushed[0]
+
+
+# ---------------------------------------------------------------------------
+# _fetch_forecast_with_retry — short-interval retry on 429/transient failure
+# ---------------------------------------------------------------------------
+
+def test_fetch_forecast_with_retry_succeeds_after_transient_failures(monkeypatch):
+    """1〜2回目が失敗しても、後続の成功結果を返す（すぐ諦めない）。"""
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+    attempts = []
+
+    def flaky(lat, lon):
+        attempts.append(1)
+        if len(attempts) < 3:
+            return []  # simulate 429 / short result
+        return [{"date": "2026-07-01", "day_number": 0}, {"date": "2026-07-02", "day_number": 1}]
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", flaky)
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert len(attempts) == 3
+    assert len(result) == 2
+
+
+def test_fetch_forecast_with_retry_gives_up_after_max_attempts(monkeypatch):
+    """全リトライが失敗したら空リストを返す（例外を投げない）。"""
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+    attempts = []
+
+    def always_fails(lat, lon):
+        attempts.append(1)
+        return []
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", always_fails)
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert result == []
+    assert len(attempts) == li._FORECAST_FETCH_MAX_ATTEMPTS
+
+
+def test_fetch_forecast_with_retry_survives_exception(monkeypatch):
+    """get_forecast_for_spot が例外を投げても通知全体を落とさない。"""
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+
+    def raises(lat, lon):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", raises)
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# _try_notify_run_lock — dedup check before any Open-Meteo access (429対策)
+# ---------------------------------------------------------------------------
+
+def test_notify_all_run_lock_skips_before_fetching_forecasts(tmp_sub_file, monkeypatch):
+    """
+    既に同じ kind+date で実行済み（NX SETが失敗）の場合、notify_all() は
+    get_forecast_for_spot を一切呼ばずに即終了する
+    （GitHub Actions予備通知とRender内スレッドの重複対策）。
+    """
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+
+    class _FakeResp:
+        status_code = 200
+        def json(self):
+            return [{"result": None}]  # NX SET failed = lock already held
+
+    monkeypatch.setattr(li._requests, "post", lambda *a, **k: _FakeResp())
+
+    calls = []
+    monkeypatch.setattr(li, "get_forecast_for_spot", lambda lat, lon: calls.append(1))
+    li.upsert_subscription("user", "U_locked", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening")
+
+    assert result["reason"] == "already_ran"
+    assert result["sent"] == 0
+    assert calls == []  # no forecast fetch attempted at all
+
+
+def test_notify_all_run_lock_proceeds_when_lock_acquired(tmp_sub_file, monkeypatch):
+    """NX SETが成功（未実行）の場合は通常どおり通知が進む。"""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+
+    # _upstash_available must be True for the run-lock check to matter at all.
+    # _upstash_get/_upstash_set are backed by a shared fake dict so that
+    # load_subscriptions()/save_subscriptions() (which also route through
+    # them when Upstash is "available") round-trip correctly too — not just
+    # the run-lock's own pipeline SET call.
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+    fake_redis = {}
+    monkeypatch.setattr(li, "_upstash_get", lambda key: fake_redis.get(key))
+    monkeypatch.setattr(li, "_upstash_set",
+                        lambda key, value, ttl=None: fake_redis.__setitem__(key, value) or True)
+
+    class _FakeResp:
+        status_code = 200
+        def json(self):
+            return [{"result": "OK"}]  # NX SET succeeded = lock newly acquired
+
+    monkeypatch.setattr(li._requests, "post", lambda *a, **k: _FakeResp())
+    monkeypatch.setattr(
+        li, "find_spot_by_id",
+        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                      "buraku": "", "district": "", "town": ""},
+    )
+    monkeypatch.setattr(
+        li, "get_forecast_for_spot",
+        lambda lat, lon: [
+            {"date": "2026-07-01", "day_number": 0, "suitability": "good", "score": 80,
+             "precipitation": 0, "min_humidity": 70, "avg_wind": 3.5,
+             "wind_direction_period": None, "pop": None},
+            {"date": "2026-07-02", "day_number": 1, "suitability": "good", "score": 82,
+             "precipitation": 0, "min_humidity": 68, "avg_wind": 3.2,
+             "wind_direction_period": None, "pop": None},
+        ],
+    )
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_unlocked", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening")
+
+    assert result.get("reason") != "already_ran"
+    assert result["sent"] == 1
+    assert pushed
+
+
+# ---------------------------------------------------------------------------
+# 01:30通知の差分表示 — _diff_from_snapshot / format_single_day_with_diff
+# ---------------------------------------------------------------------------
+
+def _snap(**overrides):
+    base = {
+        "suitability": "good",
+        "precipitation": 0.0,
+        "min_humidity": 70.0,
+        "avg_wind": 3.0,
+        "wind_direction_period": "WSW→NNW",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_diff_from_snapshot_no_changes_when_values_close():
+    fc = _sample_fc()
+    fc["min_humidity"] = 88.0
+    fc["avg_wind"] = 2.5
+    fc["wind_direction_period"] = None
+    snap = _snap(suitability="good", precipitation=0.0, min_humidity=85.0,
+                 avg_wind=2.0, wind_direction_period=None)
+    assert li._diff_from_snapshot(fc, snap) == []
+
+
+def test_diff_from_snapshot_suitability_change_is_flagged():
+    fc = _sample_fc(suitability="poor")
+    snap = _snap(suitability="excellent")
+    changes = li._diff_from_snapshot(fc, snap)
+    assert any("乾燥判定" in c for c in changes)
+
+
+def test_diff_from_snapshot_precipitation_flip_is_flagged_even_if_small():
+    fc = _sample_fc(precip=0.3)
+    snap = _snap(precipitation=0.0)
+    changes = li._diff_from_snapshot(fc, snap)
+    assert any("降水" in c for c in changes)
+
+
+def test_diff_from_snapshot_wind_direction_change_is_flagged():
+    fc = _sample_fc()
+    fc["wind_direction_period"] = "NNW→ESE"
+    snap = _snap(wind_direction_period="WSW→NNW")
+    changes = li._diff_from_snapshot(fc, snap)
+    assert any("風向" in c for c in changes)
+
+
+def test_format_single_day_with_diff_no_snapshot_matches_plain_format():
+    fc = _sample_fc()
+    assert li.format_single_day_with_diff("浜の前", fc, None) == li.format_single_day("浜の前", fc)
+
+
+def test_format_single_day_with_diff_shows_no_change_note():
+    fc = _sample_fc()
+    fc["min_humidity"] = 88.0
+    fc["avg_wind"] = 2.5
+    snap = _snap(min_humidity=85.0, avg_wind=2.0)
+    msg = li.format_single_day_with_diff("浜の前", fc, snap)
+    assert "16時予報から大きな変化なし" in msg
+
+
+def test_format_single_day_with_diff_shows_change_summary():
+    fc = _sample_fc(suitability="poor")
+    fc["min_humidity"] = 95.0
+    snap = _snap(suitability="excellent", min_humidity=60.0)
+    msg = li.format_single_day_with_diff("浜の前", fc, snap)
+    assert "⚠️ 16時予報から変化:" in msg
+    assert "乾燥判定" in msg
+    assert "湿度" in msg
+
+
+# ---------------------------------------------------------------------------
+# evening→morning snapshot round-trip within notify_all
+# ---------------------------------------------------------------------------
+
+def test_notify_all_evening_then_morning_shows_diff(tmp_sub_file, monkeypatch):
+    """
+    16:00(evening)で保存したスナップショットを、01:30(morning)が読み取り、
+    差分がメッセージに反映されることを確認する。
+    """
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)  # safety net, retries shouldn't trigger here
+    monkeypatch.setattr(li._requests, "post",
+                        lambda *a, **k: type("R", (), {"status_code": 200,
+                                                        "json": lambda self: [{"result": "OK"}]})())
+    monkeypatch.setattr(
+        li, "find_spot_by_id",
+        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                      "buraku": "", "district": "", "town": ""},
+    )
+
+    fake_redis = {}
+    monkeypatch.setattr(li, "_upstash_set",
+                        lambda key, value, ttl=None: fake_redis.__setitem__(key, value) or True)
+    monkeypatch.setattr(li, "_upstash_get", lambda key: fake_redis.get(key))
+
+    li.upsert_subscription("user", "U_diff", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    # --- evening run (2026-06-30 16:00): target_date = 2026-07-01 ---
+    class _EveningDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 30, 16, 0, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", _EveningDatetime)
+    monkeypatch.setattr(
+        li, "get_forecast_for_spot",
+        lambda lat, lon: [
+            {"date": "2026-06-30", "day_number": 0, "suitability": "good", "score": 75,
+             "precipitation": 0.0, "min_humidity": 80.0, "avg_wind": 3.0,
+             "wind_direction_period": "WSW→NNW", "pop": None},
+            {"date": "2026-07-01", "day_number": 1, "suitability": "excellent", "score": 90,
+             "precipitation": 0.0, "min_humidity": 60.0, "avg_wind": 2.5,
+             "wind_direction_period": "WSW→NNW", "pop": None},
+        ],
+    )
+    pushed_evening = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed_evening.append(text) or True)
+    evening_result = li.notify_all("evening")
+    assert evening_result["sent"] == 1
+    assert fake_redis  # snapshot was saved
+
+    # --- morning run (2026-07-01 01:30): target_date = 2026-07-01, forecast worsened ---
+    class _MorningDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 1, 30, 0, tzinfo=JST)
+    monkeypatch.setattr(li, "datetime", _MorningDatetime)
+    monkeypatch.setattr(
+        li, "get_forecast_for_spot",
+        lambda lat, lon: [
+            {"date": "2026-07-01", "day_number": 0, "suitability": "poor", "score": 20,
+             "precipitation": 3.0, "min_humidity": 96.0, "avg_wind": 1.0,
+             "wind_direction_period": "NNW→ESE", "pop": None},
+            {"date": "2026-07-02", "day_number": 1, "suitability": "poor", "score": 20,
+             "precipitation": 3.0, "min_humidity": 96.0, "avg_wind": 1.0,
+             "wind_direction_period": "NNW→ESE", "pop": None},
+        ],
+    )
+    pushed_morning = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed_morning.append(text) or True)
+    morning_result = li.notify_all("morning")
+
+    assert morning_result["sent"] == 1
+    assert "⚠️ 16時予報から変化:" in pushed_morning[0]
+    assert "乾燥判定" in pushed_morning[0]
+    assert "降水" in pushed_morning[0]
+    assert "湿度" in pushed_morning[0]
+    assert "風向" in pushed_morning[0]
 
 
 # ---------------------------------------------------------------------------
@@ -1497,10 +1832,24 @@ def test_format_single_day_score_in_parens():
 
 
 def test_format_single_day_wind_with_unit():
-    """Wind speed has m/s unit."""
+    """Wind speed is labeled as working-hour average and has m/s unit."""
     fc = _sample_fc()
     msg = li.format_single_day("浜の前", fc)
+    assert "平均" in msg
     assert "m/s" in msg
+
+
+def test_format_single_day_wind_direction_period():
+    """Selected wind direction period is shown when available."""
+    fc = _sample_fc()
+    fc["avg_wind"] = 4.0
+    fc["wind_direction_period"] = "WSW→NNW"
+    msg = li.format_single_day("浜の前", fc)
+    assert "💨 風: 平均4.0m/s（WSW→NNW）" in msg
+
+
+def test_wind_direction_period_formats_0600_to_1300_samples():
+    assert li._wind_direction_period([247.5, 337.5]) == "WSW→NNW"
 
 
 def test_format_single_day_humidity_with_unit():

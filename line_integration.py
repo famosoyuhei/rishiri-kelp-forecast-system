@@ -27,6 +27,7 @@ import base64
 import logging
 import re
 import csv
+import time
 from datetime import datetime, timezone, timedelta
 
 import requests as _requests
@@ -165,13 +166,19 @@ def _upstash_get(key: str):
         return None
 
 
-def _upstash_set(key: str, value) -> bool:
+def _upstash_set(key: str, value, ttl: 'int | None' = None) -> bool:
     """SET a value in Upstash Redis via the pipeline endpoint.
 
     Using /pipeline with [["SET", key, json_string]] avoids any
     ambiguity about how Upstash interprets the request body encoding.
     The value is explicitly a JSON-encoded string passed as a Redis arg.
+
+    ttl: optional expiry in seconds (appended as ["EX", ttl] Redis args).
+    Omitted by default to preserve existing callers' behavior exactly.
     """
+    command = ['SET', key, json.dumps(value, ensure_ascii=False)]
+    if ttl is not None:
+        command += ['EX', str(ttl)]
     try:
         resp = _requests.post(
             f'{_upstash_url()}/pipeline',
@@ -179,7 +186,7 @@ def _upstash_set(key: str, value) -> bool:
                 'Authorization': f'Bearer {_upstash_token()}',
                 'Content-Type': 'application/json',
             },
-            json=[['SET', key, json.dumps(value, ensure_ascii=False)]],
+            json=[command],
             timeout=8,
         )
         logger.info('Upstash SET(pipeline) %s → HTTP %s body=%s', key, resp.status_code, resp.text[:120])
@@ -309,7 +316,36 @@ _OPEN_METEO_DAILY = (
     'wind_speed_10m_max,relative_humidity_2m_mean,'
     'precipitation_sum,precipitation_probability_max'
 )
-_OPEN_METEO_HOURLY = 'relative_humidity_2m,wind_speed_10m,precipitation'
+_OPEN_METEO_HOURLY = 'relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation'
+
+_COMPASS_16_EN = [
+    'N', 'NNE', 'NE', 'ENE',
+    'E', 'ESE', 'SE', 'SSE',
+    'S', 'SSW', 'SW', 'WSW',
+    'W', 'WNW', 'NW', 'NNW',
+]
+
+
+def _compass_16_en(degrees) -> str | None:
+    """Convert a meteorological wind direction in degrees to a 16-point label."""
+    if degrees is None:
+        return None
+    try:
+        deg = float(degrees) % 360
+    except (TypeError, ValueError):
+        return None
+    return _COMPASS_16_EN[int((deg + 11.25) // 22.5) % 16]
+
+
+def _wind_direction_period(directions: list) -> str | None:
+    """Return first-to-last selected wind direction, e.g. WSW→NNW."""
+    valid = [_compass_16_en(d) for d in directions if d is not None]
+    valid = [d for d in valid if d]
+    if not valid:
+        return None
+    if valid[0] == valid[-1]:
+        return valid[0]
+    return f'{valid[0]}→{valid[-1]}'
 
 
 def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tuple:
@@ -356,7 +392,8 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
     """
     Fetch simplified 7-day drying forecast from Open-Meteo.
     Returns list of daily dicts with keys:
-        date, day_number, precipitation, min_humidity, avg_wind, pop, score, suitability
+        date, day_number, precipitation, min_humidity, avg_wind,
+        wind_direction_period, pop, score, suitability
     """
     url = (
         f'https://api.open-meteo.com/v1/forecast'
@@ -377,6 +414,7 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
     hourly = data.get('hourly', {})
     hourly_rh = hourly.get('relative_humidity_2m', [])
     hourly_ws = hourly.get('wind_speed_10m', [])  # km/h
+    hourly_wd = hourly.get('wind_direction_10m', [])
     hourly_pr = hourly.get('precipitation', [])   # mm/h（04:00-16:00 積算に使用）
 
     days = []
@@ -402,6 +440,10 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
                 for h in range(start_h, min(end_h, len(hourly_ws)))
                 if hourly_ws[h] is not None
             ]
+            wind_direction_samples = []
+            for sample_h in (i * 24 + 6, i * 24 + 13):
+                if sample_h < len(hourly_wd) and hourly_wd[sample_h] is not None:
+                    wind_direction_samples.append(hourly_wd[sample_h])
             # 04:00-16:00 積算降水量（_save_forecast_history の precipitation_0416 と同窓）
             work_pr = [
                 hourly_pr[h]
@@ -422,6 +464,7 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
                 'max_temp': max_temp,
                 'min_humidity': round(min_humidity, 1),
                 'avg_wind': round(avg_wind, 1),
+                'wind_direction_period': _wind_direction_period(wind_direction_samples),
                 'pop': pop,
                 'score': score,
                 'suitability': suitability,
@@ -1050,17 +1093,108 @@ def format_single_day(spot_name: str, fc: dict) -> str:
         rain_line = f'🌧 雨: {fc["precipitation"]}mm{pop_note}'
     else:
         rain_line = f'☔ 雨なし{pop_note}'
+    wind_direction = fc.get('wind_direction_period')
+    wind_direction_note = f'（{wind_direction}）' if wind_direction else ''
     lines = [
         f'【{spot_name} {date_lbl}】',
         f'{label}（{fc["score"]}点）',
         '',
         rain_line,
-        f'💨 風: {fc["avg_wind"]}m/s',
+        f'💨 風: 平均{fc["avg_wind"]}m/s{wind_direction_note}',
         f'💦 湿度: {fc["min_humidity"]}%（最低）',
         '',
         _LINE_DISCLAIMER,
     ]
     return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 01:30（当日/morning）通知の差分表示
+# 16:00通知時点の予報スナップショットと比較し、大きく変わった項目だけ強調する。
+# 変化が小さければ「16時予報から大きな変化なし」の1行のみ追加し、
+# 同じ内容の再送にしない。
+# ---------------------------------------------------------------------------
+
+_EVENING_SNAP_TTL = 24 * 3600  # 翌01:30通知の比較用のみに使うため24hで十分
+
+# 「大きく変わった」と判定する閾値。値そのものに強い根拠はなく、通知が
+# 過敏に反応しない範囲で目視の変化に近いものを選んだ初期値（要調整）。
+_DIFF_HUMIDITY_THRESHOLD = 10.0   # 最低湿度の変化ポイント
+_DIFF_WIND_THRESHOLD = 2.0        # 平均風速の変化 m/s
+_DIFF_PRECIP_THRESHOLD = 1.0      # 降水量の変化 mm（0mm⇔非0mmの反転は閾値に関わらず常に強調）
+
+
+def _save_evening_snapshot(spot_id: str, target_date_str: str, fc: dict) -> None:
+    """16:00通知時点の予報を保存する（01:30通知での比較用）。Upstash未設定時は何もしない。"""
+    if not _upstash_available():
+        return
+    key = f'line_evening_snap:{spot_id}:{target_date_str}'
+    snapshot = {
+        'suitability':          fc.get('suitability'),
+        'precipitation':        fc.get('precipitation'),
+        'min_humidity':         fc.get('min_humidity'),
+        'avg_wind':             fc.get('avg_wind'),
+        'wind_direction_period': fc.get('wind_direction_period'),
+    }
+    _upstash_set(key, snapshot, ttl=_EVENING_SNAP_TTL)
+
+
+def _load_evening_snapshot(spot_id: str, target_date_str: str) -> 'dict | None':
+    """保存済みの16:00予報スナップショットを取得する。無ければNone。"""
+    if not _upstash_available():
+        return None
+    key = f'line_evening_snap:{spot_id}:{target_date_str}'
+    return _upstash_get(key)
+
+
+def _diff_from_snapshot(fc: dict, snap: dict) -> list:
+    """16時予報(snap)と現在(01:30時点, fc)を比較し、大きく変わった項目の説明行を返す。"""
+    changes = []
+
+    old_suit, new_suit = snap.get('suitability'), fc.get('suitability')
+    if old_suit != new_suit:
+        old_label = _SUITABILITY_LABEL.get(old_suit, old_suit or '不明')
+        new_label = _SUITABILITY_LABEL.get(new_suit, new_suit or '不明')
+        changes.append(f'乾燥判定: {old_label} → {new_label}')
+
+    old_p, new_p = snap.get('precipitation'), fc.get('precipitation')
+    if old_p is not None and new_p is not None:
+        if (old_p == 0) != (new_p == 0) or abs(new_p - old_p) >= _DIFF_PRECIP_THRESHOLD:
+            changes.append(f'降水: {old_p}mm → {new_p}mm')
+
+    old_h, new_h = snap.get('min_humidity'), fc.get('min_humidity')
+    if old_h is not None and new_h is not None and abs(new_h - old_h) >= _DIFF_HUMIDITY_THRESHOLD:
+        changes.append(f'湿度: {old_h}% → {new_h}%')
+
+    old_w, new_w = snap.get('avg_wind'), fc.get('avg_wind')
+    if old_w is not None and new_w is not None and abs(new_w - old_w) >= _DIFF_WIND_THRESHOLD:
+        changes.append(f'風速: 平均{old_w}m/s → 平均{new_w}m/s')
+
+    old_wd, new_wd = snap.get('wind_direction_period'), fc.get('wind_direction_period')
+    if old_wd and new_wd and old_wd != new_wd:
+        changes.append(f'風向: {old_wd} → {new_wd}')
+
+    return changes
+
+
+def format_single_day_with_diff(spot_name: str, fc: dict, snapshot: 'dict | None' = None) -> str:
+    """
+    01:30（当日/morning）通知専用。format_single_day() の内容に、16:00予報との
+    比較結果を追加する。format_single_day() 自体は変更しない（今日/明日コマンド
+    や16:00通知など他の呼び出し元への影響を避けるため）。
+
+    snapshot が無い場合（新規登録直後で16時スナップショットが存在しない等）は
+    format_single_day() と同じ内容をそのまま返す。
+    """
+    base = format_single_day(spot_name, fc)
+    if not snapshot:
+        return base
+    changes = _diff_from_snapshot(fc, snapshot)
+    if changes:
+        note = '⚠️ 16時予報から変化:\n' + '\n'.join(f'・{c}' for c in changes)
+    else:
+        note = '16時予報から大きな変化なし'
+    return base.replace(_LINE_DISCLAIMER, f'{note}\n\n{_LINE_DISCLAIMER}')
 
 
 def format_weekly_summary(spot_name: str, forecasts: list) -> str:
@@ -1975,6 +2109,79 @@ def handle_unknown() -> str:
 # Notification broadcast
 # ---------------------------------------------------------------------------
 
+
+def _try_notify_run_lock(kind: str, target_date_str: str) -> bool:
+    """
+    kind + target_date 単位の実行ロック。notify_all() が予報を1件でも取得する
+    前に必ず呼ぶこと。
+
+    start.py の _scheduled_line_notify()（Render内スレッド、in-process
+    スケジューラ）と、GitHub Actionsの予備通知（/api/line/notify 経由の
+    handle_notify()）の両方が notify_all() を呼び得るため、どちらが先に
+    走っても「その日のkindはもう実行済み」を検知し、2回目以降は
+    Open-Meteoへの問い合わせを一切行わずに即終了する
+    （429対策: 重複通知チェックを予報取得より前に置く）。
+
+    Upstash未設定時は常にTrueを返す（ロックはできないが通知自体は続行する。
+    最終防御として各購読者単位のdedup_keyチェックが下流に残っている）。
+    """
+    if not _upstash_available():
+        return True
+    lock_key = f'line_notify_run:{kind}:{target_date_str}'
+    try:
+        resp = _requests.post(
+            f'{_upstash_url()}/pipeline',
+            headers={'Authorization': f'Bearer {_upstash_token()}',
+                     'Content-Type': 'application/json'},
+            json=[['SET', lock_key, '1', 'NX', 'EX', '86400']],
+            timeout=3,
+        )
+        results = resp.json()
+        if isinstance(results, list) and results:
+            return results[0].get('result') == 'OK'
+        return True
+    except Exception as e:
+        logger.warning('notify_all: run-lock check failed (%s), continuing without lock', e)
+        return True
+
+
+# 429やOpen-Meteoの一時的な障害で通知全体を諦めないための短い間隔リトライ。
+# 「定刻ぴったり」より「数分遅れても確実に届く」を優先する（LINE通知の安定性）。
+_FORECAST_FETCH_MAX_ATTEMPTS = 3
+_FORECAST_FETCH_RETRY_DELAYS = (2, 5)  # 各リトライ前の待機秒数（合計7秒+リクエスト時間）
+
+
+def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> list:
+    """
+    get_forecast_for_spot() を短い間隔でリトライする。1回失敗しただけで
+    その干場の通知を諦めないための共通ヘルパー（notify_all() 専用）。
+    """
+    fcs = []
+    for attempt in range(_FORECAST_FETCH_MAX_ATTEMPTS):
+        try:
+            fcs = get_forecast_for_spot(lat, lon)
+        except Exception as _fc_err:
+            logger.error(
+                'notify_all: get_forecast_for_spot raised for %s (attempt %d/%d): %s',
+                spot_id, attempt + 1, _FORECAST_FETCH_MAX_ATTEMPTS, _fc_err,
+            )
+            fcs = []
+        if fcs and len(fcs) >= 2:  # 当日(day0)・翌日(day1)の両方が揃っていること
+            return fcs
+        if attempt < len(_FORECAST_FETCH_RETRY_DELAYS):
+            logger.warning(
+                'notify_all: forecast short/empty for %s (attempt %d/%d), retrying in %ds…',
+                spot_id, attempt + 1, _FORECAST_FETCH_MAX_ATTEMPTS,
+                _FORECAST_FETCH_RETRY_DELAYS[attempt],
+            )
+            time.sleep(_FORECAST_FETCH_RETRY_DELAYS[attempt])
+    logger.error(
+        'notify_all: all %d attempts failed for %s',
+        _FORECAST_FETCH_MAX_ATTEMPTS, spot_id,
+    )
+    return fcs or []
+
+
 def notify_all(kind: str, notice: str = '') -> dict:
     """
     Push forecast notifications to all enabled subscribers.
@@ -2004,6 +2211,16 @@ def notify_all(kind: str, notice: str = '') -> dict:
     target_date = now_jst.date() + timedelta(days=day_number)
     target_date_str = target_date.strftime('%Y-%m-%d')
     target_mm_dd = f'{target_date.month:02d}-{target_date.day:02d}'
+
+    # 重複通知チェックは予報取得(Open-Meteo)より前に置く（429対策）。
+    # Render内スレッドとGitHub Actions予備通知のどちらが先でも、2回目以降は
+    # ここで即終了し、以降の干場予報取得を一切行わない。
+    if not _try_notify_run_lock(kind, target_date_str):
+        logger.info(
+            'notify_all: kind=%s date=%s already ran (run-lock) — skipping, no forecast fetch',
+            kind, target_date_str,
+        )
+        return {'sent': 0, 'failed': 0, 'skipped': 0, 'kind': kind, 'reason': 'already_ran'}
 
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
@@ -2059,36 +2276,38 @@ def notify_all(kind: str, notice: str = '') -> dict:
             if sid in forecast_cache:
                 fcs = forecast_cache[sid]
             else:
-                # Fetch forecast; retry once on failure.
-                # Keep to 1 retry only — multiple retries across spots can
-                # trigger Open-Meteo rate limits and break the entire notification.
-                fcs = []
-                try:
-                    fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-                    if not fcs or len(fcs) <= day_number:
-                        logger.warning('notify_all: forecast short for %s len=%d, retrying…', sid, len(fcs))
-                        import time as _time; _time.sleep(2)
-                        fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-                except Exception as _fc_err:
-                    logger.error('notify_all: get_forecast_for_spot raised for %s: %s', sid, _fc_err)
-                forecast_cache[sid] = fcs or []
+                # 429/一時エラーではすぐ諦めない。数分遅れても確実に届けることを
+                # 優先し、短い間隔で複数回リトライする（_fetch_forecast_with_retry）。
+                fcs = _fetch_forecast_with_retry(spot['lat'], spot['lon'], sid)
+                forecast_cache[sid] = fcs
 
             if fcs and len(fcs) > day_number:
                 try:
-                    msgs.append(format_single_day(display, fcs[day_number]))
+                    fc = fcs[day_number]
+                    if kind == 'evening':
+                        # 01:30通知での比較用に、16:00時点の予報を保存しておく。
+                        _save_evening_snapshot(sid, target_date_str, fc)
+                        msgs.append(format_single_day(display, fc))
+                    else:
+                        # 16:00予報と比較し、変化があれば強調する（同じ内容の再送にしない）。
+                        snapshot = _load_evening_snapshot(sid, target_date_str)
+                        msgs.append(format_single_day_with_diff(display, fc, snapshot))
                 except Exception as _fmt_err:
                     logger.error('notify_all: format_single_day failed for %s: %s', sid, _fmt_err)
             else:
-                # All 3 attempts failed — skip this spot silently.
-                # Sending a notification full of error text is worse than skipping.
-                # The user can always send "明日 村谷さんの干場" on demand.
-                logger.error('notify_all: all 3 attempts failed for %s — skipping silently', sid)
+                # 全リトライが失敗 — この干場だけ静かにスキップする。
+                # エラー文だらけの通知より省略の方がまし。
+                # ユーザーはいつでも「明日 村谷さんの干場」等でオンデマンド取得できる。
+                logger.error('notify_all: all attempts failed for %s — skipping silently', sid)
 
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
         notice_text = f'{notice.strip()}\n\n' if notice and notice.strip() else ''
         if msgs:
             full_msg = header + notice_text + '\n\n'.join(msgs) + _NOTIFY_FOOTER
-        elif notice_text:
+        else:
+            # 登録干場はあるが全てのデータ取得に失敗した場合。
+            # notice(運営からの手動連絡)の有無に関わらず、事情説明の簡易通知を送る
+            # （数分遅れの再試行後もダメだった場合だけここに到達する。無言スキップにしない）。
             full_msg = (
                 header
                 + notice_text
@@ -2096,9 +2315,6 @@ def notify_all(kind: str, notice: str = '') -> dict:
                   '時間を置いてアプリまたはLINEメニューから最新予報をご確認ください。'
                 + _NOTIFY_FOOTER
             )
-        else:
-            skipped += 1
-            continue
 
         # Per-user dedup: even if notify_all() is called twice (e.g. two
         # containers overlap during deploy), each user gets at most 1 message

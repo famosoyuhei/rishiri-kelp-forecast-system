@@ -992,7 +992,7 @@ def _save_forecast_history(spot_name, forecasts):
 
 
 def _save_daily_forecast_snapshot():
-    """全334地点の予報を Redis に一括保存する（毎日16:05 JST バッチ）。
+    """全334地点の予報を Redis に一括保存する（毎日16:20 JST バッチ）。
 
     line_integration.get_forecast_for_spot() を使って Open-Meteo から取得し、
     _save_forecast_history() と同じスキーマで forecast:hist:{name}:{YYYYMMDD} に保存する。
@@ -1046,7 +1046,7 @@ def _save_daily_forecast_snapshot():
                 'suitability':        fc.get('suitability'),
             }
             planned_records.append((redis_key, record))
-        _time.sleep(0.1)  # Open-Meteo レート制限を避ける
+        _time.sleep(0.3)  # Open-Meteo レート制限を避ける（2026-08-05: 0.1→0.3、低速化）
 
     saved = 0
     redis_updates = {}
@@ -1075,12 +1075,18 @@ def _save_daily_forecast_snapshot():
 
 
 def _scheduled_forecast_snapshot():
-    """バックグラウンドスレッド: 毎日16:05 JSTに全地点の予報履歴を保存する。"""
+    """バックグラウンドスレッド: 毎日16:20 JSTに全334地点の予報履歴を保存する。
+
+    16:00のLINE通知（登録干場のみ・少数）とOpen-Meteoへのアクセスが重ならない
+    よう、意図的に16:20開始にしている（LINE通知の安定性・429対策）。
+    2026-08-05: 16:05→16:20に変更。_save_daily_forecast_snapshot() 側の
+    地点間スリープも合わせて低速化した。
+    """
     import time as _time
     from datetime import timedelta
     while True:
         now = datetime.now(tz=JST)
-        next_run = now.replace(hour=16, minute=5, second=0, microsecond=0)
+        next_run = now.replace(hour=16, minute=20, second=0, microsecond=0)
         if now >= next_run:
             next_run += timedelta(days=1)
         _time.sleep((next_run - now).total_seconds())
@@ -8903,7 +8909,8 @@ def _start_background_threads():
     )
     t3.start()
 
-    # Daily forecast history snapshot at 16:05 JST (全334地点を一括保存)
+    # Daily forecast history snapshot at 16:20 JST (全334地点を一括保存。
+    # 16:00のLINE通知と重ならないよう20分ずらしている)
     t4 = _threading.Thread(target=_scheduled_forecast_snapshot, daemon=True)
     t4.start()
 
@@ -8917,7 +8924,7 @@ def _start_background_threads():
 
     app.logger.info(
         'Background threads started: amedas@03:00, line-evening@16:00, '
-        'line-morning@01:30, forecast-snapshot@16:05, integrity-check@05:00, '
+        'line-morning@01:30, forecast-snapshot@16:20, integrity-check@05:00, '
         'nowcast-observation@04:00-16:00/10min JST'
     )
 
