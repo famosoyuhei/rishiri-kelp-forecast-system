@@ -2007,6 +2007,7 @@ def notify_all(kind: str) -> dict:
 
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
+    forecast_cache = {}
 
     for key, sub in subs.items():
         if not sub.get('notify_enabled', False):
@@ -2053,18 +2054,24 @@ def notify_all(kind: str) -> dict:
                 logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
                 continue
             display = _get_spot_label(source_type_sub, source_id, sid)
-            # Fetch forecast; retry once on failure.
-            # Keep to 1 retry only — multiple retries across 4 spots can
-            # trigger Open-Meteo rate limits and break the entire notification.
-            fcs = []
-            try:
-                fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-                if not fcs or len(fcs) <= day_number:
-                    logger.warning('notify_all: forecast short for %s len=%d, retrying…', sid, len(fcs))
-                    import time as _time; _time.sleep(2)
+            # Cache per notification run so a popular spot registered by
+            # multiple subscribers does not fan out into duplicate API calls.
+            if sid in forecast_cache:
+                fcs = forecast_cache[sid]
+            else:
+                # Fetch forecast; retry once on failure.
+                # Keep to 1 retry only — multiple retries across spots can
+                # trigger Open-Meteo rate limits and break the entire notification.
+                fcs = []
+                try:
                     fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
-            except Exception as _fc_err:
-                logger.error('notify_all: get_forecast_for_spot raised for %s: %s', sid, _fc_err)
+                    if not fcs or len(fcs) <= day_number:
+                        logger.warning('notify_all: forecast short for %s len=%d, retrying…', sid, len(fcs))
+                        import time as _time; _time.sleep(2)
+                        fcs = get_forecast_for_spot(spot['lat'], spot['lon'])
+                except Exception as _fc_err:
+                    logger.error('notify_all: get_forecast_for_spot raised for %s: %s', sid, _fc_err)
+                forecast_cache[sid] = fcs or []
 
             if fcs and len(fcs) > day_number:
                 try:

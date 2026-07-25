@@ -353,6 +353,70 @@ def test_notify_all_in_season(tmp_sub_file, monkeypatch):
     assert result.get("reason") != "out_of_season"
 
 
+def test_notify_all_caches_same_spot_within_run(tmp_sub_file, monkeypatch):
+    """Multiple subscribers for one spot should share one forecast fetch."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+
+    calls = []
+
+    def fake_forecast(lat, lon):
+        calls.append((lat, lon))
+        return [
+            {
+                "date": "2026-07-01",
+                "day_number": 0,
+                "suitability": "good",
+                "score": 80,
+                "precipitation": 0,
+                "min_humidity": 70,
+                "avg_wind": 3.5,
+                "pop": None,
+            },
+            {
+                "date": "2026-07-02",
+                "day_number": 1,
+                "suitability": "good",
+                "score": 82,
+                "precipitation": 0,
+                "min_humidity": 68,
+                "avg_wind": 3.2,
+                "pop": None,
+            },
+        ]
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", fake_forecast)
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+    li.upsert_subscription("user", "U_cache_1", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+    li.upsert_subscription("user", "U_cache_2", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening")
+
+    assert result["sent"] == 2
+    assert len(calls) == 1
+
+
 # ---------------------------------------------------------------------------
 # parse_command — new commands
 # ---------------------------------------------------------------------------
