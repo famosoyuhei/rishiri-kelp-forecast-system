@@ -1,0 +1,71 @@
+name: Prefetch Open-Meteo Notification Cache
+
+on:
+  schedule:
+    # 15:30 JST, 30 minutes before the 16:00 evening LINE notification.
+    - cron: "30 6 * * *"
+    # 01:00 JST, 30 minutes before the 01:30 morning LINE notification.
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "Notification cache kind to prefetch"
+        required: true
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - evening
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-meteo-prefetch-${{ github.event.schedule || inputs.kind }}
+  cancel-in-progress: false
+
+jobs:
+  prefetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      OPEN_METEO_BASE_URL: ${{ vars.OPEN_METEO_BASE_URL }}
+      OPEN_METEO_MARINE_BASE_URL: ${{ vars.OPEN_METEO_MARINE_BASE_URL }}
+      OPEN_METEO_API_KEY: ${{ secrets.OPEN_METEO_API_KEY }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal dependencies
+        run: python -m pip install --disable-pip-version-check requests==2.31.0
+
+      - name: Pick notification kind
+        id: kind
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            kind="${{ inputs.kind }}"
+          elif [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
+            kind="evening"
+          else
+            kind="morning"
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
+            echo "Required Upstash GitHub secrets are not configured." >&2
+            exit 1
+          fi
+
+      - name: Prefetch raw Open-Meteo responses
+        run: python jobs/fetch_open_meteo_for_notifications.py --kind "${{ steps.kind.outputs.kind }}"
