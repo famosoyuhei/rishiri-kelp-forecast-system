@@ -2084,13 +2084,21 @@ def notify_all(kind: str, notice: str = '') -> dict:
                 # The user can always send "明日 村谷さんの干場" on demand.
                 logger.error('notify_all: all 3 attempts failed for %s — skipping silently', sid)
 
-        if not msgs:
-            skipped += 1
-            continue
-
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
         notice_text = f'{notice.strip()}\n\n' if notice and notice.strip() else ''
-        full_msg = header + notice_text + '\n\n'.join(msgs) + _NOTIFY_FOOTER
+        if msgs:
+            full_msg = header + notice_text + '\n\n'.join(msgs) + _NOTIFY_FOOTER
+        elif notice_text:
+            full_msg = (
+                header
+                + notice_text
+                + '現在、予報データ元へのアクセス制限により、個別干場の予報本文を取得できませんでした。'
+                  '時間を置いてアプリまたはLINEメニューから最新予報をご確認ください。'
+                + _NOTIFY_FOOTER
+            )
+        else:
+            skipped += 1
+            continue
 
         # Per-user dedup: even if notify_all() is called twice (e.g. two
         # containers overlap during deploy), each user gets at most 1 message

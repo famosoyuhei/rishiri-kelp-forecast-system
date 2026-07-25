@@ -478,6 +478,42 @@ def test_notify_all_includes_optional_notice(tmp_sub_file, monkeypatch):
     assert "外部API制限" in pushed[0]
 
 
+def test_notify_all_sends_notice_when_forecast_unavailable(tmp_sub_file, monkeypatch):
+    """A manual incident notice should still be delivered if forecasts are unavailable."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+    monkeypatch.setattr(li, "get_forecast_for_spot", lambda lat, lon: [])
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_notice_only", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening", notice="本日の16時通知は遅れて再送しています。")
+
+    assert result["sent"] == 1
+    assert "予報本文を取得できませんでした" in pushed[0]
+
+
 # ---------------------------------------------------------------------------
 # parse_command — new commands
 # ---------------------------------------------------------------------------
