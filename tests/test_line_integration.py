@@ -568,7 +568,8 @@ def test_fetch_forecast_with_retry_succeeds_after_transient_failures(monkeypatch
     result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
 
     assert len(attempts) == 3
-    assert len(result) == 2
+    assert result["status"] == "ok"
+    assert len(result["data"]) == 2
 
 
 def test_fetch_forecast_with_retry_gives_up_after_max_attempts(monkeypatch):
@@ -583,7 +584,8 @@ def test_fetch_forecast_with_retry_gives_up_after_max_attempts(monkeypatch):
     monkeypatch.setattr(li, "get_forecast_for_spot", always_fails)
     result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
 
-    assert result == []
+    assert result["status"] == "empty"
+    assert result["data"] == []
     assert len(attempts) == li._FORECAST_FETCH_MAX_ATTEMPTS
 
 
@@ -597,7 +599,81 @@ def test_fetch_forecast_with_retry_survives_exception(monkeypatch):
     monkeypatch.setattr(li, "get_forecast_for_spot", raises)
     result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
 
-    assert result == []
+    assert result["status"] == "empty"
+    assert result["data"] == []
+
+
+def test_fetch_forecast_with_retry_does_not_retry_429(monkeypatch):
+    """Open-Meteo 429 は同一実行内で再試行しない。"""
+    from open_meteo_guard import OpenMeteoRateLimitError
+
+    monkeypatch.setattr(li.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError("no sleep")))
+    attempts = []
+
+    def rate_limited(lat, lon):
+        attempts.append(1)
+        raise OpenMeteoRateLimitError(
+            http_status=429,
+            retry_after_raw="120",
+            retry_after_at="2026-07-26T00:07:00Z",
+            source="line",
+            occurred_at="2026-07-26T00:00:00Z",
+            body_excerpt="Too Many Requests",
+            consecutive_429_count=1,
+        )
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", rate_limited)
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert result["status"] == "rate_limited"
+    assert len(attempts) == 1
+
+
+def test_notify_all_stops_remaining_spots_after_first_429(tmp_sub_file, monkeypatch):
+    """1地点目で429なら同じ通知実行内の残り地点を取得しない。"""
+    from datetime import datetime, timezone, timedelta
+    from open_meteo_guard import OpenMeteoRateLimitError
+
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 12, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_try_notify_run_lock", lambda kind, date: True)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1, "buraku": "", "district": "", "town": ""},
+    )
+    monkeypatch.setattr(li.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError("no retry sleep")))
+
+    calls = []
+
+    def rate_limited(lat, lon):
+        calls.append((lat, lon))
+        raise OpenMeteoRateLimitError(
+            http_status=429,
+            retry_after_raw=None,
+            retry_after_at="2026-07-26T00:30:00Z",
+            source="line",
+            occurred_at="2026-07-26T00:00:00Z",
+            body_excerpt="",
+            consecutive_429_count=1,
+        )
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", rate_limited)
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_rl", {"notify_enabled": True, "spots": ["H_A", "H_B"]})
+
+    result = li.notify_all("evening")
+
+    assert len(calls) == 1
+    assert result["sent"] == 1
+    assert "予報本文を取得できませんでした" in pushed[0]
 
 
 # ---------------------------------------------------------------------------

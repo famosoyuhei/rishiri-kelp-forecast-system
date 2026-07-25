@@ -32,6 +32,12 @@ from datetime import datetime, timezone, timedelta
 
 import requests as _requests
 
+from open_meteo_guard import (
+    OpenMeteoCircuitOpenError,
+    OpenMeteoRateLimitError,
+    guarded_get,
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -388,7 +394,7 @@ def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tup
     return score, 'poor'
 
 
-def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
+def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line') -> list:
     """
     Fetch simplified 7-day drying forecast from Open-Meteo.
     Returns list of daily dicts with keys:
@@ -403,9 +409,13 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20) -> list:
         f'&timezone=Asia%2FTokyo&forecast_days=7'
     )
     try:
-        resp = _requests.get(url, timeout=timeout)
+        resp = guarded_get(url, source=source, logger=logger, requests_module=_requests, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
+    except OpenMeteoRateLimitError:
+        raise
+    except OpenMeteoCircuitOpenError:
+        raise
     except Exception as e:
         logger.error('Open-Meteo request failed for (%.4f, %.4f): %s', lat, lon, e)
         return []
@@ -2151,15 +2161,25 @@ _FORECAST_FETCH_MAX_ATTEMPTS = 3
 _FORECAST_FETCH_RETRY_DELAYS = (2, 5)  # 各リトライ前の待機秒数（合計7秒+リクエスト時間）
 
 
-def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> list:
+def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> dict:
     """
     get_forecast_for_spot() を短い間隔でリトライする。1回失敗しただけで
     その干場の通知を諦めないための共通ヘルパー（notify_all() 専用）。
+
+    ただしOpen-Meteoの429は別扱い。最初の429で同一実行内の再試行を止め、
+    呼び出し側が残り地点取得も中止できるよう status=rate_limited を返す。
     """
     fcs = []
     for attempt in range(_FORECAST_FETCH_MAX_ATTEMPTS):
         try:
             fcs = get_forecast_for_spot(lat, lon)
+        except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as _rl_err:
+            retry_after_at = getattr(_rl_err, 'retry_after_at', None)
+            logger.error(
+                'notify_all: Open-Meteo rate limit/circuit for %s (attempt %d/%d); no retry in this run',
+                spot_id, attempt + 1, _FORECAST_FETCH_MAX_ATTEMPTS,
+            )
+            return {'status': 'rate_limited', 'data': [], 'retry_after_at': retry_after_at}
         except Exception as _fc_err:
             logger.error(
                 'notify_all: get_forecast_for_spot raised for %s (attempt %d/%d): %s',
@@ -2167,7 +2187,7 @@ def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> list:
             )
             fcs = []
         if fcs and len(fcs) >= 2:  # 当日(day0)・翌日(day1)の両方が揃っていること
-            return fcs
+            return {'status': 'ok', 'data': fcs}
         if attempt < len(_FORECAST_FETCH_RETRY_DELAYS):
             logger.warning(
                 'notify_all: forecast short/empty for %s (attempt %d/%d), retrying in %ds…',
@@ -2179,7 +2199,7 @@ def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> list:
         'notify_all: all %d attempts failed for %s',
         _FORECAST_FETCH_MAX_ATTEMPTS, spot_id,
     )
-    return fcs or []
+    return {'status': 'empty', 'data': fcs or []}
 
 
 def notify_all(kind: str, notice: str = '') -> dict:
@@ -2225,6 +2245,9 @@ def notify_all(kind: str, notice: str = '') -> dict:
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
     forecast_cache = {}
+    open_meteo_blocked = False
+    processed_spots = 0
+    aborted_spots = 0
 
     for key, sub in subs.items():
         if not sub.get('notify_enabled', False):
@@ -2266,6 +2289,13 @@ def notify_all(kind: str, notice: str = '') -> dict:
         source_type_sub = sub.get('source_type', 'user')
         msgs = []
         for sid in spot_ids[:5]:  # max 5 spots per push（LINE 5000文字制限内）
+            if open_meteo_blocked:
+                aborted_spots += 1
+                logger.info(
+                    '[open_meteo] {"source":"line","event":"circuit_open","processed_count":%d,"remaining_count":%d}',
+                    processed_spots, aborted_spots,
+                )
+                continue
             spot = find_spot_by_id(sid)
             if not spot:
                 logger.warning('notify_all: spot %s not found in CSV — registration may be stale', sid)
@@ -2278,8 +2308,18 @@ def notify_all(kind: str, notice: str = '') -> dict:
             else:
                 # 429/一時エラーではすぐ諦めない。数分遅れても確実に届けることを
                 # 優先し、短い間隔で複数回リトライする（_fetch_forecast_with_retry）。
-                fcs = _fetch_forecast_with_retry(spot['lat'], spot['lon'], sid)
+                fetch_result = _fetch_forecast_with_retry(spot['lat'], spot['lon'], sid)
+                if fetch_result.get('status') == 'rate_limited':
+                    open_meteo_blocked = True
+                    forecast_cache[sid] = []
+                    logger.info(
+                        '[open_meteo] {"source":"line","event":"circuit_open","processed_count":%d,"remaining_count":%d}',
+                        processed_spots, aborted_spots,
+                    )
+                    continue
+                fcs = fetch_result.get('data') or []
                 forecast_cache[sid] = fcs
+                processed_spots += 1
 
             if fcs and len(fcs) > day_number:
                 try:
