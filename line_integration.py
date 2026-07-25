@@ -37,6 +37,13 @@ from open_meteo_guard import (
     OpenMeteoRateLimitError,
     guarded_get,
 )
+from open_meteo_prefetch import (
+    LINE_DAILY_VARS,
+    LINE_HOURLY_VARS,
+    bool_env as _prefetch_bool_env,
+    line_forecast_request,
+    load_prefetch,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -317,12 +324,8 @@ def find_spots_by_area(area: str) -> list:
 # Forecast (lightweight, calls Open-Meteo directly)
 # ---------------------------------------------------------------------------
 
-_OPEN_METEO_DAILY = (
-    'temperature_2m_max,temperature_2m_min,'
-    'wind_speed_10m_max,relative_humidity_2m_mean,'
-    'precipitation_sum,precipitation_probability_max'
-)
-_OPEN_METEO_HOURLY = 'relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation'
+_OPEN_METEO_DAILY = LINE_DAILY_VARS
+_OPEN_METEO_HOURLY = LINE_HOURLY_VARS
 
 _COMPASS_16_EN = [
     'N', 'NNE', 'NE', 'ENE',
@@ -401,24 +404,37 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str
         date, day_number, precipitation, min_humidity, avg_wind,
         wind_direction_period, pop, score, suitability
     """
-    url = (
-        f'https://api.open-meteo.com/v1/forecast'
-        f'?latitude={lat}&longitude={lon}'
-        f'&daily={_OPEN_METEO_DAILY}'
-        f'&hourly={_OPEN_METEO_HOURLY}'
-        f'&timezone=Asia%2FTokyo&forecast_days=7'
-    )
-    try:
-        resp = guarded_get(url, source=source, logger=logger, requests_module=_requests, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-    except OpenMeteoRateLimitError:
-        raise
-    except OpenMeteoCircuitOpenError:
-        raise
-    except Exception as e:
-        logger.error('Open-Meteo request failed for (%.4f, %.4f): %s', lat, lon, e)
-        return []
+    req = line_forecast_request(lat, lon)
+    prefetch_meta = None
+    if _prefetch_bool_env('OPEN_METEO_PREFETCH_ENABLED', default=False):
+        data, prefetch_meta = load_prefetch(req)
+        if data is not None:
+            logger.info(
+                '[open_meteo_prefetch] event=hit source=%s age_minutes=%s stale=%s',
+                source, prefetch_meta.get('age_minutes'), prefetch_meta.get('stale'),
+            )
+        else:
+            logger.info(
+                '[open_meteo_prefetch] event=miss source=%s reason=%s direct_fetch_skipped=%s',
+                source, prefetch_meta.get('reason'), _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False),
+            )
+            if _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False):
+                return []
+    else:
+        data = None
+
+    if data is None:
+        try:
+            resp = guarded_get(req.url(), source=source, logger=logger, requests_module=_requests, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except OpenMeteoRateLimitError:
+            raise
+        except OpenMeteoCircuitOpenError:
+            raise
+        except Exception as e:
+            logger.error('Open-Meteo request failed for (%.4f, %.4f): %s', lat, lon, e)
+            return []
 
     daily = data.get('daily', {})
     hourly = data.get('hourly', {})
@@ -478,6 +494,7 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str
                 'pop': pop,
                 'score': score,
                 'suitability': suitability,
+                'prefetch': prefetch_meta,
             })
         except Exception as _day_err:
             logger.warning(
@@ -1105,6 +1122,13 @@ def format_single_day(spot_name: str, fc: dict) -> str:
         rain_line = f'☔ 雨なし{pop_note}'
     wind_direction = fc.get('wind_direction_period')
     wind_direction_note = f'（{wind_direction}）' if wind_direction else ''
+    prefetch = fc.get('prefetch') if isinstance(fc.get('prefetch'), dict) else {}
+    stale_note = []
+    if prefetch.get('stale'):
+        stale_note = [
+            '',
+            '現在、予報データ更新が一時停止しているため、直近に取得した予報を使用しています。',
+        ]
     lines = [
         f'【{spot_name} {date_lbl}】',
         f'{label}（{fc["score"]}点）',
@@ -1112,6 +1136,7 @@ def format_single_day(spot_name: str, fc: dict) -> str:
         rain_line,
         f'💨 風: 平均{fc["avg_wind"]}m/s{wind_direction_note}',
         f'💦 湿度: {fc["min_humidity"]}%（最低）',
+        *stale_note,
         '',
         _LINE_DISCLAIMER,
     ]
