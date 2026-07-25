@@ -3761,11 +3761,19 @@ _ALLOWED_HOURS = [4, 7, 10, 13, 16]  # JST hours allowed for non-score field typ
 
 # Redis helpers for field cache (Upstash REST API).
 # Falls back silently to in-memory when Upstash env vars are absent.
-_FC_KEY_PREFIX = 'fc:'
+#
+# 2026-08-05: _FC_KEY_PREFIX bumped 'fc:' -> 'fc2:' (schema v2). The old prefix's
+# entries were written with a broken _fc_redis_set() payload format (see below)
+# and must never be read again; bumping the prefix moves to a fresh Redis key
+# namespace so stale/corrupt 'fc:*' entries are simply never looked up (they
+# just expire naturally under their original TTL). Do not reuse 'fc:' or 'fc2:'
+# for an incompatible schema in the future without bumping again.
+_FC_KEY_PREFIX = 'fc2:'
 
 
 def _fc_redis_get(key: str):
-    """Fetch JSON value from Upstash Redis via REST GET. Returns None on any error."""
+    """Fetch JSON value from Upstash Redis via REST GET. Returns None on any error
+    (network failure, timeout, non-200, undecodable JSON) — never raises."""
     rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
     token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
     if not rest_url or not token:
@@ -3776,6 +3784,8 @@ def _fc_redis_get(key: str):
             headers={'Authorization': f'Bearer {token}'},
             timeout=2,
         )
+        if resp.status_code != 200:
+            return None
         result = resp.json().get('result')
         if result is None:
             return None
@@ -3785,21 +3795,43 @@ def _fc_redis_get(key: str):
 
 
 def _fc_redis_set(key: str, data, ttl: int) -> bool:
-    """Store JSON value in Upstash Redis with EX TTL. Returns True on success."""
+    """
+    Store JSON value in Upstash Redis with EX TTL.
+
+    Sends the full Redis command as a JSON array in Redis's own argument
+    order to Upstash's REST command endpoint: ["SET", key, value, "EX", ttl].
+
+    2026-08-05 fix: the previous implementation POSTed ["EX", ttl, payload]
+    to /set/<key>, mixing Upstash's two REST calling conventions (path-style
+    single command vs. body-style full command array). Upstash did not
+    interpret that as SET's EX option — it stored the literal array itself
+    as the value, corrupting every cache entry written through this
+    function (discovered via a production 500/503 on /api/forecast and
+    /api/analysis/field). See FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md
+    and this session's hotfix commits for the incident writeup.
+
+    Returns True only when Upstash confirms the write with {"result": "OK"}
+    (Redis's own SET success reply) — a 200 status code alone is not
+    sufficient, since Upstash returns 200 with an error payload for some
+    failure modes too. Never raises; any failure -> False (caller already
+    treats a failed write as "couldn't cache this time", not fatal).
+    """
     rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
     token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
     if not rest_url or not token:
         return False
+    full_key = f'{_FC_KEY_PREFIX}{key}'
     try:
         payload = json.dumps(data, ensure_ascii=False)
         resp = requests.post(
-            f'{rest_url}/set/{_FC_KEY_PREFIX}{key}',
+            rest_url,
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
-            json=['EX', ttl, payload],
+            json=['SET', full_key, payload, 'EX', str(ttl)],
             timeout=2,
         )
-        # Upstash REST SET with EX uses pipeline-style: POST /set/KEY ["EX", N, "value"]
-        return resp.status_code == 200
+        if resp.status_code != 200:
+            return False
+        return resp.json().get('result') == 'OK'
     except Exception:
         return False
 
@@ -3935,21 +3967,44 @@ def _obs_redis_scan_keys(pattern: str) -> list:
 
 
 def _field_cache_get(key: str):
-    """Hybrid cache read: Redis primary → in-memory fallback."""
+    """
+    Hybrid cache read: Redis primary → in-memory fallback.
+
+    Only ever returns a dict or None — never a list, string, or any other
+    type a caller might blindly index with ['key']. A malformed stored value
+    (wrong type after Redis round-trip, corrupted write, etc.) is treated as
+    a cache miss and logged (type only — never the payload contents or any
+    credential) rather than propagated, so a bad cache entry degrades to an
+    extra fetch instead of crashing the request. See _fc_redis_set()'s
+    docstring for the 2026-08-05 incident this guards against.
+    """
     # 1. Try Redis (shared across workers)
     redis_val = _fc_redis_get(key)
     if redis_val is not None:
-        # Warm local memory cache for same-process subsequent calls
-        _analysis_field_cache[key] = {
-            'data': redis_val,
-            'expires': datetime.now(JST) + timedelta(seconds=_FIELD_CACHE_TTL),
-        }
-        return redis_val
+        if isinstance(redis_val, dict):
+            # Warm local memory cache for same-process subsequent calls
+            _analysis_field_cache[key] = {
+                'data': redis_val,
+                'expires': datetime.now(JST) + timedelta(seconds=_FIELD_CACHE_TTL),
+            }
+            return redis_val
+        app.logger.warning(
+            '[field-cache] malformed Redis value for key=%s (type=%s); treating as miss',
+            key, type(redis_val).__name__,
+        )
+        # Fall through to in-memory fallback below rather than failing outright.
+
     # 2. Local in-memory fallback
     now = datetime.now(JST)
     entry = _analysis_field_cache.get(key)
     if entry and now < entry['expires']:
-        return entry['data']
+        data = entry['data']
+        if isinstance(data, dict):
+            return data
+        app.logger.warning(
+            '[field-cache] malformed in-memory value for key=%s (type=%s); treating as miss',
+            key, type(data).__name__,
+        )
     _analysis_field_cache.pop(key, None)
     return None
 
@@ -4563,20 +4618,15 @@ def _get_summit_hourly_temps() -> dict | None:
     cache_key = 'summit_forecast_temps'
     cached = _field_cache_get(cache_key)
     if cached is not None:
-        # dict型であることを確認してからコピーする。本番のRedis経由キャッシュが
-        # 想定外の型（'time'/'temperature_2m'キーを持たない、例: list）を返す
-        # 既知の問題があるため（2026-08-05発見、_fc_redis_set()のUpstash REST
-        # ペイロード形式に起因する疑いあり、要別途調査）、その場合は不正な値を
-        # 使わず「取得失敗」として扱い、フェーン計算側の既存フォールバック
-        # （summit_forecast=None → foehn_hours=0）に委ねる。
-        if isinstance(cached, dict) and 'time' in cached and 'temperature_2m' in cached:
-            cached_copy = dict(cached)
+        # _field_cache_get() already guarantees a dict here; this only checks
+        # for this cache entry's own required keys (defense in depth against
+        # a schema mismatch, e.g. an entry written by older/different code).
+        if 'time' in cached and 'temperature_2m' in cached:
+            cached_copy = dict(cached)  # 診断用フィールドだけ上書きしたコピーを返す（キャッシュ本体は変更しない）
             cached_copy['_cache_hit'] = True
             return cached_copy
         app.logger.warning(
-            '[summit_forecast] cache returned malformed value, type=%s (repr[:200]=%r); '
-            'treating as cache miss and re-fetching',
-            type(cached).__name__, repr(cached)[:200],
+            '[summit_forecast] cached value missing required keys; treating as cache miss'
         )
     try:
         url = (
@@ -5400,11 +5450,18 @@ def get_analysis_field():
             }), 400
 
     # キャッシュヒット確認（外部APIコールをスキップ）
+    # _field_cache_get() は dict または None のみを返す。'status'/'type' は
+    # response_data 構築時に必ず含まれるキー（下記）— このキャッシュ固有の
+    # 必須キーチェック（防御的、schema mismatch対策）。
     cache_key = f'{field_type}:{day}:{hour}'
     cached = _field_cache_get(cache_key)
-    if cached:
-        cached['cache'] = {'hit': True}
-        return jsonify(cached)
+    if cached and 'status' in cached and 'type' in cached:
+        # キャッシュ本体を変更しないよう、コピーしてからレスポンス用情報を追加する
+        # （2026-08-05修正: 以前は cached['cache']=... で共有オブジェクトを直接
+        # 変更しており、in-memoryキャッシュを汚染する不具合があった）。
+        cached_copy = dict(cached)
+        cached_copy['cache'] = {'hit': True}
+        return jsonify(cached_copy)
 
     target_date = _field_target_date(day)
 
