@@ -23,8 +23,9 @@
 | 10 | 🟡 MAJOR | 社員13 | `imageDiv.innerHTML` に `data.message` を直接inject（XSSリスク低いが原則違反） | 2026-05-28 | **✅修正済(2026-05-31)** `_esc(data.message)` に変更（ルールF準拠） |
 | 11 | 🔴 MAJOR | フェーン多変数整合性監査担当 | `_build_rishiri_grid()`の山頂座標(45.1800/141.2392)がPR#19で統一したはずの`SUMMIT_LAT/LON`(45.1786/141.2419)と不一致。`_compute_score_field()`側のフェーン温位差計算に系統誤差(概算+1.67℃、較正レンジ1.384℃より大)混入 | 2026-08-04 | **✅修正済(2026-08-04)** `_CLAT/_CLON`を`SUMMIT_LAT/SUMMIT_LON`参照に変更。`tests/test_leeward_solar_boost.py`17件全パス、`check_consistency.py`全通過を確認 |
 | 12 | 🟡 MINOR | フェーン多変数整合性監査担当 | `local_risk_adjustments.notes`（フェーン補正の説明文）がkelp_drying_map.htmlのどこにも表示されない。島内分布ツールチップは霧補正のみ表示 | 2026-08-04 | **✅修正済(2026-08-04)** `renderRiskNotes()`を追加し干場詳細パネルに内訳表示。実際にフェーン適用中の干場(H_1021_2473)のライブデータで動作確認済み |
-| 13 | 🟢 MINOR | フェーン多変数整合性監査担当 | `_get_summit_hourly_temps()`と`_fetch_open_meteo_multi()`で山頂気温取得のモデル指定が不統一（後者のみ`models=jma_seamless`明示） | 2026-08-04 | 見送り。片方だけ修正すると同一経路内（干場vs山頂）で新たな不整合を生むため、単独修正は非推奨と判断（対応するなら`get_forecast()`全体のモデル指定を見直す広い変更が必要） |
+| 13 | 🟢 MINOR | フェーン多変数整合性監査担当 | `_get_summit_hourly_temps()`と`_fetch_open_meteo_multi()`で山頂気温取得のモデル指定が不統一（`auto` vs `jma_seamless`明示） | 2026-08-04 | 局所修正は見送り（片方だけ直すと同一経路内で新たな不整合を生むため）。2026-08-04にChatGPTへ再検証依頼し妥当性確認。ただし「無期限放置」ではなく分類不一致率の影計測が推奨されている（未実装） |
 | 14 | 🟡 MINOR | フェーン多変数整合性監査担当 | `get_forecast()`内で`stage_analysis['overall_score']`に霧/フェーン/SST補正を直接加算していたが、`predicted_completion_time`は補正前の値から既に文字列確定済みのため、`estimated_drying_time`（UIの「🕒 予測乾燥時間」表示、実際に表示されている）が古いまま更新されない矛盾があった | 2026-08-04 | **✅修正済(2026-08-04)** `stage_analysis['overall_score']`への直接補正を削除し、`calculate_stage_based_drying_assessment()`が返す生の値のまま保持（overall_scoreとpredicted_completion_timeが常に整合）。`foehn_bonus`等の表示用内訳値は引き続き算出 |
+| 15 | 🟠 MAJOR候補 | フェーン多変数整合性監査担当（ChatGPT再検証で新規発見） | `_get_summit_hourly_temps()`の30分キャッシュ(`_field_cache_get/set`)と、干場側の毎回フレッシュ取得の間で、Open-Meteoのモデル実行世代がズレるタイミングが理論上あり得る（`/api/forecast`経路のみ。`_compute_score_field()`は全点を同一並列取得のため対象外）。`theta_spot - theta_summit`が異なる実行世代同士の比較になり得る | 2026-08-04 | 未着手・未計測。頻度は低いと推定（モデル更新は数時間おき、キャッシュTTLは30分）が定量評価はしていない。対応するなら取得時刻ベースの診断ログ追加を検討（キャッシュTTLを闇雲に短縮するのは非推奨、APIコスト増） |
 
 ---
 
