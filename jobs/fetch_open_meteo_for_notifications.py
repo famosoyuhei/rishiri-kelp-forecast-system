@@ -181,7 +181,14 @@ def fetch_one(target: dict, session=requests) -> tuple[bool, str]:
     if not redis_set_json(req.redis_key, record, TTL_SECONDS):
         log_event(event="cache_write", api_type=req.api_type, status="failed", elapsed_ms=elapsed_ms)
         return False, "cache_write_failed"
-    log_event(event="success", api_type=req.api_type, status="ok", elapsed_ms=elapsed_ms, cache_write_count=1)
+    log_event(
+        event="success",
+        api_type=req.api_type,
+        status="ok",
+        elapsed_ms=elapsed_ms,
+        cache_write_count=1,
+        fetched_at=record["fetched_at"],
+    )
     return True, "ok"
 
 

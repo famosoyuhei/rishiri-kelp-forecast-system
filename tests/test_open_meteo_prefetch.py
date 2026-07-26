@@ -264,6 +264,26 @@ def test_invalid_response_is_not_saved_by_job(monkeypatch):
     assert writes == []
 
 
+def test_job_success_log_contains_safe_fetched_at(monkeypatch, capsys):
+    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://redis.example.invalid")
+    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "token")
+    resp = MagicMock(status_code=200)
+    resp.json.return_value = sample_open_meteo()
+    session = MagicMock()
+    session.get.return_value = resp
+    monkeypatch.setattr(job, "redis_set_json", lambda *args, **kwargs: True)
+
+    ok, reason = job.fetch_one({"lat": 45.1, "lon": 141.1}, session=session)
+
+    assert ok is True
+    assert reason == "ok"
+    out = capsys.readouterr().out
+    assert '"event": "success"' in out
+    assert '"fetched_at":' in out
+    assert "redis.example.invalid" not in out
+    assert "temperature_2m_max" not in out
+
+
 def test_workflow_contains_expected_cron_times():
     text = (job.ROOT / ".github" / "workflows" / "fetch-open-meteo-cache.yml").read_text(encoding="utf-8")
     assert 'cron: "30 6 * * *"' in text   # 15:30 JST
