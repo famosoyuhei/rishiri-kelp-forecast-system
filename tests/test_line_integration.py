@@ -287,6 +287,29 @@ def test_get_forecast_for_spot_prefers_enhanced_when_enabled(monkeypatch):
     assert result[0]["forecast_source"] == "web_enhanced"
 
 
+def test_get_forecast_for_spot_honors_enhanced_canary_spot_ids(monkeypatch):
+    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
+    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_CANARY")
+    monkeypatch.setattr(
+        li,
+        "_get_enhanced_forecast_for_spot",
+        lambda lat, lon, spot_id="": [{"date": "2026-07-27", "day_number": 1, "score": 92,
+                                      "suitability": "excellent", "forecast_source": "web_enhanced"}],
+    )
+    monkeypatch.setattr(
+        li,
+        "_get_simple_forecast_for_spot",
+        lambda *a, **k: [{"date": "2026-07-27", "day_number": 1, "score": 82, "suitability": "good"}],
+    )
+
+    canary = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_CANARY")
+    non_canary = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_OTHER")
+
+    assert canary[0]["forecast_source"] == "web_enhanced"
+    assert non_canary[0]["score"] == 82
+    assert non_canary[0].get("forecast_source") != "web_enhanced"
+
+
 def test_get_forecast_for_spot_falls_back_to_simple_when_enhanced_fails(monkeypatch):
     monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
     monkeypatch.setattr(

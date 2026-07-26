@@ -411,8 +411,16 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return value.strip().lower() in _TRUE_VALUES
 
 
-def _line_web_forecast_enabled(source: str) -> bool:
-    return source == 'line' and _bool_env('LINE_WEB_FORECAST_ENABLED', default=False)
+def _csv_env_set(name: str) -> set[str]:
+    value = os.environ.get(name, '')
+    return {item.strip() for item in value.split(',') if item.strip()}
+
+
+def _line_web_forecast_enabled(source: str, spot_id: str = '') -> bool:
+    if source != 'line' or not _bool_env('LINE_WEB_FORECAST_ENABLED', default=False):
+        return False
+    canary_spots = _csv_env_set('LINE_WEB_FORECAST_CANARY_SPOT_IDS')
+    return not canary_spots or spot_id in canary_spots
 
 
 def _safe_num(value, default=None):
@@ -589,7 +597,7 @@ def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, sou
 def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line',
                           spot_id: str = '') -> list:
     """Fetch LINE forecast days, preferring corrected web logic when enabled."""
-    if _line_web_forecast_enabled(source):
+    if _line_web_forecast_enabled(source, spot_id=spot_id):
         try:
             days = _get_enhanced_forecast_for_spot(lat, lon, spot_id=spot_id)
             if days:
