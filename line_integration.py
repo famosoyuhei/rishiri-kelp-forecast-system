@@ -540,7 +540,7 @@ def _date_label(date_str: str, day_number: int) -> str:
         return date_str
 
 
-_LINE_DISCLAIMER = '※LINE簡易予報（Webアプリと値が異なる場合あり）'
+_LINE_DISCLAIMER = '※現在は臨時のLINE簡易予報です。フェーン・地形補正を含むWeb予報と異なる場合があります。'
 
 _NOTIFY_FOOTER = (
     '\n─────────────\n'

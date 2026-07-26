@@ -221,6 +221,12 @@ def test_format_single_day_contains_score():
     assert "H_1631_1434" in msg
 
 
+def test_line_disclaimer_mentions_temporary_simple_forecast():
+    msg = li.format_single_day("H_1631_1434", _sample_fc())
+    assert "臨時のLINE簡易予報" in msg
+    assert "フェーン・地形補正を含むWeb予報と異なる場合があります" in msg
+
+
 def test_format_single_day_poor_shows_rain():
     fc = _sample_fc(suitability="poor", score=10, precip=2.5)
     msg = li.format_single_day("H_1631_1434", fc)
