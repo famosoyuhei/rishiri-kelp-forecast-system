@@ -25,6 +25,10 @@ Implemented foundation:
 
 - `line_web_forecast_compare.compare_line_and_web_forecast(line_day, web_day)`
   compares one LINE simplified day with one web forecast day or `daily_summary`.
+- `line_web_forecast_compare.compare_line_and_web_forecasts(line_days, web_days)`
+  compares all matching days.
+- `line_web_forecast_compare.log_shadow_comparison(...)` emits only aggregate,
+  safe JSON fields when explicitly enabled.
 - It is pure and does not fetch Open-Meteo, call Render, read Redis, or send
   LINE messages.
 - It captures:
@@ -33,13 +37,22 @@ Implemented foundation:
   - whether LINE daily precipitation differs from its 04:00-16:00 precipitation
   - whether web precipitation differs from LINE 04:00-16:00 precipitation
 
+Feature flag:
+
+```text
+LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED=false
+```
+
+This flag is off by default.  Turning it on must not fetch web forecasts by
+itself; it only permits logging when a caller has already supplied both LINE
+and web forecast outputs.
+
 Next Stage 1 work:
 
-- Add an opt-in shadow comparison runner that uses already available forecast
-  outputs.
+- Wire the opt-in shadow comparison to an already available web-equivalent
+  output source.
 - Keep it disabled by default.
 - Log only safe aggregate fields:
-  - date
   - score delta
   - suitability changed
   - foehn present

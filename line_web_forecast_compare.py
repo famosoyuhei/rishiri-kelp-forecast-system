@@ -7,6 +7,8 @@ notification behavior.
 """
 from __future__ import annotations
 
+import json
+import os
 from typing import Any
 
 
@@ -90,3 +92,100 @@ def compare_line_and_web_forecast(line_day: dict, web_day: dict) -> dict:
             ),
         },
     }
+
+
+def _index_days(days: list[dict]) -> dict:
+    indexed = {}
+    for day in days or []:
+        if not isinstance(day, dict):
+            continue
+        key = day.get("date")
+        if key is None:
+            key = day.get("day_number")
+        if key is not None:
+            indexed[key] = day
+    return indexed
+
+
+def compare_line_and_web_forecasts(line_days: list[dict], web_days: list[dict]) -> list[dict]:
+    """Compare all matching LINE and web forecast days.
+
+    Matching prefers ``date`` and falls back to ``day_number`` when date is
+    absent.  Unmatched days are ignored so callers can pass partial web output
+    safely during shadow-mode experiments.
+    """
+    web_by_key = _index_days(web_days)
+    results = []
+    for line_day in line_days or []:
+        if not isinstance(line_day, dict):
+            continue
+        key = line_day.get("date")
+        if key is None:
+            key = line_day.get("day_number")
+        web_day = web_by_key.get(key)
+        if web_day is not None:
+            results.append(compare_line_and_web_forecast(line_day, web_day))
+    return results
+
+
+def shadow_compare_enabled(env: dict | None = None) -> bool:
+    """Feature flag for future LINE-vs-web shadow comparison.
+
+    The default is intentionally off.  Enabling this flag must not by itself
+    fetch web forecasts; it only permits logging comparisons when both sides
+    have already been supplied by the caller.
+    """
+    source = env if env is not None else os.environ
+    return str(source.get("LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED", "false")).strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def shadow_comparison_summary(comparisons: list[dict], *, source: str = "line") -> dict:
+    """Return log-safe aggregate fields for shadow comparison output."""
+    score_deltas = [
+        _num(item.get("diff", {}).get("score_abs_delta"))
+        for item in comparisons or []
+        if isinstance(item, dict)
+    ]
+    score_deltas = [value for value in score_deltas if value is not None]
+    return {
+        "source": source,
+        "event": "line_web_shadow_compare",
+        "matched_days": len(comparisons or []),
+        "max_score_abs_delta": _round(max(score_deltas), 1) if score_deltas else None,
+        "suitability_changed_count": sum(
+            1 for item in comparisons or []
+            if isinstance(item, dict) and item.get("diff", {}).get("suitability_changed") is True
+        ),
+        "foehn_present_count": sum(
+            1 for item in comparisons or []
+            if isinstance(item, dict) and item.get("diff", {}).get("foehn_present_in_web") is True
+        ),
+        "precip_window_mismatch_count": sum(
+            1 for item in comparisons or []
+            if isinstance(item, dict)
+            and (
+                item.get("diff", {}).get("line_daily_precip_differs_from_0416") is True
+                or item.get("diff", {}).get("web_precip_differs_from_line_0416") is True
+            )
+        ),
+    }
+
+
+def log_shadow_comparison(logger, line_days: list[dict], web_days: list[dict], *,
+                          source: str = "line", enabled: bool | None = None) -> dict | None:
+    """Log a safe aggregate LINE-vs-web comparison when explicitly enabled.
+
+    This helper is intentionally side-effect-light: it performs no external
+    requests and logs no coordinates, URLs, raw forecast payloads, Redis values,
+    or LINE user identifiers.
+    """
+    if enabled is None:
+        enabled = shadow_compare_enabled()
+    if not enabled:
+        return None
+    comparisons = compare_line_and_web_forecasts(line_days, web_days)
+    summary = shadow_comparison_summary(comparisons, source=source)
+    logger.info("[line_web_shadow] %s", json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return summary

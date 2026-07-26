@@ -1,4 +1,8 @@
 from line_web_forecast_compare import compare_line_and_web_forecast
+from line_web_forecast_compare import compare_line_and_web_forecasts
+from line_web_forecast_compare import log_shadow_comparison
+from line_web_forecast_compare import shadow_compare_enabled
+from line_web_forecast_compare import shadow_comparison_summary
 
 
 def test_compare_line_and_web_forecast_flags_foehn_score_gap():
@@ -68,3 +72,92 @@ def test_compare_line_and_web_forecast_flags_daily_vs_working_precip_gap():
     assert result["diff"]["web_precip_differs_from_line_0416"] is False
     assert result["diff"]["score_abs_delta"] == 64
     assert result["diff"]["foehn_present_in_web"] is False
+
+
+def test_compare_line_and_web_forecasts_matches_by_date_and_ignores_unmatched():
+    line_days = [
+        {"date": "2026-07-26", "score": 70, "suitability": "good"},
+        {"date": "2026-07-27", "score": 80, "suitability": "excellent"},
+    ]
+    web_days = [
+        {"date": "2026-07-26", "daily_summary": {"drying_score": 72, "suitability": "good"}},
+    ]
+
+    results = compare_line_and_web_forecasts(line_days, web_days)
+
+    assert len(results) == 1
+    assert results[0]["date"] == "2026-07-26"
+    assert results[0]["diff"]["score_delta_web_minus_line"] == 2
+
+
+def test_shadow_compare_flag_defaults_off():
+    assert shadow_compare_enabled({}) is False
+    assert shadow_compare_enabled({"LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED": "false"}) is False
+    assert shadow_compare_enabled({"LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED": "true"}) is True
+
+
+def test_shadow_comparison_summary_contains_only_safe_aggregates():
+    comparisons = [
+        {
+            "diff": {
+                "score_abs_delta": 14,
+                "suitability_changed": True,
+                "foehn_present_in_web": True,
+                "line_daily_precip_differs_from_0416": False,
+                "web_precip_differs_from_line_0416": False,
+            }
+        },
+        {
+            "diff": {
+                "score_abs_delta": 3,
+                "suitability_changed": False,
+                "foehn_present_in_web": False,
+                "line_daily_precip_differs_from_0416": True,
+                "web_precip_differs_from_line_0416": False,
+            }
+        },
+    ]
+
+    summary = shadow_comparison_summary(comparisons, source="line")
+
+    assert summary == {
+        "source": "line",
+        "event": "line_web_shadow_compare",
+        "matched_days": 2,
+        "max_score_abs_delta": 14,
+        "suitability_changed_count": 1,
+        "foehn_present_count": 1,
+        "precip_window_mismatch_count": 1,
+    }
+
+
+class _Logger:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, template, message):
+        self.messages.append((template, message))
+
+
+def test_log_shadow_comparison_is_noop_when_disabled():
+    logger = _Logger()
+
+    result = log_shadow_comparison(logger, [], [], enabled=False)
+
+    assert result is None
+    assert logger.messages == []
+
+
+def test_log_shadow_comparison_logs_safe_json_when_enabled():
+    logger = _Logger()
+    line_days = [{"date": "2026-07-26", "score": 70, "suitability": "good"}]
+    web_days = [{"date": "2026-07-26", "daily_summary": {"drying_score": 85, "suitability": "excellent"}}]
+
+    result = log_shadow_comparison(logger, line_days, web_days, enabled=True)
+
+    assert result["matched_days"] == 1
+    assert result["max_score_abs_delta"] == 15
+    assert logger.messages
+    assert "line_web_shadow_compare" in logger.messages[0][1]
+    assert "2026-07-26" not in logger.messages[0][1]
+    assert "coordinates" not in logger.messages[0][1]
