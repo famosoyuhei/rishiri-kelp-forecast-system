@@ -648,6 +648,79 @@ def test_notify_all_shadow_log_uses_safe_aggregates(tmp_sub_file, monkeypatch, c
     assert "U_shadow_safe" not in messages
 
 
+def test_notify_all_continues_when_shadow_compare_raises(tmp_sub_file, monkeypatch, caplog):
+    """Shadow comparison must never block LINE notification generation."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 16, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(li, "_try_notify_run_lock", lambda kind, target_date: True)
+    monkeypatch.setattr(li, "load_subscriptions", lambda: {
+        "user:U_shadow_error": {
+            "source_type": "user",
+            "source_id": "U_shadow_error",
+            "notify_enabled": True,
+            "spots": ["H_1631_1434"],
+        }
+    })
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+    monkeypatch.setattr(
+        li,
+        "get_forecast_for_spot",
+        lambda lat, lon: [
+            {
+                "date": "2026-07-01",
+                "day_number": 0,
+                "suitability": "good",
+                "score": 80,
+                "precipitation": 0,
+                "min_humidity": 70,
+                "avg_wind": 3.5,
+                "pop": None,
+            },
+            {
+                "date": "2026-07-02",
+                "day_number": 1,
+                "suitability": "good",
+                "score": 82,
+                "precipitation": 0,
+                "min_humidity": 68,
+                "avg_wind": 3.2,
+                "pop": None,
+            },
+        ],
+    )
+    monkeypatch.setattr(li, "_load_web_history_days_for_shadow", lambda sid, date: (_ for _ in ()).throw(RuntimeError("boom")))
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+
+    with caplog.at_level("INFO", logger=li.__name__):
+        result = li.notify_all("evening")
+
+    assert result["sent"] == 1
+    assert pushed
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=compare status=error type=RuntimeError" in messages
+
+
 def test_notify_all_includes_optional_notice(tmp_sub_file, monkeypatch):
     """Manual resend can include a one-time operator notice."""
     from datetime import datetime, timezone, timedelta

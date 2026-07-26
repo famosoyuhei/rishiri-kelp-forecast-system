@@ -2394,14 +2394,20 @@ def notify_all(kind: str, notice: str = '') -> dict:
                 try:
                     if sid not in shadow_compared_spots:
                         shadow_compared_spots.add(sid)
-                        web_days = _load_web_history_days_for_shadow(sid, target_date_str)
-                        if web_days:
-                            log_shadow_comparison(
-                                logger,
-                                fcs,
-                                web_days,
-                                source='line_notify',
-                                enabled=True,
+                        try:
+                            web_days = _load_web_history_days_for_shadow(sid, target_date_str)
+                            if web_days:
+                                log_shadow_comparison(
+                                    logger,
+                                    fcs,
+                                    web_days,
+                                    source='line_notify',
+                                    enabled=True,
+                                )
+                        except Exception as _shadow_err:
+                            logger.info(
+                                '[line_web_shadow] event=compare status=error type=%s',
+                                type(_shadow_err).__name__,
                             )
                     fc = fcs[day_number]
                     if kind == 'evening':
