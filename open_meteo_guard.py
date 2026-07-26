@@ -161,7 +161,6 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def get_circuit() -> dict | None:
-    global _MEM_CIRCUIT
     if not is_enabled():
         return None
     data = _redis_get(CIRCUIT_KEY)
