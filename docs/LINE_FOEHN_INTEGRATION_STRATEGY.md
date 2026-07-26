@@ -59,6 +59,16 @@ Next Stage 1 work:
   - precipitation-window mismatch
   - no coordinates, URLs, payloads, Redis values, or LINE user identifiers
 
+Important provenance rule:
+
+- `forecast_history` is a mixed store.
+- Records saved from `/api/forecast` are marked `logic_source=web_forecast` and
+  can be adapted with `web_day_from_forecast_history(...)`.
+- Records saved by the 16:20 all-spot snapshot are currently
+  `logic_source=line_simplified`; they are useful for accuracy continuity but
+  must not be treated as web-equivalent foehn-corrected output.
+- Legacy records without `logic_source` must be skipped for shadow comparison.
+
 ## Stage 2: Extract Web Domain Logic
 
 Goal: avoid duplicating foehn logic in LINE.

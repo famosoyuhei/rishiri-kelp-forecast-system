@@ -969,6 +969,8 @@ def _save_forecast_history(spot_name, forecasts):
         # hourly_details は 04:00-16:00 の時別データのみ（13時間）
         precip_0416 = round(sum(h.get('precipitation') or 0 for h in hourly), 2)
         record = {
+            'logic_source':     'web_forecast',
+            'shadow_compare_eligible': True,
             'forecast_date':    today_str,
             'target_date':      fc['date'],
             'day_number':       fc['day_number'],
@@ -979,6 +981,8 @@ def _save_forecast_history(spot_name, forecasts):
             'precipitation_0416': precip_0416,                         # 04:00-16:00 積算（実測比較用）
             'drying_score':     fc['daily_summary']['drying_score'],
             'suitability':      fc['daily_summary']['suitability'],
+            'foehn_bonus':      fc['daily_summary'].get('foehn_bonus'),
+            'foehn_adjustment': (fc['daily_summary'].get('local_risk_adjustments') or {}).get('foehn_adjustment'),
         }
         # ローカルファイルに保存（副）
         try:
@@ -1066,6 +1070,8 @@ def _save_daily_forecast_snapshot():
             target_date_str = fc['date'].replace('-', '')
             redis_key = f'forecast:hist:{name}:{target_date_str}'
             record = {
+                'logic_source':       'line_simplified',
+                'shadow_compare_eligible': False,
                 'forecast_date':      today_str,
                 'target_date':        fc['date'],
                 'day_number':         fc['day_number'],
@@ -1076,6 +1082,8 @@ def _save_daily_forecast_snapshot():
                 'precipitation_0416': fc.get('precipitation_0416', fc.get('precipitation')),
                 'drying_score':       fc.get('score'),
                 'suitability':        fc.get('suitability'),
+                'foehn_bonus':        None,
+                'foehn_adjustment':   None,
             }
             planned_records.append((redis_key, record))
         _time.sleep(0.3)  # Open-Meteo レート制限を避ける（2026-08-05: 0.1→0.3、低速化）

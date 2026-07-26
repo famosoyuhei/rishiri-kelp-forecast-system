@@ -3,6 +3,7 @@ from line_web_forecast_compare import compare_line_and_web_forecasts
 from line_web_forecast_compare import log_shadow_comparison
 from line_web_forecast_compare import shadow_compare_enabled
 from line_web_forecast_compare import shadow_comparison_summary
+from line_web_forecast_compare import web_day_from_forecast_history
 
 
 def test_compare_line_and_web_forecast_flags_foehn_score_gap():
@@ -72,6 +73,35 @@ def test_compare_line_and_web_forecast_flags_daily_vs_working_precip_gap():
     assert result["diff"]["web_precip_differs_from_line_0416"] is False
     assert result["diff"]["score_abs_delta"] == 64
     assert result["diff"]["foehn_present_in_web"] is False
+
+
+def test_web_day_from_forecast_history_accepts_only_web_forecast_records():
+    record = {
+        "logic_source": "web_forecast",
+        "target_date": "2026-07-26",
+        "day_number": 0,
+        "max_temp": 23.5,
+        "min_humidity": 72,
+        "avg_wind": 4.2,
+        "precipitation": 3.0,
+        "precipitation_0416": 0.0,
+        "drying_score": 88,
+        "suitability": "excellent",
+        "foehn_bonus": 12,
+        "foehn_adjustment": 12,
+    }
+
+    web_day = web_day_from_forecast_history(record)
+
+    assert web_day["date"] == "2026-07-26"
+    assert web_day["daily_summary"]["precipitation"] == 0.0
+    assert web_day["daily_summary"]["drying_score"] == 88
+    assert web_day["daily_summary"]["local_risk_adjustments"]["foehn_adjustment"] == 12
+
+
+def test_web_day_from_forecast_history_rejects_line_and_legacy_records():
+    assert web_day_from_forecast_history({"logic_source": "line_simplified"}) is None
+    assert web_day_from_forecast_history({"drying_score": 88}) is None
 
 
 def test_compare_line_and_web_forecasts_matches_by_date_and_ignores_unmatched():

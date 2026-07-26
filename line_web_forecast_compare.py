@@ -30,6 +30,36 @@ def _web_summary(web_day: dict) -> dict:
     return summary if isinstance(summary, dict) else (web_day if isinstance(web_day, dict) else {})
 
 
+def web_day_from_forecast_history(record: dict) -> dict | None:
+    """Convert a saved forecast-history record into a web-day shape.
+
+    Only records explicitly marked as ``logic_source=web_forecast`` are accepted.
+    The 16:20 all-spot snapshot currently stores LINE simplified values, and
+    older records have no provenance, so both must be skipped for shadow
+    comparison.
+    """
+    if not isinstance(record, dict):
+        return None
+    if record.get("logic_source") != "web_forecast":
+        return None
+    return {
+        "date": record.get("target_date"),
+        "day_number": record.get("day_number"),
+        "daily_summary": {
+            "temperature_max": record.get("max_temp"),
+            "humidity": record.get("min_humidity"),
+            "wind_speed": record.get("avg_wind"),
+            "precipitation": record.get("precipitation_0416", record.get("precipitation")),
+            "drying_score": record.get("drying_score"),
+            "suitability": record.get("suitability"),
+            "foehn_bonus": record.get("foehn_bonus"),
+            "local_risk_adjustments": {
+                "foehn_adjustment": record.get("foehn_adjustment"),
+            },
+        },
+    }
+
+
 def compare_line_and_web_forecast(line_day: dict, web_day: dict) -> dict:
     """Return a serializable difference summary for one forecast day.
 

@@ -354,6 +354,45 @@ def test_forecast_snapshot_sheets_returns_saved_rows(monkeypatch):
     assert data["rows"][0]["forecast_rain_0416"] is False
 
 
+def test_save_forecast_history_marks_web_forecast_provenance(tmp_path, monkeypatch):
+    import start
+
+    history_dir = tmp_path / "forecast_history"
+    written = {}
+    forecast = {
+        "date": "2026-06-30",
+        "day_number": 1,
+        "daily_summary": {
+            "temperature_max": 18.5,
+            "precipitation": 2.0,
+            "drying_score": 86,
+            "suitability": "excellent",
+            "foehn_bonus": 12,
+            "local_risk_adjustments": {"foehn_adjustment": 12},
+        },
+        "hourly_details": [
+            {"humidity": 82, "wind_speed": 3.2, "precipitation": 0.0},
+            {"humidity": 76, "wind_speed": 4.0, "precipitation": 0.0},
+        ],
+    }
+
+    monkeypatch.setattr(start, "FORECAST_HISTORY_DIR", str(history_dir))
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: [])
+    monkeypatch.setattr(start, "_obs_redis_set", lambda key, value: written.update({key: value}) or True)
+
+    start._save_forecast_history("H_1631_1434", [forecast])
+
+    saved_file = next((history_dir / "H_1631_1434").glob("forecast_*_for_20260630.json"))
+    saved = json.loads(saved_file.read_text(encoding="utf-8"))
+    assert saved["logic_source"] == "web_forecast"
+    assert saved["shadow_compare_eligible"] is True
+    assert saved["precipitation_0416"] == 0.0
+    assert saved["foehn_bonus"] == 12
+    assert saved["foehn_adjustment"] == 12
+    redis_record = written["forecast:hist:H_1631_1434:20260630"][0]
+    assert redis_record["logic_source"] == "web_forecast"
+
+
 def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
     import start
     import sys
@@ -401,6 +440,11 @@ def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
     assert data["result"]["planned_records"] == 1
     assert data["result"]["saved_records"] == 1
     assert list(written.keys()) == ["forecast:hist:H_1631_1434:20260630"]
+    record = written["forecast:hist:H_1631_1434:20260630"][0]
+    assert record["logic_source"] == "line_simplified"
+    assert record["shadow_compare_eligible"] is False
+    assert record["foehn_bonus"] is None
+    assert record["foehn_adjustment"] is None
 
 
 def test_forecast_snapshot_manual_run_requires_secret_on_render(monkeypatch):
