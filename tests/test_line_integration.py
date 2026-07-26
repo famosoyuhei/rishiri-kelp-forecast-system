@@ -542,6 +542,112 @@ def test_notify_all_shadow_compares_same_spot_once(tmp_sub_file, monkeypatch):
     assert shadow_calls[0][3] is True
 
 
+def test_notify_all_shadow_log_uses_safe_aggregates(tmp_sub_file, monkeypatch, caplog):
+    """End-to-end shadow log must not expose spot ids, dates, Redis URL, or payload."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 16, 0, 0, tzinfo=JST)
+
+    monkeypatch.setenv("LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED", "true")
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "load_subscriptions", lambda: {
+        "user:U_shadow_safe": {
+            "source_type": "user",
+            "source_id": "U_shadow_safe",
+            "notify_enabled": True,
+            "spots": ["H_1631_1434"],
+        }
+    })
+    monkeypatch.setattr(li, "_try_notify_run_lock", lambda kind, target_date: True)
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+    monkeypatch.setattr(li, "_upstash_url", lambda: "https://redis.example.invalid")
+    monkeypatch.setattr(li, "_upstash_token", lambda: "token")
+    monkeypatch.setattr(li, "_upstash_set", lambda *a, **k: True)
+    monkeypatch.setattr(
+        li._requests,
+        "post",
+        lambda *a, **k: type("R", (), {"status_code": 200, "json": lambda self: [{"result": "OK"}]})(),
+    )
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+    monkeypatch.setattr(
+        li,
+        "get_forecast_for_spot",
+        lambda lat, lon: [
+            {
+                "date": "2026-07-01",
+                "day_number": 0,
+                "suitability": "good",
+                "score": 80,
+                "precipitation": 0,
+                "min_humidity": 70,
+                "avg_wind": 3.5,
+                "pop": None,
+            },
+            {
+                "date": "2026-07-02",
+                "day_number": 1,
+                "suitability": "good",
+                "score": 82,
+                "precipitation": 0,
+                "min_humidity": 68,
+                "avg_wind": 3.2,
+                "pop": None,
+            },
+        ],
+    )
+    records = [
+        {
+            "logic_source": "web_forecast",
+            "target_date": "2026-07-02",
+            "day_number": 1,
+            "drying_score": 90,
+            "suitability": "excellent",
+            "precipitation_0416": 0.0,
+            "foehn_bonus": 12,
+            "foehn_adjustment": 12,
+        }
+    ]
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {"result": json.dumps(records)}
+
+    monkeypatch.setattr(li._requests, "get", lambda *a, **k: _Resp())
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+
+    with caplog.at_level("INFO", logger=li.__name__):
+        result = li.notify_all("evening")
+
+    assert result["sent"] == 1
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "line_web_shadow_compare" in messages
+    assert "max_score_abs_delta" in messages
+    assert "foehn_present_count" in messages
+    assert "H_1631_1434" not in messages
+    assert "2026-07-02" not in messages
+    assert "redis.example.invalid" not in messages
+    assert "temperature_2m" not in messages
+    assert "U_shadow_safe" not in messages
+
+
 def test_notify_all_includes_optional_notice(tmp_sub_file, monkeypatch):
     """Manual resend can include a one-time operator notice."""
     from datetime import datetime, timezone, timedelta
