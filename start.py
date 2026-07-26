@@ -1561,6 +1561,33 @@ def get_forecast():
             'status': 'error'
         }, 503
 
+
+def get_enhanced_forecasts_for_line(lat: float, lon: float, spot_name: str = '') -> list:
+    """Return the same corrected forecast payload as /api/forecast for LINE.
+
+    This is a thin in-process adapter so LINE can reuse the web forecast's
+    foehn, terrain, fog, SST, and drying-score path without duplicating domain
+    logic.  It intentionally returns the raw web forecast days; LINE-specific
+    text shaping stays in line_integration.py.
+    """
+    query = {'lat': str(lat), 'lon': str(lon)}
+    if spot_name:
+        query['name'] = spot_name
+    with app.test_request_context('/api/forecast', query_string=query):
+        result = get_forecast()
+    status_code = 200
+    payload = result
+    if isinstance(result, tuple):
+        payload, status_code = result[0], result[1]
+    if status_code != 200 or not isinstance(payload, dict):
+        message = payload.get('message') if isinstance(payload, dict) else 'unknown error'
+        raise RuntimeError(f'enhanced forecast unavailable: {message}')
+    forecasts = payload.get('forecasts')
+    if not isinstance(forecasts, list):
+        raise RuntimeError('enhanced forecast response missing forecasts')
+    return forecasts
+
+
 def calculate_enhanced_drying_score(temp_max, humidity, wind_speed, precipitation, lat, lon,
                                     avg_solar_radiation=None, pop_max=None, elevation=None):
     """Enhanced drying score with terrain corrections.

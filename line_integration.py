@@ -10,11 +10,11 @@ Environment variables required:
                                  Exposed via /api/line/status for the web UI banner.
 
 NOTE on forecast accuracy:
-    This module uses a *simplified* forecast (LINE簡易予報) that calls Open-Meteo
-    directly with the validated thresholds (precip=0mm, min_hum≤94%, avg_wind≥2.0m/s).
-    It does NOT apply the full terrain correction, onshore-wind bonus, stage analysis,
-    or fog-risk scoring found in /api/forecast.  Scores may differ by ±10–15 points.
-    See README.md "LINE通知連携" for details.
+    By default this module keeps the temporary simplified forecast path used for
+    operational resilience.  When LINE_WEB_FORECAST_ENABLED=true, notification
+    forecasts are first generated through the same corrected /api/forecast
+    domain path used by the web app, then converted to LINE text.  If that path
+    fails, LINE falls back to the simplified prefetch/direct path.
 
 Subscription data is persisted in line_subscriptions.json (not mixed with
 existing 4-file CSV sync system).
@@ -51,6 +51,8 @@ from line_web_forecast_compare import (
 )
 
 logger = logging.getLogger(__name__)
+
+_TRUE_VALUES = {'1', 'true', 'yes', 'on'}
 
 # ---------------------------------------------------------------------------
 # Configuration helpers — read from environment at call time so that
@@ -402,7 +404,81 @@ def _simple_score(precip: float, min_humidity: float, avg_wind_ms: float) -> tup
     return score, 'poor'
 
 
-def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line') -> list:
+def _bool_env(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in _TRUE_VALUES
+
+
+def _line_web_forecast_enabled(source: str) -> bool:
+    return source == 'line' and _bool_env('LINE_WEB_FORECAST_ENABLED', default=False)
+
+
+def _safe_num(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _web_forecast_day_to_line_day(day: dict) -> dict:
+    """Convert one web /api/forecast day into the existing LINE day schema."""
+    summary = day.get('daily_summary') if isinstance(day.get('daily_summary'), dict) else {}
+    hourly = day.get('hourly_details') if isinstance(day.get('hourly_details'), list) else []
+    humidity_values = [
+        _safe_num(h.get('humidity'))
+        for h in hourly
+        if isinstance(h, dict) and _safe_num(h.get('humidity')) is not None
+    ]
+    wind_values = [
+        _safe_num(h.get('wind_speed'))
+        for h in hourly
+        if isinstance(h, dict) and _safe_num(h.get('wind_speed')) is not None
+    ]
+    wind_direction_samples = []
+    for sample_time in ('06:00', '13:00'):
+        sample = next((h for h in hourly if isinstance(h, dict) and h.get('time') == sample_time), None)
+        direction = _safe_num(sample.get('wind_direction')) if sample else None
+        if direction is not None:
+            wind_direction_samples.append(direction)
+
+    score = summary.get('drying_score')
+    pop = summary.get('precipitation_probability')
+    line_day = {
+        'date': day.get('date'),
+        'day_number': day.get('day_number'),
+        'precipitation': round(_safe_num(summary.get('precipitation'), 0.0), 1),
+        'precipitation_0416': round(_safe_num(summary.get('precipitation'), 0.0), 2),
+        'max_temp': summary.get('temperature_max'),
+        'min_humidity': round(min(humidity_values), 1) if humidity_values else summary.get('humidity'),
+        'avg_wind': round(sum(wind_values) / len(wind_values), 1) if wind_values else round(_safe_num(summary.get('wind_speed'), 0.0), 1),
+        'wind_direction_period': _wind_direction_period(wind_direction_samples),
+        'pop': int(pop) if isinstance(pop, (int, float)) else pop,
+        'score': int(round(score)) if isinstance(score, (int, float)) else score,
+        'suitability': summary.get('suitability'),
+        'forecast_source': 'web_enhanced',
+        'foehn_adjustment': (summary.get('local_risk_adjustments') or {}).get('foehn_adjustment'),
+        'foehn_bonus': summary.get('foehn_bonus'),
+    }
+    if line_day['date'] is None or line_day['day_number'] is None:
+        raise ValueError('web forecast day missing date/day_number')
+    if line_day['score'] is None or line_day['suitability'] is None:
+        raise ValueError('web forecast day missing score/suitability')
+    return line_day
+
+
+def _get_enhanced_forecast_for_spot(lat: float, lon: float, spot_id: str = '') -> list:
+    """Fetch corrected web forecast days in-process and convert to LINE schema."""
+    from start import get_enhanced_forecasts_for_line
+
+    web_days = get_enhanced_forecasts_for_line(lat, lon, spot_name=spot_id)
+    return [_web_forecast_day_to_line_day(day) for day in web_days]
+
+
+def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line') -> list:
     """
     Fetch simplified 7-day drying forecast from Open-Meteo.
     Returns list of daily dicts with keys:
@@ -509,6 +585,27 @@ def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str
             # Continue to next day rather than aborting entire forecast
     return days
 
+
+def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line',
+                          spot_id: str = '') -> list:
+    """Fetch LINE forecast days, preferring corrected web logic when enabled."""
+    if _line_web_forecast_enabled(source):
+        try:
+            days = _get_enhanced_forecast_for_spot(lat, lon, spot_id=spot_id)
+            if days:
+                logger.info('[line_web_forecast] event=success source=%s days=%d', source, len(days))
+                return days
+        except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+            raise
+        except Exception as exc:
+            if not _bool_env('LINE_WEB_FORECAST_FALLBACK_SIMPLE', default=True):
+                raise
+            logger.warning(
+                '[line_web_forecast] event=fallback_to_simple source=%s type=%s',
+                source, type(exc).__name__,
+            )
+    return _get_simple_forecast_for_spot(lat, lon, timeout=timeout, source=source)
+
 # ---------------------------------------------------------------------------
 # Message formatting helpers
 # ---------------------------------------------------------------------------
@@ -546,6 +643,13 @@ def _date_label(date_str: str, day_number: int) -> str:
 
 
 _LINE_DISCLAIMER = '※現在は臨時のLINE簡易予報です。フェーン・地形補正を含むWeb予報と異なる場合があります。'
+_LINE_ENHANCED_DISCLAIMER = '※フェーン・地形補正を含むWeb予報と同じ判定を使用しています。'
+
+
+def _line_disclaimer_for_forecast(fc: dict) -> str:
+    if fc.get('forecast_source') == 'web_enhanced':
+        return _LINE_ENHANCED_DISCLAIMER
+    return _LINE_DISCLAIMER
 
 _NOTIFY_FOOTER = (
     '\n─────────────\n'
@@ -1143,7 +1247,7 @@ def format_single_day(spot_name: str, fc: dict) -> str:
         f'💦 湿度: {fc["min_humidity"]}%（最低）',
         *stale_note,
         '',
-        _LINE_DISCLAIMER,
+        _line_disclaimer_for_forecast(fc),
     ]
     return '\n'.join(lines)
 
@@ -1272,7 +1376,8 @@ def format_single_day_with_diff(spot_name: str, fc: dict, snapshot: 'dict | None
         note = '⚠️ 16時予報から変化:\n' + '\n'.join(f'・{c}' for c in changes)
     else:
         note = '16時予報から大きな変化なし'
-    return base.replace(_LINE_DISCLAIMER, f'{note}\n\n{_LINE_DISCLAIMER}')
+    disclaimer = _line_disclaimer_for_forecast(fc)
+    return base.replace(disclaimer, f'{note}\n\n{disclaimer}')
 
 
 def format_weekly_summary(spot_name: str, forecasts: list) -> str:
@@ -1285,7 +1390,7 @@ def format_weekly_summary(spot_name: str, forecasts: list) -> str:
         lines.append(f'{date_lbl} {label} {fc["score"]}点{rain}')
     good_days = [fc for fc in forecasts if fc['suitability'] in ('excellent', 'good')]
     lines.append(f'\n✅ 干せそうな日: {len(good_days)}/{len(forecasts)}日')
-    lines.append(_LINE_DISCLAIMER)
+    lines.append(_line_disclaimer_for_forecast(forecasts[0]) if forecasts else _LINE_DISCLAIMER)
     return '\n'.join(lines)
 
 
@@ -1301,7 +1406,7 @@ def format_area_summary(area: str, day_number: int, spots_forecasts: list) -> st
     elif spots_forecasts:
         worst = max(spots_forecasts, key=lambda sf: sf['fc']['score'])
         lines.append(f"最良でも: {worst['spot']['name']} スコア{worst['fc']['score']}")
-    lines.append(_LINE_DISCLAIMER)
+    lines.append(_line_disclaimer_for_forecast(spots_forecasts[0]['fc']) if spots_forecasts else _LINE_DISCLAIMER)
     return '\n'.join(lines)
 
 # ---------------------------------------------------------------------------
@@ -1882,7 +1987,7 @@ def handle_area_query(area: str, day: int | None) -> str:
         best_sf = max(spots_forecasts, key=lambda sf: sf['fc']['score'])
         lines.append(f"最良: {best_sf['spot']['name']} スコア{best_sf['fc']['score']}")
         lines.append('\n「今週」で週間予報も確認できます')
-        lines.append(_LINE_DISCLAIMER)
+        lines.append(_line_disclaimer_for_forecast(best_sf['fc']))
         return '\n'.join(lines)
 
     return format_area_summary(area, target_day, spots_forecasts)
@@ -1898,7 +2003,10 @@ def format_area_weekly_summary(area: str, days_data: list) -> str:
     for d in days_data:
         date_lbl = _date_label(d['date'], d['day_number'])
         lines.append(f"{date_lbl} 干せそう: {d['good_count']}/{d['total']}地点")
-    lines.append(_LINE_DISCLAIMER)
+    if days_data and days_data[0].get('forecast_source') == 'web_enhanced':
+        lines.append(_LINE_ENHANCED_DISCLAIMER)
+    else:
+        lines.append(_LINE_DISCLAIMER)
     return '\n'.join(lines)
 
 
@@ -1927,6 +2035,7 @@ def handle_area_weekly(area: str) -> str:
             'day_number': i,
             'good_count': good_count,
             'total': len(day_fcs),
+            'forecast_source': day_fcs[0].get('forecast_source'),
         })
     return format_area_weekly_summary(area, days_data)
 
@@ -2240,7 +2349,12 @@ def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> dict:
     fcs = []
     for attempt in range(_FORECAST_FETCH_MAX_ATTEMPTS):
         try:
-            fcs = get_forecast_for_spot(lat, lon)
+            try:
+                fcs = get_forecast_for_spot(lat, lon, spot_id=spot_id)
+            except TypeError as te:
+                if 'spot_id' not in str(te):
+                    raise
+                fcs = get_forecast_for_spot(lat, lon)
         except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as _rl_err:
             retry_after_at = getattr(_rl_err, 'retry_after_at', None)
             logger.error(

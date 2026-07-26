@@ -227,6 +227,123 @@ def test_line_disclaimer_mentions_temporary_simple_forecast():
     assert "フェーン・地形補正を含むWeb予報と異なる場合があります" in msg
 
 
+def test_enhanced_line_forecast_uses_web_disclaimer():
+    fc = _sample_fc()
+    fc["forecast_source"] = "web_enhanced"
+    msg = li.format_single_day("H_1631_1434", fc)
+    assert "Web予報と同じ判定" in msg
+    assert "臨時のLINE簡易予報" not in msg
+
+
+def test_web_forecast_day_to_line_day_uses_corrected_score_and_work_hours():
+    web_day = {
+        "date": "2026-07-27",
+        "day_number": 1,
+        "daily_summary": {
+            "temperature_max": 24.0,
+            "humidity": 78,
+            "wind_speed": 5.0,
+            "precipitation": 0.0,
+            "precipitation_probability": 0,
+            "drying_score": 92,
+            "suitability": "excellent",
+            "foehn_bonus": 12,
+            "local_risk_adjustments": {"foehn_adjustment": 12},
+        },
+        "hourly_details": [
+            {"time": "04:00", "humidity": 80, "wind_speed": 2.0, "wind_direction": 90},
+            {"time": "06:00", "humidity": 72, "wind_speed": 3.0, "wind_direction": 100},
+            {"time": "13:00", "humidity": 75, "wind_speed": 4.0, "wind_direction": 45},
+        ],
+    }
+
+    line_day = li._web_forecast_day_to_line_day(web_day)
+
+    assert line_day["forecast_source"] == "web_enhanced"
+    assert line_day["score"] == 92
+    assert line_day["suitability"] == "excellent"
+    assert line_day["min_humidity"] == 72
+    assert line_day["avg_wind"] == 3.0
+    assert line_day["wind_direction_period"] == "E→NE"
+    assert line_day["foehn_adjustment"] == 12
+
+
+def test_get_forecast_for_spot_prefers_enhanced_when_enabled(monkeypatch):
+    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
+    monkeypatch.setattr(
+        li,
+        "_get_enhanced_forecast_for_spot",
+        lambda lat, lon, spot_id="": [{"date": "2026-07-27", "day_number": 1, "score": 92,
+                                      "suitability": "excellent", "forecast_source": "web_enhanced"}],
+    )
+    monkeypatch.setattr(
+        li,
+        "_get_simple_forecast_for_spot",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("simple path should not run")),
+    )
+
+    result = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_TEST")
+
+    assert result[0]["forecast_source"] == "web_enhanced"
+
+
+def test_get_forecast_for_spot_falls_back_to_simple_when_enhanced_fails(monkeypatch):
+    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
+    monkeypatch.setattr(
+        li,
+        "_get_enhanced_forecast_for_spot",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("web unavailable")),
+    )
+    monkeypatch.setattr(
+        li,
+        "_get_simple_forecast_for_spot",
+        lambda *a, **k: [{"date": "2026-07-27", "day_number": 1, "score": 82, "suitability": "good"}],
+    )
+
+    result = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_TEST")
+
+    assert result[0]["score"] == 82
+    assert result[0].get("forecast_source") != "web_enhanced"
+
+
+def test_notify_all_formats_enhanced_forecast_when_enabled(tmp_sub_file, monkeypatch):
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 26, 16, 0, 0, tzinfo=JST)
+
+    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_try_notify_run_lock", lambda kind, target_date: True)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {"id": sid, "name": sid, "lat": 45.1, "lon": 141.1, "buraku": "", "district": "", "town": ""},
+    )
+    monkeypatch.setattr(
+        li,
+        "_get_enhanced_forecast_for_spot",
+        lambda lat, lon, spot_id="": [
+            {**_sample_fc(0, score=90, suitability="excellent"), "forecast_source": "web_enhanced"},
+            {**_sample_fc(1, score=92, suitability="excellent"), "forecast_source": "web_enhanced"},
+        ],
+    )
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_enhanced", {"notify_enabled": True, "spots": ["H_WEB"]})
+
+    result = li.notify_all("evening")
+
+    assert result["sent"] == 1
+    assert "92点" in pushed[0]
+    assert "Web予報と同じ判定" in pushed[0]
+    assert "臨時のLINE簡易予報" not in pushed[0]
+
+
 def test_format_single_day_poor_shows_rain():
     fc = _sample_fc(suitability="poor", score=10, precip=2.5)
     msg = li.format_single_day("H_1631_1434", fc)
