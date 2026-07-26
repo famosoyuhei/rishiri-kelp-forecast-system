@@ -69,6 +69,15 @@ Important provenance rule:
   must not be treated as web-equivalent foehn-corrected output.
 - Legacy records without `logic_source` must be skipped for shadow comparison.
 
+LINE notification hook:
+
+- `notify_all()` may read `forecast:hist:{spot_id}:{target_YYYYMMDD}` only when
+  `LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED=true`.
+- This hook never calls `/api/forecast` and never fetches Open-Meteo.
+- If no eligible `logic_source=web_forecast` record exists, it does nothing.
+- Within one notification run, each spot is shadow-compared at most once even
+  when multiple subscribers register the same spot.
+
 ## Stage 2: Extract Web Domain Logic
 
 Goal: avoid duplicating foehn logic in LINE.

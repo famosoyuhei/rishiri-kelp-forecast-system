@@ -44,6 +44,11 @@ from open_meteo_prefetch import (
     line_forecast_request,
     load_prefetch,
 )
+from line_web_forecast_compare import (
+    log_shadow_comparison,
+    shadow_compare_enabled,
+    web_day_from_forecast_history,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1182,6 +1187,44 @@ def _load_evening_snapshot(spot_id: str, target_date_str: str) -> 'dict | None':
     return _upstash_get(key)
 
 
+def _load_web_history_days_for_shadow(spot_id: str, target_date_str: str) -> list:
+    """Load existing web-forecast history for shadow comparison.
+
+    This never fetches weather data.  It reads only the Redis history key and
+    accepts records explicitly marked as logic_source=web_forecast.  It avoids
+    _upstash_get() so the Redis key, which includes a spot identifier, is not
+    emitted in logs.
+    """
+    if not shadow_compare_enabled() or not _upstash_available():
+        return []
+    target_yyyymmdd = target_date_str.replace('-', '')
+    key = f'forecast:hist:{spot_id}:{target_yyyymmdd}'
+    try:
+        resp = _requests.get(
+            f'{_upstash_url()}/get/{key}',
+            headers={'Authorization': f'Bearer {_upstash_token()}'},
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            logger.info('[line_web_shadow] event=history_read status=non_200')
+            return []
+        raw = resp.json().get('result')
+        if raw is None:
+            return []
+        records = raw if isinstance(raw, list) else json.loads(raw)
+        if not isinstance(records, list):
+            return []
+        web_days = []
+        for record in records:
+            web_day = web_day_from_forecast_history(record)
+            if web_day is not None:
+                web_days.append(web_day)
+        return web_days
+    except Exception as exc:
+        logger.info('[line_web_shadow] event=history_read status=error type=%s', type(exc).__name__)
+        return []
+
+
 def _diff_from_snapshot(fc: dict, snap: dict) -> list:
     """16時予報(snap)と現在(01:30時点, fc)を比較し、大きく変わった項目の説明行を返す。"""
     changes = []
@@ -2270,6 +2313,7 @@ def notify_all(kind: str, notice: str = '') -> dict:
     subs = load_subscriptions()
     sent, failed, skipped = 0, 0, 0
     forecast_cache = {}
+    shadow_compared_spots = set()
     open_meteo_blocked = False
     processed_spots = 0
     aborted_spots = 0
@@ -2348,6 +2392,17 @@ def notify_all(kind: str, notice: str = '') -> dict:
 
             if fcs and len(fcs) > day_number:
                 try:
+                    if sid not in shadow_compared_spots:
+                        shadow_compared_spots.add(sid)
+                        web_days = _load_web_history_days_for_shadow(sid, target_date_str)
+                        if web_days:
+                            log_shadow_comparison(
+                                logger,
+                                fcs,
+                                web_days,
+                                source='line_notify',
+                                enabled=True,
+                            )
                     fc = fcs[day_number]
                     if kind == 'evening':
                         # 01:30通知での比較用に、16:00時点の予報を保存しておく。

@@ -424,6 +424,124 @@ def test_notify_all_caches_same_spot_within_run(tmp_sub_file, monkeypatch):
     assert len(calls) == 1
 
 
+def test_shadow_history_loader_is_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED", raising=False)
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+    monkeypatch.setattr(li._requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no redis read")))
+
+    assert li._load_web_history_days_for_shadow("H_1631_1434", "2026-07-02") == []
+
+
+def test_shadow_history_loader_accepts_only_web_forecast_records(monkeypatch):
+    monkeypatch.setenv("LINE_WEB_FORECAST_SHADOW_COMPARE_ENABLED", "true")
+    monkeypatch.setattr(li, "_upstash_available", lambda: True)
+    monkeypatch.setattr(li, "_upstash_url", lambda: "https://redis.example.invalid")
+    monkeypatch.setattr(li, "_upstash_token", lambda: "token")
+    records = [
+        {
+            "logic_source": "web_forecast",
+            "target_date": "2026-07-02",
+            "day_number": 1,
+            "drying_score": 86,
+            "suitability": "excellent",
+            "precipitation_0416": 0.0,
+        },
+        {
+            "logic_source": "line_simplified",
+            "target_date": "2026-07-02",
+            "day_number": 1,
+            "drying_score": 72,
+            "suitability": "good",
+        },
+    ]
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {"result": json.dumps(records)}
+
+    monkeypatch.setattr(li._requests, "get", lambda *a, **k: _Resp())
+
+    web_days = li._load_web_history_days_for_shadow("H_1631_1434", "2026-07-02")
+
+    assert len(web_days) == 1
+    assert web_days[0]["daily_summary"]["drying_score"] == 86
+
+
+def test_notify_all_shadow_compares_same_spot_once(tmp_sub_file, monkeypatch):
+    """Shadow comparison uses existing history and does not duplicate per subscriber."""
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 1, 16, 0, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li,
+        "find_spot_by_id",
+        lambda sid: {
+            "id": sid,
+            "name": sid,
+            "lat": 45.1,
+            "lon": 141.1,
+            "buraku": "",
+            "district": "",
+            "town": "",
+        },
+    )
+    monkeypatch.setattr(
+        li,
+        "get_forecast_for_spot",
+        lambda lat, lon: [
+            {
+                "date": "2026-07-01",
+                "day_number": 0,
+                "suitability": "good",
+                "score": 80,
+                "precipitation": 0,
+                "min_humidity": 70,
+                "avg_wind": 3.5,
+                "pop": None,
+            },
+            {
+                "date": "2026-07-02",
+                "day_number": 1,
+                "suitability": "good",
+                "score": 82,
+                "precipitation": 0,
+                "min_humidity": 68,
+                "avg_wind": 3.2,
+                "pop": None,
+            },
+        ],
+    )
+    monkeypatch.setattr(li, "_load_web_history_days_for_shadow", lambda sid, date: [
+        {"date": date, "day_number": 1, "daily_summary": {"drying_score": 90, "suitability": "excellent"}},
+    ])
+    shadow_calls = []
+    monkeypatch.setattr(
+        li,
+        "log_shadow_comparison",
+        lambda logger, line_days, web_days, source, enabled: shadow_calls.append((line_days, web_days, source, enabled)),
+    )
+    monkeypatch.setattr(li, "push_text", lambda to, text: True)
+
+    li.upsert_subscription("user", "U_shadow_1", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+    li.upsert_subscription("user", "U_shadow_2", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("evening")
+
+    assert result["sent"] == 2
+    assert len(shadow_calls) == 1
+    assert shadow_calls[0][2] == "line_notify"
+    assert shadow_calls[0][3] is True
+
+
 def test_notify_all_includes_optional_notice(tmp_sub_file, monkeypatch):
     """Manual resend can include a one-time operator notice."""
     from datetime import datetime, timezone, timedelta
