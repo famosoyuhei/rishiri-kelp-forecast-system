@@ -1362,7 +1362,10 @@ def _diff_from_snapshot(fc: dict, snap: dict) -> list:
 
     old_wd, new_wd = snap.get('wind_direction_period'), fc.get('wind_direction_period')
     if old_wd and new_wd and old_wd != new_wd:
-        changes.append(f'風向: {old_wd} → {new_wd}')
+        # 風向は "E→NE" のようにそれ自体が矢印を含むレンジ表記のため、
+        # 他項目と同じ "old → new" 形式にすると "E→NE → E→ENE" のように
+        # 矢印が連続して読みにくくなる。風向だけは専用の日本語文にする。
+        changes.append(f'風向: 16時は{old_wd}、最新は{new_wd}')
 
     return changes
 
@@ -2305,6 +2308,35 @@ def handle_unknown() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _select_forecast_day(fcs: list, day_number: int, target_date_str: str) -> 'dict | None':
+    """
+    通知対象日(target_date_str)に一致する予報を fcs から選ぶ。
+
+    以前は fcs[day_number] を無条件に信頼していたが、prefetchデータが
+    古い場合（例: 前日夕方に取得した予報が翌日未明まで有効期限内として
+    再利用される等）、fcs内の各要素は「配列上の位置」と「実際の対象日」が
+    ズレることがある。例えば前日15:30時点の取得データをそのまま
+    fcs[0]=「今日」として扱うと、実際にはそれが前日の日付のまま
+    「今日(前日の日付)」のように誤表示されてしまう。
+
+    date一致で選び直すことで、このズレを検知・自己修復する
+    （例: 1日分ズレていても、対象日のデータがfcs内のどこかにあれば
+    それを使う）。一致する日が全く無い場合は None を返し、呼び出し側は
+    誤った日付で送るより「取得できませんでした」を優先する。
+
+    見つかった場合は day_number を通知の意図した値（morning=0/evening=1）
+    に上書きする。_date_label() の「今日/明日」表記は date ではなく
+    day_number だけを見るため、fcs内に元々埋め込まれていた（ズレた
+    位置に基づく）day_numberをそのまま使うと表記が対象日と食い違うため。
+    """
+    for day in fcs:
+        if day.get('date') == target_date_str:
+            fixed = dict(day)
+            fixed['day_number'] = day_number
+            return fixed
+    return None
+
+
 def _try_notify_run_lock(kind: str, target_date_str: str) -> bool:
     """
     kind + target_date 単位の実行ロック。notify_all() が予報を1件でも取得する
@@ -2512,7 +2544,10 @@ def notify_all(kind: str, notice: str = '') -> dict:
                 forecast_cache[sid] = fcs
                 processed_spots += 1
 
-            if fcs and len(fcs) > day_number:
+            # target_date_str に一致する日を選ぶ（fcs[day_number]の無条件信頼はしない。
+            # prefetchデータが古い場合の日付ズレ自己修復・誤表示防止のため）。
+            fc = _select_forecast_day(fcs, day_number, target_date_str) if fcs else None
+            if fc:
                 try:
                     if sid not in shadow_compared_spots:
                         shadow_compared_spots.add(sid)
@@ -2531,7 +2566,6 @@ def notify_all(kind: str, notice: str = '') -> dict:
                                 '[line_web_shadow] event=compare status=error type=%s',
                                 type(_shadow_err).__name__,
                             )
-                    fc = fcs[day_number]
                     if kind == 'evening':
                         # 01:30通知での比較用に、16:00時点の予報を保存しておく。
                         _save_evening_snapshot(sid, target_date_str, fc)
@@ -2543,10 +2577,14 @@ def notify_all(kind: str, notice: str = '') -> dict:
                 except Exception as _fmt_err:
                     logger.error('notify_all: format_single_day failed for %s: %s', sid, _fmt_err)
             else:
-                # 全リトライが失敗 — この干場だけ静かにスキップする。
-                # エラー文だらけの通知より省略の方がまし。
+                # 全リトライが失敗、または対象日(target_date_str)に一致する予報が
+                # fcs内に見つからなかった（日付ズレの疑い）— この干場だけ
+                # 静かにスキップする。誤った日付で送るより省略の方がまし。
                 # ユーザーはいつでも「明日 村谷さんの干場」等でオンデマンド取得できる。
-                logger.error('notify_all: all attempts failed for %s — skipping silently', sid)
+                logger.error(
+                    'notify_all: no forecast day matched target_date=%s for %s — skipping silently',
+                    target_date_str, sid,
+                )
 
         header = f'【{day_name}の乾燥予報】{kind_label}\n\n'
         notice_text = f'{notice.strip()}\n\n' if notice and notice.strip() else ''

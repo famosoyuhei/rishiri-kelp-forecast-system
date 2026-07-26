@@ -351,8 +351,12 @@ def test_notify_all_formats_enhanced_forecast_when_enabled(tmp_sub_file, monkeyp
         li,
         "_get_enhanced_forecast_for_spot",
         lambda lat, lon, spot_id="": [
-            {**_sample_fc(0, score=90, suitability="excellent"), "forecast_source": "web_enhanced"},
-            {**_sample_fc(1, score=92, suitability="excellent"), "forecast_source": "web_enhanced"},
+            # dates must actually align with the fake "now" (2026-07-26 16:00):
+            # evening notification targets tomorrow = 2026-07-27.
+            {**_sample_fc(0, score=90, suitability="excellent"), "date": "2026-07-26",
+             "forecast_source": "web_enhanced"},
+            {**_sample_fc(1, score=92, suitability="excellent"), "date": "2026-07-27",
+             "forecast_source": "web_enhanced"},
         ],
     )
     pushed = []
@@ -1262,6 +1266,66 @@ def test_diff_from_snapshot_wind_direction_change_is_flagged():
     assert any("風向" in c for c in changes)
 
 
+def test_diff_from_snapshot_wind_direction_avoids_double_arrow_line():
+    """
+    風向レンジ自体が '→' を含むため、単純な 'old → new' 形式だと
+    'E→NE → E→ENE' のように矢印が連続して読みにくくなる。
+    専用フォーマットで、単一行に矢印が3つ以上連続しないことを確認する。
+    """
+    fc = _sample_fc()
+    fc["wind_direction_period"] = "E→ENE"
+    snap = _snap(wind_direction_period="E→NE")
+    changes = li._diff_from_snapshot(fc, snap)
+    wind_lines = [c for c in changes if "風向" in c]
+    assert len(wind_lines) == 1
+    line = wind_lines[0]
+    assert "E→NE" in line and "E→ENE" in line
+    # 矢印3つ以上の連続表示（旧: "風向: E→NE → E→ENE"）にならないこと
+    assert line.count("→") == 2
+
+
+def test_diff_from_snapshot_wind_direction_second_example_avoids_double_arrow():
+    """報告された2件目の実例: ENE→WNW から ENE→E への変化。"""
+    fc = _sample_fc()
+    fc["wind_direction_period"] = "ENE→E"
+    snap = _snap(wind_direction_period="ENE→WNW")
+    changes = li._diff_from_snapshot(fc, snap)
+    wind_lines = [c for c in changes if "風向" in c]
+    assert len(wind_lines) == 1
+    assert wind_lines[0].count("→") == 2
+    assert "ENE→WNW" in wind_lines[0]
+    assert "ENE→E" in wind_lines[0]
+
+
+def test_diff_from_snapshot_wind_direction_missing_one_side_does_not_crash():
+    """片方だけ風向が欠損していても例外を投げず、風向の変化は出さない。"""
+    fc = _sample_fc()
+    fc["wind_direction_period"] = None
+    snap = _snap(wind_direction_period="WSW→NNW")
+    changes = li._diff_from_snapshot(fc, snap)  # must not raise
+    assert not any("風向" in c for c in changes)
+
+    fc2 = _sample_fc()
+    fc2["wind_direction_period"] = "WSW→NNW"
+    snap2 = _snap(wind_direction_period=None)
+    changes2 = li._diff_from_snapshot(fc2, snap2)  # must not raise
+    assert not any("風向" in c for c in changes2)
+
+
+def test_diff_from_snapshot_other_fields_unaffected_by_wind_format_change():
+    """風向以外（乾燥判定・降水・湿度・風速）の表示形式は従来どおり維持される。"""
+    fc = _sample_fc(suitability="poor", precip=5.0)
+    fc["min_humidity"] = 95.0
+    fc["avg_wind"] = 6.0
+    snap = _snap(suitability="excellent", precipitation=0.0, min_humidity=60.0, avg_wind=2.0)
+    changes = li._diff_from_snapshot(fc, snap)
+    joined = "\n".join(changes)
+    assert "乾燥判定: " in joined and " → " in joined
+    assert "降水: " in joined and "mm → " in joined
+    assert "湿度: " in joined and "% → " in joined
+    assert "風速: 平均" in joined and "m/s → 平均" in joined
+
+
 def test_format_single_day_with_diff_no_snapshot_matches_plain_format():
     fc = _sample_fc()
     assert li.format_single_day_with_diff("浜の前", fc, None) == li.format_single_day("浜の前", fc)
@@ -1284,6 +1348,108 @@ def test_format_single_day_with_diff_shows_change_summary():
     assert "⚠️ 16時予報から変化:" in msg
     assert "乾燥判定" in msg
     assert "湿度" in msg
+
+
+# ---------------------------------------------------------------------------
+# _select_forecast_day — date-matched selection (2026-08 date-mislabel fix)
+#
+# Previously notify_all() trusted fcs[day_number] unconditionally. If the
+# underlying data (e.g. a stale Open-Meteo prefetch record reused across a
+# midnight boundary) was fetched on an earlier calendar day, fcs[0] could
+# actually be *yesterday's* data, so a 01:30 "当日" notification would show
+# "今日(前日の日付)". _select_forecast_day() picks by matching `date` against
+# the independently-computed target_date_str instead of trusting position.
+# ---------------------------------------------------------------------------
+
+def test_select_forecast_day_matches_by_date_when_aligned():
+    fcs = [
+        {"date": "2026-07-27", "day_number": 0, "score": 80},
+        {"date": "2026-07-28", "day_number": 1, "score": 82},
+    ]
+    fc = li._select_forecast_day(fcs, day_number=0, target_date_str="2026-07-27")
+    assert fc is not None
+    assert fc["date"] == "2026-07-27"
+    assert fc["day_number"] == 0
+
+
+def test_select_forecast_day_self_heals_when_array_is_stale_by_one_day():
+    """
+    fcsが1日分「古い」まま（例: 前日夕方に取得したprefetchが翌未明まで
+    再利用された）場合でも、position(day_number)ではなくdateで選ぶことで
+    正しい対象日のデータを見つけられる。
+    """
+    # Fetched when "today" (from Open-Meteo's perspective) was still 7/26.
+    fcs = [
+        {"date": "2026-07-26", "day_number": 0, "score": 70},
+        {"date": "2026-07-27", "day_number": 1, "score": 90},  # actually today, mislabeled as "tomorrow"
+    ]
+    # Morning notification on 7/27 wants target_date=2026-07-27, day_number=0 ("今日").
+    fc = li._select_forecast_day(fcs, day_number=0, target_date_str="2026-07-27")
+    assert fc is not None
+    assert fc["date"] == "2026-07-27"
+    assert fc["score"] == 90
+    # day_number must be overridden to the *intended* semantic value (0="今日"),
+    # not the stale array position (1="明日"), so _date_label() shows "今日".
+    assert fc["day_number"] == 0
+
+
+def test_select_forecast_day_returns_none_when_no_date_matches():
+    """完全に無関係な日付しか無い場合はNone（誤った日付で送るより取得失敗扱い）。"""
+    fcs = [
+        {"date": "2026-05-18", "day_number": 0, "score": 80},
+        {"date": "2026-05-19", "day_number": 1, "score": 82},
+    ]
+    assert li._select_forecast_day(fcs, day_number=0, target_date_str="2026-07-27") is None
+
+
+def test_select_forecast_day_handles_empty_list():
+    assert li._select_forecast_day([], day_number=0, target_date_str="2026-07-27") is None
+
+
+def test_notify_all_morning_shows_today_label_when_prefetch_stale_by_one_day(tmp_sub_file, monkeypatch):
+    """
+    2026-07-27 01:30 JSTの「当日」通知で報告された不具合の再現テスト:
+    fcs配列が1日分古いまま（7/26時点で取得されたデータがそのまま使われる）
+    でも、_select_forecast_day() 経由で正しく「今日(7/27月)」と表示される
+    こと（"今日(7/26日)" にならないこと）を確認する。
+    """
+    from datetime import datetime, timezone, timedelta
+    JST = timezone(timedelta(hours=9))
+
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 27, 1, 30, 0, tzinfo=JST)
+
+    monkeypatch.setattr(li, "datetime", _FakeDatetime)
+    monkeypatch.setattr(li, "_upstash_available", lambda: False)
+    monkeypatch.setattr(
+        li, "find_spot_by_id",
+        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1,
+                      "buraku": "", "district": "", "town": ""},
+    )
+    # Simulate a stale (1-day-old) prefetch: array still anchored on 7/26.
+    monkeypatch.setattr(
+        li, "get_forecast_for_spot",
+        lambda lat, lon, spot_id=None: [
+            {"date": "2026-07-26", "day_number": 0, "suitability": "good", "score": 70,
+             "precipitation": 0.0, "min_humidity": 80.0, "avg_wind": 3.0,
+             "wind_direction_period": "E→NE", "pop": None},
+            {"date": "2026-07-27", "day_number": 1, "suitability": "excellent", "score": 95,
+             "precipitation": 0.0, "min_humidity": 65.0, "avg_wind": 3.8,
+             "wind_direction_period": "E→ENE", "pop": 0},
+        ],
+    )
+    pushed = []
+    monkeypatch.setattr(li, "push_text", lambda to, text: pushed.append(text) or True)
+    li.upsert_subscription("user", "U_stale_prefetch", {"notify_enabled": True, "spots": ["H_1631_1434"]})
+
+    result = li.notify_all("morning")
+
+    assert result["sent"] == 1
+    assert "今日(7/27" in pushed[0]
+    assert "今日(7/26" not in pushed[0]
+    assert "95" in pushed[0]  # today's (7/27) score, not yesterday's (7/26) 70
 
 
 # ---------------------------------------------------------------------------
