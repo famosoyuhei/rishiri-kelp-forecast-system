@@ -36,6 +36,7 @@ from open_meteo_guard import (
     OpenMeteoCircuitOpenError,
     OpenMeteoRateLimitError,
     guarded_get,
+    is_circuit_open,
 )
 from open_meteo_prefetch import (
     LINE_DAILY_VARS,
@@ -43,6 +44,7 @@ from open_meteo_prefetch import (
     bool_env as _prefetch_bool_env,
     line_forecast_request,
     load_prefetch,
+    registered_spot_ids,
 )
 from line_web_forecast_compare import (
     log_shadow_comparison,
@@ -417,10 +419,23 @@ def _csv_env_set(name: str) -> set[str]:
 
 
 def _line_web_forecast_enabled(source: str, spot_id: str = '') -> bool:
+    """
+    Gate for the corrected (foehn/terrain) web forecast path on LINE.
+
+    Passes for: any spot when LINE_WEB_FORECAST_CANARY_SPOT_IDS is unset
+    (full rollout), any spot literally on that allowlist, or — so the
+    Open-Meteo-429 resilience work automatically covers whoever has actually
+    registered, without a manual env var update per registration — any spot
+    with an active LINE subscription (registered_spot_ids()).
+    """
     if source != 'line' or not _bool_env('LINE_WEB_FORECAST_ENABLED', default=False):
         return False
     canary_spots = _csv_env_set('LINE_WEB_FORECAST_CANARY_SPOT_IDS')
-    return not canary_spots or spot_id in canary_spots
+    if not canary_spots:
+        return True
+    if spot_id in canary_spots:
+        return True
+    return bool(spot_id) and spot_id in registered_spot_ids()
 
 
 def _safe_num(value, default=None):
@@ -503,11 +518,21 @@ def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, sou
                 source, prefetch_meta.get('age_minutes'), prefetch_meta.get('stale'),
             )
         else:
+            prefetch_only = _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False)
+            # PREFETCH_ONLY exists to avoid a live Open-Meteo call *while Render's
+            # circuit is actually open* (429 in progress). A prefetch miss can
+            # also happen for unrelated reasons — e.g. the 2026-07-27 incident
+            # where GitHub Actions' scheduled prefetch run simply never fired —
+            # in which case Open-Meteo isn't actually blocking us and refusing
+            # to fetch live just turns a one-off scheduling miss into a
+            # guaranteed empty notification. Only skip the live fallback when
+            # the circuit is genuinely open; otherwise fall through below.
+            skip_direct_fetch = prefetch_only and is_circuit_open()
             logger.info(
                 '[open_meteo_prefetch] event=miss source=%s reason=%s direct_fetch_skipped=%s',
-                source, prefetch_meta.get('reason'), _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False),
+                source, prefetch_meta.get('reason'), skip_direct_fetch,
             )
-            if _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False):
+            if skip_direct_fetch:
                 return []
     else:
         data = None

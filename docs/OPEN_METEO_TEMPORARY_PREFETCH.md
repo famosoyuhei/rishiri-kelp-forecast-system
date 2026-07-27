@@ -25,8 +25,35 @@ Existing schedules:
 
 Prefetch workflow:
 
-- `30 6 * * *` UTC = 15:30 JST, for the 16:00 evening notification
-- `0 16 * * *` UTC = 01:00 JST, for the 01:30 morning notification
+- `30 6 * * *` UTC = 15:30 JST primary, for the 16:00 evening notification
+- `40 6 * * *` UTC = 15:40 JST backup (added after the 2026-07-27 incident
+  below — GitHub Actions' `schedule` trigger is best-effort and can skip a
+  slot; the backup run is a harmless no-op if the primary already succeeded)
+- `0 16 * * *` UTC = 01:00 JST primary, for the 01:30 morning notification
+- `10 16 * * *` UTC = 01:10 JST backup, same rationale
+
+### 2026-07-27 incident: missed schedule slot
+
+The 15:30 JST run for 2026-07-27 never fired at all (confirmed via
+`gh run list` — no run exists for that trigger time). By 16:00 JST the most
+recent valid prefetch entry was from the previous day's evening run
+(>22h old), past the 12h stale-expiry window, so `load_prefetch()` returned a
+miss for every affected spot. With `OPEN_METEO_PREFETCH_ONLY=true`, Render
+did not fall back to a live fetch (by original design, to avoid re-triggering
+a real 429) and sent the generic "could not fetch forecast" fallback text to
+every subscriber whose spots were affected. No 429 or circuit-open event
+actually occurred that day — the failure was caused entirely by the missing
+upstream prefetch data, not by Open-Meteo rate-limiting.
+
+Two fixes were applied:
+
+1. The backup cron schedules above, so a single missed GitHub Actions slot
+   doesn't leave a multi-hour gap.
+2. `_get_simple_forecast_for_spot()` (`line_integration.py`) now only skips
+   the live fallback on a `PREFETCH_ONLY` miss when
+   `open_meteo_guard.is_circuit_open()` is actually true. A miss while the
+   circuit is closed (Open-Meteo isn't currently blocking us) falls back to a
+   live fetch instead of guaranteeing an empty notification.
 
 ## GitHub Secrets
 
@@ -153,8 +180,11 @@ OPEN_METEO_PREFETCH_ONLY=true
 Meaning:
 
 - `PREFETCH_ENABLED=true`: try Redis prefetch first
-- `PREFETCH_ONLY=true`: if prefetch is missing or invalid, do not fetch
-  Open-Meteo directly from Render
+- `PREFETCH_ONLY=true`: if prefetch is missing or invalid AND the P0 circuit
+  (`om:circuit:v1`) is currently open, do not fetch Open-Meteo directly from
+  Render. If the circuit is closed, a miss still falls back to a live fetch
+  (see the 2026-07-27 incident note above) — `PREFETCH_ONLY` only prevents a
+  live call while Open-Meteo is actually blocking us, not on every miss.
 
 ## 429 Behavior
 
@@ -170,7 +200,9 @@ Render:
 
 - keeps the existing P0 circuit breaker
 - does not share GitHub Actions' circuit key as a hard stop
-- with `PREFETCH_ONLY=true`, does not fall back to direct Open-Meteo on miss
+- with `PREFETCH_ONLY=true`, only skips the direct Open-Meteo fallback on a
+  miss while the P0 circuit is open; a miss with the circuit closed still
+  fetches live (see 2026-07-27 incident note above)
 
 ## Foehn And Drying Logic
 

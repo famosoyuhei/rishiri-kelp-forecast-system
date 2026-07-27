@@ -4,8 +4,18 @@ on:
   schedule:
     # 15:30 JST, 30 minutes before the 16:00 evening LINE notification.
     - cron: "30 6 * * *"
+    # 15:40 JST backup — GitHub Actions' `schedule` trigger is best-effort and
+    # can occasionally skip a slot (observed 2026-07-27: the 15:30 run never
+    # fired, leaving stale/expired prefetch data and an empty LINE
+    # notification for affected users). A second run 10 minutes later still
+    # leaves 20 minutes of buffer before the 16:00 notification and simply
+    # overwrites the same Redis keys with fresher data if the primary run did
+    # succeed — harmless either way.
+    - cron: "40 6 * * *"
     # 01:00 JST, 30 minutes before the 01:30 morning LINE notification.
     - cron: "0 16 * * *"
+    # 01:10 JST backup, same rationale as the 15:40 JST one above.
+    - cron: "10 16 * * *"
   workflow_dispatch:
     inputs:
       kind:
@@ -52,7 +62,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             kind="${{ inputs.kind }}"
-          elif [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "30 6 * * *" ] || [ "${{ github.event.schedule }}" = "40 6 * * *" ]; then
             kind="evening"
           else
             kind="morning"

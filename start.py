@@ -1148,18 +1148,144 @@ def _scheduled_forecast_snapshot():
             app.logger.info('[forecast_snapshot] already run by another worker, skipping')
 
 
+def _enhanced_prefetch_canary_spots() -> set:
+    raw = os.environ.get('LINE_WEB_FORECAST_CANARY_SPOT_IDS', '')
+    return {item.strip() for item in raw.split(',') if item.strip()}
+
+
+def _enhanced_prefetch_enabled(spot_name: str) -> bool:
+    """
+    Gate for get_forecast()'s prefetch-first data loading (Open-Meteo 429
+    resilience for the LINE-corrected canary path). Off by default
+    (OPEN_METEO_ENHANCED_PREFETCH_ENABLED).
+
+    Passes for: any spot on the static LINE_WEB_FORECAST_CANARY_SPOT_IDS
+    allowlist (same env var line_integration.py's _line_web_forecast_enabled()
+    reads — single source of truth for "which spots get the enhanced/foehn
+    LINE forecast"), OR any spot with an active LINE subscription
+    (open_meteo_prefetch.registered_spot_ids()) — so this resilience work
+    automatically covers whoever has actually registered, without a manual
+    env var update per registration. Any other spot, or any request while the
+    flag is unset/false, takes 100% of the pre-existing live Open-Meteo path
+    with no behavior change.
+    """
+    if not spot_name:
+        return False
+    if os.environ.get('OPEN_METEO_ENHANCED_PREFETCH_ENABLED', '').strip().lower() not in ('1', 'true', 'yes', 'on'):
+        return False
+    if spot_name in _enhanced_prefetch_canary_spots():
+        return True
+    try:
+        from open_meteo_prefetch import registered_spot_ids
+    except ImportError:
+        return False
+    return spot_name in registered_spot_ids()
+
+
+def _load_enhanced_prefetch_bundle(lat: float, lon: float) -> dict | None:
+    """
+    Assemble everything get_forecast() needs (elevation, main-forecast raw
+    JSON, summit hourly temps, marine SST) purely from GitHub Actions'
+    prefetch cache (jobs/fetch_open_meteo_for_notifications.py), with
+    guaranteed zero live Open-Meteo calls and zero circuit-breaker
+    interaction — this is what lets the canary spot keep serving
+    foehn-corrected forecasts even if the Open-Meteo 429 situation never
+    clears.
+
+    Only called when _enhanced_prefetch_enabled() is True for this request's
+    spot_name — which now covers any spot with an active LINE subscription
+    (open_meteo_prefetch.registered_spot_ids()), not just the static
+    LINE_WEB_FORECAST_CANARY_SPOT_IDS allowlist. Elevation comes from the
+    manually-verified CANARY_SPOT_ELEVATIONS_M table when available, else a
+    network-free approximation (_approximate_elevation_no_network) — never a
+    live get_elevation() call here, which would defeat the "zero Open-Meteo
+    calls" guarantee this function exists to provide. (Elevation is not part
+    of the prefetch cache identity — see enhanced_forecast_request() — so an
+    approximate value never causes a cache-key mismatch.)
+
+    Returns None if ANY of the three prefetch entries is missing/stale-
+    expired — get_forecast() then falls through to its normal live path
+    unchanged (which may still 503 if the circuit is open, exactly as it did
+    before this feature existed).
+    """
+    _seed_canary_elevations()
+    cache_key = (round(lat, 2), round(lon, 2))
+    if cache_key in _elevation_cache:
+        elevation = _elevation_cache[cache_key]
+    else:
+        elevation = _approximate_elevation_no_network(lat, lon)
+
+    try:
+        from open_meteo_prefetch import (
+            enhanced_forecast_request, summit_forecast_request, marine_forecast_request,
+            load_prefetch, parse_iso_utc, MARINE_FRESH_MAX_AGE_MINUTES, MARINE_STALE_MAX_AGE_MINUTES,
+        )
+    except ImportError:
+        return None
+
+    forecast_req = enhanced_forecast_request(lat, lon, elevation)
+    forecast_data, forecast_meta = load_prefetch(forecast_req)
+    if forecast_data is None:
+        return None
+
+    summit_req = summit_forecast_request(SUMMIT_LAT, SUMMIT_LON)
+    summit_data, summit_meta = load_prefetch(summit_req)
+    if summit_data is None:
+        return None
+    summit_hourly = summit_data.get('hourly', {})
+
+    marine_req = marine_forecast_request(lat, lon)
+    marine_data, _marine_meta = load_prefetch(
+        marine_req,
+        fresh_max_age_minutes=MARINE_FRESH_MAX_AGE_MINUTES,
+        stale_max_age_minutes=MARINE_STALE_MAX_AGE_MINUTES,
+    )
+    if marine_data is None:
+        return None
+    sst_list = marine_data.get('daily', {}).get('sea_surface_temperature') or [None] * 7
+
+    fetched_at = parse_iso_utc(forecast_meta.get('fetched_at'))
+    fetched_at_jst = fetched_at.astimezone(JST) if fetched_at else datetime.now(JST)
+
+    return {
+        'elevation': elevation,
+        'forecast_data': forecast_data,
+        'summit_forecast': {
+            'time': summit_hourly.get('time', []),
+            'temperature_2m': summit_hourly.get('temperature_2m', []),
+            '_fetched_at': summit_meta.get('fetched_at', ''),
+            '_cache_hit': False,
+        },
+        'sst_list': sst_list,
+        'fetched_at': fetched_at_jst,
+    }
+
+
 @app.route('/api/forecast')
 @limiter.limit("60 per minute")
 def get_forecast():
     """Get enhanced kelp drying forecast for Rishiri Island"""
     lat = float(request.args.get('lat', 45.178269))
     lon = float(request.args.get('lon', 141.228528))
+    spot_name_param = request.args.get('name', '')
+
+    prefetch_bundle = None
+    if _enhanced_prefetch_enabled(spot_name_param):
+        prefetch_bundle = _load_enhanced_prefetch_bundle(lat, lon)
 
     try:
-        ensure_request_allowed('forecast', logger=app.logger)
+        if prefetch_bundle is not None:
+            elevation = prefetch_bundle['elevation']
+            summit_forecast = prefetch_bundle['summit_forecast']
+        else:
+            ensure_request_allowed('forecast', logger=app.logger)
 
-        # Get elevation for accurate DEM correction
-        elevation = get_elevation(lat, lon, source='forecast')
+            # Get elevation for accurate DEM correction
+            elevation = get_elevation(lat, lon, source='forecast')
+
+            # 山頂(R_1800_2392)の気温予報を取得（MeteoSwiss式フェーン強度計算の参照点）。
+            # 30分キャッシュ共有のため、どの干場のリクエストでも実質1回/30分の追加コストのみ。
+            summit_forecast = _get_summit_hourly_temps(source='forecast')
 
         # Calculate spot theta for wind angle difference calculation
         spot_theta = calculate_spot_theta(lat, lon)
@@ -1167,10 +1293,6 @@ def get_forecast():
         # Calculate mountain azimuth (spot→peak direction)
         # mountain_azimuth() は利尻山頂(SUMMIT_LAT/LON, JMA公式座標)を使う共通関数。
         mountain_az = mountain_azimuth(lat, lon)
-
-        # 山頂(R_1800_2392)の気温予報を取得（MeteoSwiss式フェーン強度計算の参照点）。
-        # 30分キャッシュ共有のため、どの干場のリクエストでも実質1回/30分の追加コストのみ。
-        summit_forecast = _get_summit_hourly_temps(source='forecast')
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
         return {
             'error': 'Enhanced forecast data unavailable',
@@ -1179,17 +1301,23 @@ def get_forecast():
         }, 503
 
     try:
-        # Enhanced weather data with hourly details including moisture and boundary layer
-        # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
+        if prefetch_bundle is not None:
+            data = prefetch_bundle['forecast_data']
+            # 診断ログ用: 干場データを実際に取得した時刻（prefetch経由の場合はGitHub
+            # Actionsが取得した実時刻を使う。既存レスポンス・挙動には影響しない。
+            _spot_fetch_ts = prefetch_bundle['fetched_at']
+        else:
+            # Enhanced weather data with hourly details including moisture and boundary layer
+            # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
 
-        response = guarded_get(url, source='forecast', logger=app.logger, timeout=10)
-        response.raise_for_status()
-        # 診断ログ用: 干場データを実際に取得した時刻（山頂キャッシュとの世代ズレ検知に使用、
-        # FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md 項目E）。既存レスポンス・挙動には影響しない。
-        _spot_fetch_ts = datetime.now(JST)
+            response = guarded_get(url, source='forecast', logger=app.logger, timeout=10)
+            response.raise_for_status()
+            # 診断ログ用: 干場データを実際に取得した時刻（山頂キャッシュとの世代ズレ検知に使用、
+            # FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md 項目E）。既存レスポンス・挙動には影響しない。
+            _spot_fetch_ts = datetime.now(JST)
 
-        data = response.json()
+            data = response.json()
         daily = data.get('daily', {})
         hourly = data.get('hourly', {})
 
@@ -1205,7 +1333,10 @@ def get_forecast():
         }
 
         # SST（海面水温）取得 — 7日分をまとめて取得（WINDY_RESEARCH §6 W6）
-        sst_list = get_sea_surface_temperature(lat, lon, source='forecast')
+        if prefetch_bundle is not None:
+            sst_list = prefetch_bundle['sst_list']
+        else:
+            sst_list = get_sea_surface_temperature(lat, lon, source='forecast')
 
         # Enhanced kelp drying forecasts
         forecasts = []
@@ -1692,6 +1823,56 @@ def is_coastal_area(lat, lon):
     return True
 
 _elevation_cache: dict = {}  # key=(round(lat,2), round(lon,2)) → metres
+_canary_elevation_seeded = False
+
+def _seed_canary_elevations():
+    """
+    Seed _elevation_cache with static, manually-verified elevations for the
+    LINE enhanced-forecast canary spots (open_meteo_prefetch.CANARY_SPOT_ELEVATIONS_M),
+    so get_elevation() never needs to reach Open-Meteo for these spots even
+    under a sustained circuit-breaker open state. Elevation is a fixed,
+    spot-specific value, so a one-time static seed is safe.
+
+    No-op until that table has entries (it currently ships empty pending a
+    verified elevation for the canary spot — see open_meteo_prefetch.py).
+    Uses setdefault so a value already cached from a real prior fetch is
+    never overwritten.
+    """
+    global _canary_elevation_seeded
+    if _canary_elevation_seeded:
+        return
+    _canary_elevation_seeded = True
+    try:
+        from open_meteo_prefetch import CANARY_SPOT_ELEVATIONS_M
+    except ImportError:
+        return
+    if not CANARY_SPOT_ELEVATIONS_M:
+        return
+    try:
+        spots_df = pd.read_csv(CSV_FILE)
+    except Exception:
+        return
+    for spot_id, elevation_m in CANARY_SPOT_ELEVATIONS_M.items():
+        match = spots_df[spots_df['name'] == spot_id]
+        if match.empty:
+            continue
+        lat = float(match.iloc[0]['lat'])
+        lon = float(match.iloc[0]['lon'])
+        cache_key = (round(lat, 2), round(lon, 2))
+        _elevation_cache.setdefault(cache_key, elevation_m)
+
+def _approximate_elevation_no_network(lat, lon):
+    """
+    Rough, network-free elevation estimate (decay with distance from the
+    mountain). This is the same formula get_elevation() falls back to when
+    Open-Meteo is unreachable; factored out so _load_enhanced_prefetch_bundle()
+    can reuse it directly for spots without a manually-verified
+    CANARY_SPOT_ELEVATIONS_M entry, guaranteeing zero network calls either way.
+    """
+    mountain_lat, mountain_lon = 45.1821, 141.2421
+    distance = ((lat - mountain_lat) ** 2 + (lon - mountain_lon) ** 2) ** 0.5
+    return max(0, 200 - distance * 10000)
+
 
 def get_elevation(lat, lon, source: str | None = None):
     """
@@ -1699,6 +1880,7 @@ def get_elevation(lat, lon, source: str | None = None):
     Results are cached in-process at 0.01° resolution (~1 km) to avoid
     repeated API calls when scoring 334 spots sharing the same grid cell.
     """
+    _seed_canary_elevations()
     cache_key = (round(lat, 2), round(lon, 2))
     if cache_key in _elevation_cache:
         return _elevation_cache[cache_key]
@@ -1723,9 +1905,7 @@ def get_elevation(lat, lon, source: str | None = None):
         pass
 
     # Fallback: simplified calculation
-    mountain_lat, mountain_lon = 45.1821, 141.2421
-    distance = ((lat - mountain_lat) ** 2 + (lon - mountain_lon) ** 2) ** 0.5
-    result = max(0, 200 - distance * 10000)
+    result = _approximate_elevation_no_network(lat, lon)
     _elevation_cache[cache_key] = result
     return result
 
