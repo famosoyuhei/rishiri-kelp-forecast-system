@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 
 import line_integration as li
 import open_meteo_prefetch as omp
@@ -253,6 +254,66 @@ def test_job_fetch_one_429_does_not_write_cache(monkeypatch):
     session.get.assert_called_once()
     assert len(writes) == 1  # github_actions circuit only, no prefetch overwrite
     assert writes[0][0] == job.GITHUB_ACTIONS_CIRCUIT_KEY
+
+
+def test_job_fetch_one_network_timeout_does_not_crash_the_run(monkeypatch):
+    # 2026-07-28 incident: an unhandled ReadTimeout from session.get() crashed
+    # the entire prefetch script (exit code 1 -> GitHub "Run failed" email),
+    # aborting every remaining spot in the run over a single transient
+    # network hiccup unrelated to Open-Meteo rate-limiting.
+    session = MagicMock()
+    session.get.side_effect = requests.exceptions.ReadTimeout("read timed out")
+
+    ok, reason = job.fetch_one({"lat": 45.1, "lon": 141.1}, session=session)
+
+    assert ok is False
+    assert reason == "network_error"
+
+
+def test_fetch_request_network_timeout_does_not_crash_the_run(monkeypatch):
+    session = MagicMock()
+    session.get.side_effect = requests.exceptions.ConnectionError("connection reset")
+
+    req = omp.marine_forecast_request(45.1, 141.1)
+    ok, reason = job.fetch_request(
+        req, ttl_seconds=100, daily_vars=omp.MARINE_DAILY_VARS, hourly_vars=None, session=session,
+    )
+
+    assert ok is False
+    assert reason == "network_error"
+
+
+def test_main_continues_past_a_single_network_timeout(monkeypatch):
+    # End-to-end: one target's fetch times out, the run must still complete
+    # (not raise) and continue processing the rest. fetch_one()'s session
+    # parameter defaults to the real `requests` module (bound at function
+    # definition time), so patch requests.get directly rather than the
+    # module-level `job.requests` name.
+    monkeypatch.setattr(
+        job, "collect_target_spots",
+        lambda kind, now_jst=None: [
+            {"lat": 45.1, "lon": 141.1},
+            {"lat": 45.2, "lon": 141.2},
+        ],
+    )
+    monkeypatch.setattr(job, "collect_canary_targets", lambda kind, now_jst=None: [])
+
+    calls = []
+
+    def flaky_get(url, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            raise requests.exceptions.ReadTimeout("read timed out")
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = sample_open_meteo()
+        return resp
+
+    monkeypatch.setattr(requests, "get", flaky_get)
+
+    exit_code = job.main(["--kind", "morning"])
+
+    assert exit_code == 0
+    assert len(calls) == 2
 
 
 def test_job_main_stops_after_first_429(monkeypatch):

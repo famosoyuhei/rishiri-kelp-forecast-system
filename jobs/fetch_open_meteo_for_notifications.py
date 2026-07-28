@@ -217,7 +217,12 @@ def fetch_one(target: dict, session=requests) -> tuple[bool, str]:
     req = line_forecast_request(target["lat"], target["lon"])
     started = time.perf_counter()
     log_event(event="request", api_type=req.api_type, status="start")
-    resp = session.get(req.url(), timeout=20)
+    try:
+        resp = session.get(req.url(), timeout=20)
+    except requests.exceptions.RequestException as e:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        log_event(event="network_error", api_type=req.api_type, status=type(e).__name__, elapsed_ms=elapsed_ms)
+        return False, "network_error"
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     if resp.status_code == 429:
         retry_after = resp.headers.get("Retry-After")
@@ -262,13 +267,16 @@ def fetch_request(req, *, ttl_seconds: int, daily_vars: str | None, hourly_vars:
     """
     Generic version of fetch_one() for the enhanced/summit/marine prefetch
     types, which use different variable lists (and, for summit/marine,
-    validate only one of daily/hourly rather than both). fetch_one() itself
-    is left untouched since it already has dedicated tests covering the
-    simple-LINE-forecast path.
+    validate only one of daily/hourly rather than both).
     """
     started = time.perf_counter()
     log_event(event="request", api_type=req.api_type, status="start")
-    resp = session.get(req.url(), timeout=20)
+    try:
+        resp = session.get(req.url(), timeout=20)
+    except requests.exceptions.RequestException as e:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        log_event(event="network_error", api_type=req.api_type, status=type(e).__name__, elapsed_ms=elapsed_ms)
+        return False, "network_error"
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     if resp.status_code == 429:
         retry_after = resp.headers.get("Retry-After")
