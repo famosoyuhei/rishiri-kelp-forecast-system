@@ -329,7 +329,11 @@ def test_job_main_stops_after_first_429(monkeypatch):
 
     monkeypatch.setattr(job, "fetch_one", fake_fetch)
 
-    assert job.main(["--kind", "morning"]) == 2
+    # A 429 is an expected, designed-for outcome, not a failure — exit 0 so
+    # GitHub Actions doesn't send a "Run failed" email every time Open-Meteo
+    # rate-limits us (2026-07-30 incident: exit 2 was treated as a failed
+    # run for a scenario the whole prefetch mitigation exists to handle).
+    assert job.main(["--kind", "morning"]) == 0
     assert len(calls) == 1
 
 

@@ -354,6 +354,14 @@ def main(argv=None) -> int:
                     if ok:
                         success_count += 1
     except RateLimited:
+        # A 429 is an expected, designed-for outcome (the whole point of this
+        # prefetch mitigation), not a bug — stopping early and keeping
+        # whatever was already cached is the correct, intentional behavior.
+        # Exit 0 (not a failing code) so GitHub Actions doesn't send a
+        # "Run failed" email every time Open-Meteo rate-limits us; the
+        # rate_limited status is still visible in this log line for anyone
+        # reviewing runs, and the backup cron schedule plus normal retries
+        # cover recovery.
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         log_event(
             event="complete",
@@ -362,7 +370,7 @@ def main(argv=None) -> int:
             success_count=success_count,
             elapsed_ms=elapsed_ms,
         )
-        return 2
+        return 0
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     log_event(
