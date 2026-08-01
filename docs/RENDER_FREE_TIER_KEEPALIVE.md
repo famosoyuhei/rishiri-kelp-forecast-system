@@ -39,11 +39,29 @@ the same Render account.
 
 ## Implementation
 
-`.github/workflows/render-keepalive.yml` pings `/health` every 5 minutes,
-scheduled only for 01:00–20:00 JST (`*/5 0-10,16-23 * * *` UTC — every UTC
-hour except 11:00–15:59, which is 20:00–00:59 JST). No pings are sent
-outside that window, so Render's free-tier auto-sleep (after ~15 minutes of
-no traffic) takes over naturally during 20:00–01:00 JST.
+`.github/workflows/render-keepalive.yml` requests `*/5 0-10,16-23 * * *` UTC
+(every UTC hour except 11:00–15:59, i.e. 20:00–00:59 JST) — pings `/health`
+every 5 minutes during 01:00–20:00 JST, none outside that window, so
+Render's free-tier auto-sleep (after ~15 minutes of no traffic) takes over
+naturally during 20:00–01:00 JST.
+
+**2026-08-01 incident**: every run failed with `curl: (28) Operation timed
+out after 20002 milliseconds` — the initial `--max-time 20` was too short
+for this app's cold start (heavy pandas/numpy/scipy dependencies routinely
+take longer than 20s to boot), so a "Run failed" email fired on every single
+cold start, exactly the case this workflow exists to absorb quietly. Fixed
+to `--retry 5 --retry-delay 15 --max-time 30`, matching the already-proven
+pattern in `line-notifications.yml`'s "Wake service" step.
+
+Also observed: GitHub Actions' `schedule` trigger does not reliably honor a
+5-minute cadence — actual runs during this incident landed roughly every
+1.5–2.5 hours instead of every 5 minutes (GitHub explicitly reserves the
+right to delay/skip high-frequency schedules under load). This means the
+service likely still falls back asleep and cold-starts periodically even
+within the intended 01:00–20:00 "awake" window — the retry-tolerant curl
+above ensures this no longer generates failure emails, but "always warm
+01:00–20:00" is a best-effort goal here, not a guarantee, given GitHub
+Actions' own scheduling limitations.
 
 ## UptimeRobot reconfiguration (done outside this repo, 2026-08-01)
 
