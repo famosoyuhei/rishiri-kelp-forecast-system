@@ -29,19 +29,21 @@ the same Render account.
   case a webhook reply token could expire before the reply is sent. This is
   an accepted tradeoff for this time window — very few, if any, of this
   app's users are expected to message the bot at these hours.
-- **Scheduled LINE push notifications (16:00 and 01:30 JST)**: unaffected.
-  Push notifications have no reply-token expiry constraint, and
+- **Scheduled LINE push notifications (16:00 and 01:30 JST)**: push
+  notifications have no reply-token expiry constraint, and
   `.github/workflows/line-notifications.yml`'s "Wake service" step already
   retries the health check (5 attempts, 15s apart) before sending, so a cold
-  start here just adds a short, invisible delay.
+  start alone just adds a short, invisible delay. **However, this only helps
+  if the backup workflow itself actually fires** — see the 2026-08-02
+  incident below, where it didn't, and the notification was missed entirely.
 - **Open-Meteo prefetch jobs** (`fetch-open-meteo-cache.yml`): unaffected —
   they write directly to Upstash Redis and never call Render.
 
 ## Implementation
 
-`.github/workflows/render-keepalive.yml` requests `*/5 0-10,16-23 * * *` UTC
+`.github/workflows/render-keepalive.yml` requests `*/30 0-10,16-23 * * *` UTC
 (every UTC hour except 11:00–15:59, i.e. 20:00–00:59 JST) — pings `/health`
-every 5 minutes during 01:00–20:00 JST, none outside that window, so
+every 30 minutes during 01:00–20:00 JST, none outside that window, so
 Render's free-tier auto-sleep (after ~15 minutes of no traffic) takes over
 naturally during 20:00–01:00 JST.
 
@@ -53,15 +55,31 @@ cold start, exactly the case this workflow exists to absorb quietly. Fixed
 to `--retry 5 --retry-delay 15 --max-time 30`, matching the already-proven
 pattern in `line-notifications.yml`'s "Wake service" step.
 
-Also observed: GitHub Actions' `schedule` trigger does not reliably honor a
-5-minute cadence — actual runs during this incident landed roughly every
-1.5–2.5 hours instead of every 5 minutes (GitHub explicitly reserves the
-right to delay/skip high-frequency schedules under load). This means the
-service likely still falls back asleep and cold-starts periodically even
-within the intended 01:00–20:00 "awake" window — the retry-tolerant curl
-above ensures this no longer generates failure emails, but "always warm
-01:00–20:00" is a best-effort goal here, not a guarantee, given GitHub
-Actions' own scheduling limitations.
+**2026-08-02 incident (more serious)**: the 16:00 JST LINE notification was
+missed entirely. Render logs showed the instance was still cold-booting at
+16:15 JST (15 minutes after the target time), and there was zero
+`notify_all` log activity anywhere in that window — neither the primary
+in-process scheduler nor the `line-notifications.yml` 16:05 JST backup ever
+ran. Separately, `fetch-open-meteo-cache.yml`'s evening prefetch slot also
+failed to fire that same day. Two unrelated scheduled workflows silently
+missing their triggers on the same day pointed to GitHub Actions scheduler
+contention: this workflow's original `*/5` request (up to 228 triggers/day)
+is exactly the kind of high-frequency schedule GitHub's own docs warn can
+cause other scheduled runs in the same repository to be delayed or dropped.
+Reduced to `*/30` (matching UptimeRobot's own interval) to relieve that
+pressure — the actual LINE notification and Open-Meteo prefetch jobs matter
+far more than precise keep-alive timing. Also added a second backup
+trigger to `line-notifications.yml` (16:15/01:45 JST) as a second line of
+defense; `notify_all()`'s existing per-day run-lock
+(`_try_notify_run_lock`) makes this safe — it won't double-send if an
+earlier trigger already succeeded.
+
+Also observed: GitHub Actions' `schedule` trigger does not reliably honor
+requested cadences under load (documented, best-effort behavior). This
+means the service likely still falls back asleep and cold-starts
+periodically even within the intended 01:00–20:00 "awake" window — the
+retry-tolerant curl above keeps this from generating failure emails, but
+"always warm 01:00–20:00" remains a best-effort goal here, not a guarantee.
 
 ## UptimeRobot reconfiguration (done outside this repo, 2026-08-01)
 

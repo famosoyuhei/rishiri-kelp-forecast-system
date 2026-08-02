@@ -4,8 +4,17 @@ on:
   schedule:
     # 16:05 JST evening forecast fallback.
     - cron: "5 7 * * *"
+    # 16:15 JST evening backup — 2026-08-02 incident: the 16:05 slot silently
+    # failed to fire at all (missed 16:00 JST notification), likely due to
+    # GitHub Actions scheduler contention from another workflow's very
+    # frequent cron in this repo (see render-keepalive.yml). notify_all()'s
+    # own run-lock (_try_notify_run_lock) makes a second trigger safe — it
+    # will not double-send if the first one already succeeded.
+    - cron: "15 7 * * *"
     # 01:35 JST morning forecast fallback.
     - cron: "35 16 * * *"
+    # 01:45 JST morning backup, same rationale as the 16:15 JST one above.
+    - cron: "45 16 * * *"
   workflow_dispatch:
     inputs:
       kind:
@@ -43,7 +52,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             kind="${{ inputs.kind }}"
-          elif [ "${{ github.event.schedule }}" = "5 7 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "5 7 * * *" ] || [ "${{ github.event.schedule }}" = "15 7 * * *" ]; then
             kind="evening"
           else
             kind="morning"
