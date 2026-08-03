@@ -1076,6 +1076,52 @@ def test_fetch_forecast_with_retry_does_not_retry_429(monkeypatch):
     assert len(attempts) == 1
 
 
+def test_fetch_forecast_with_retry_skips_remaining_retries_when_circuit_already_open(monkeypatch):
+    """
+    2026-08-03 incident: under PREFETCH_ONLY, get_forecast_for_spot() returns
+    [] quietly (no exception) when the circuit is open — the 429 exception
+    branch above never triggers, so without this check the loop would still
+    burn through all 3 attempts' sleep delays (2s+5s) even though the circuit
+    is already known open and further attempts cannot succeed. This wasted
+    time, multiplied across every subscribed spot, was long enough to blow
+    past cron-job.org's and Render's own request timeouts, causing the
+    notification to be silently cut off mid-run.
+    """
+    monkeypatch.setattr(li.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError("no sleep")))
+    attempts = []
+
+    def empty_no_exception(lat, lon):
+        attempts.append(1)
+        return []
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", empty_no_exception)
+    monkeypatch.setattr(li, "get_circuit", lambda: {"retry_after_at": "2026-08-03T07:50:04Z"})
+
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert result["status"] == "rate_limited"
+    assert result["retry_after_at"] == "2026-08-03T07:50:04Z"
+    assert len(attempts) == 1  # stopped after the first attempt, no sleep-and-retry
+
+
+def test_fetch_forecast_with_retry_still_retries_when_circuit_closed(monkeypatch):
+    """Regression guard: an ordinary empty result with the circuit closed still retries as before."""
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+    attempts = []
+
+    def always_empty(lat, lon):
+        attempts.append(1)
+        return []
+
+    monkeypatch.setattr(li, "get_forecast_for_spot", always_empty)
+    monkeypatch.setattr(li, "get_circuit", lambda: None)
+
+    result = li._fetch_forecast_with_retry(45.1, 141.1, "H_TEST")
+
+    assert result["status"] == "empty"
+    assert len(attempts) == li._FORECAST_FETCH_MAX_ATTEMPTS
+
+
 def test_notify_all_stops_remaining_spots_after_first_429(tmp_sub_file, monkeypatch):
     """1地点目で429なら同じ通知実行内の残り地点を取得しない。"""
     from datetime import datetime, timezone, timedelta

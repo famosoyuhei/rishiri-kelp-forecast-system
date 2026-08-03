@@ -243,6 +243,53 @@ Observe only existing logs and workflow results:
 - whether Render avoids direct Open-Meteo fetches when `PREFETCH_ONLY=true`
 - whether stale data is ever used
 
+**Update (2026-08-03)**: the 429 situation has continued for over a week now,
+past the original "about one week" framing above — see the Customer API
+Decision section below, which was written anticipating this.
+
+### 2026-08-03 incident: two compounding notification-delivery bugs
+
+Both bugs were hit while the 429 has been ongoing continuously — a good
+stress test of this mitigation's assumptions.
+
+**1. An existing third notification trigger (`cron-job.org`) was silently
+failing auth for at least a week.** In addition to the in-process scheduler
+(`start.py`'s `_scheduled_line_notify`, killed whenever Render sleeps) and
+the GitHub Actions backups (`line-notifications.yml`, best-effort scheduling
+— see the 2026-07-27/2026-08-02 incidents above), a `cron-job.org` job named
+`line-notify-evening` / `line-notify-morning` had *also* been hitting
+`POST /api/line/notify` at the exact right times every single day since at
+least 2026-07-27 (far more punctual than GitHub Actions ever was) — but with
+a stale `secret` value in its JSON body, so every request was rejected with
+403 by `handle_notify()`'s `hmac.compare_digest()` check. Fixed by rotating
+`LINE_ADMIN_NOTIFY_SECRET` to a fresh known value and updating it in all
+three places that need to agree: the Render environment variable, the
+GitHub Actions repo secret, and cron-job.org's request body. Since
+cron-job.org fires with much better real-world punctuality than GitHub
+Actions' `schedule` trigger, it is now effectively the most reliable of the
+three trigger paths, though all three remain in place (the in-process
+scheduler's Redis lock and `notify_all()`'s own per-day run-lock make
+multiple trigger sources safe against double-sending).
+
+**2. `_fetch_forecast_with_retry()` (`line_integration.py`) burned its full
+retry budget even when the circuit was already known open.** Under
+`OPEN_METEO_PREFETCH_ONLY=true`, a prefetch miss with the circuit open makes
+`get_forecast_for_spot()` return `[]` quietly (see the circuit-aware
+fallback note above) rather than raising `OpenMeteoCircuitOpenError` — so
+the retry loop's fast-path for that exception never triggered, and it slept
+through all 3 attempts (2s+5s delays) per spot regardless. Multiplied across
+every subscribed spot in a single `notify_all()` run, this pushed total
+run time past both cron-job.org's and Render's own request timeouts,
+causing the run to be cut off mid-way (observed: the Render process
+received `SIGTERM` and restarted mid-`notify_all()`). Fixed by checking
+`open_meteo_guard.get_circuit()` directly after any empty/short result —
+if the circuit is confirmed open, the loop returns `status=rate_limited`
+immediately instead of sleeping through the remaining attempts (the
+existing `open_meteo_blocked` logic in `notify_all()` already skips all
+*subsequent* spots once one returns `rate_limited`, so this fix means the
+entire run now fails fast in roughly one attempt's worth of time instead of
+`spot_count × up to 3 attempts × up to 7s of sleep`).
+
 ## Customer API Decision
 
 Consider Open-Meteo Customer API in August or September if any of these occur:

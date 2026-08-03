@@ -35,6 +35,7 @@ import requests as _requests
 from open_meteo_guard import (
     OpenMeteoCircuitOpenError,
     OpenMeteoRateLimitError,
+    get_circuit,
     guarded_get,
     is_circuit_open,
 )
@@ -2435,6 +2436,21 @@ def _fetch_forecast_with_retry(lat: float, lon: float, spot_id: str) -> dict:
             fcs = []
         if fcs and len(fcs) >= 2:  # 当日(day0)・翌日(day1)の両方が揃っていること
             return {'status': 'ok', 'data': fcs}
+        # PREFETCH_ONLY下でサーキットが開いている間は get_forecast_for_spot() が
+        # 例外を投げず静かに [] を返す（circuit-aware fallback、2026-08-02実装）。
+        # そのため上の except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError)
+        # では検知できない。ここで明示的にサーキット状態を見て、開いているなら
+        # 同じ結果が確実に続くリトライ（2秒+5秒×残り干場数）を無駄にしない。
+        # 2026-08-03: 429が1週間以上続く状況で、この無駄なリトライの積み重ねが
+        # notify_all() 全体の所要時間を押し上げ、cron-job.org / Renderのタイム
+        # アウトで通知そのものが打ち切られる原因になっていた。
+        circuit = get_circuit()
+        if circuit:
+            logger.warning(
+                'notify_all: circuit already open for %s (retry_after_at=%s); skipping remaining retries',
+                spot_id, circuit.get('retry_after_at'),
+            )
+            return {'status': 'rate_limited', 'data': [], 'retry_after_at': circuit.get('retry_after_at')}
         if attempt < len(_FORECAST_FETCH_RETRY_DELAYS):
             logger.warning(
                 'notify_all: forecast short/empty for %s (attempt %d/%d), retrying in %ds…',
