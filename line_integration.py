@@ -41,7 +41,9 @@ from open_meteo_guard import (
 )
 from open_meteo_prefetch import (
     LINE_DAILY_VARS,
+    LINE_FORECAST_DAYS,
     LINE_HOURLY_VARS,
+    LINE_TIMEZONE,
     bool_env as _prefetch_bool_env,
     line_forecast_request,
     load_prefetch,
@@ -502,55 +504,17 @@ def _get_enhanced_forecast_for_spot(lat: float, lon: float, spot_id: str = '') -
     return [_web_forecast_day_to_line_day(day) for day in web_days]
 
 
-def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line') -> list:
+def _parse_simple_forecast_days(data: dict, lat: float, lon: float, prefetch_meta: dict | None = None) -> list:
     """
-    Fetch simplified 7-day drying forecast from Open-Meteo.
+    Parse one Open-Meteo raw response (single-location `daily`/`hourly` dict)
+    into the simplified 7-day drying forecast schema. Shared by
+    _get_simple_forecast_for_spot() (single-spot fetch) and
+    get_simple_forecasts_batch() (2026-08-04: multi-location batch fetch), so
+    both produce identical output for identical raw data.
     Returns list of daily dicts with keys:
         date, day_number, precipitation, min_humidity, avg_wind,
         wind_direction_period, pop, score, suitability
     """
-    req = line_forecast_request(lat, lon)
-    prefetch_meta = None
-    if _prefetch_bool_env('OPEN_METEO_PREFETCH_ENABLED', default=False):
-        data, prefetch_meta = load_prefetch(req)
-        if data is not None:
-            logger.info(
-                '[open_meteo_prefetch] event=hit source=%s age_minutes=%s stale=%s',
-                source, prefetch_meta.get('age_minutes'), prefetch_meta.get('stale'),
-            )
-        else:
-            prefetch_only = _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False)
-            # PREFETCH_ONLY exists to avoid a live Open-Meteo call *while Render's
-            # circuit is actually open* (429 in progress). A prefetch miss can
-            # also happen for unrelated reasons — e.g. the 2026-07-27 incident
-            # where GitHub Actions' scheduled prefetch run simply never fired —
-            # in which case Open-Meteo isn't actually blocking us and refusing
-            # to fetch live just turns a one-off scheduling miss into a
-            # guaranteed empty notification. Only skip the live fallback when
-            # the circuit is genuinely open; otherwise fall through below.
-            skip_direct_fetch = prefetch_only and is_circuit_open()
-            logger.info(
-                '[open_meteo_prefetch] event=miss source=%s reason=%s direct_fetch_skipped=%s',
-                source, prefetch_meta.get('reason'), skip_direct_fetch,
-            )
-            if skip_direct_fetch:
-                return []
-    else:
-        data = None
-
-    if data is None:
-        try:
-            resp = guarded_get(req.url(), source=source, logger=logger, requests_module=_requests, timeout=timeout)
-            resp.raise_for_status()
-            data = resp.json()
-        except OpenMeteoRateLimitError:
-            raise
-        except OpenMeteoCircuitOpenError:
-            raise
-        except Exception as e:
-            logger.error('Open-Meteo request failed for (%.4f, %.4f): %s', lat, lon, e)
-            return []
-
     daily = data.get('daily', {})
     hourly = data.get('hourly', {})
     hourly_rh = hourly.get('relative_humidity_2m', [])
@@ -618,6 +582,143 @@ def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, sou
             )
             # Continue to next day rather than aborting entire forecast
     return days
+
+
+def _get_simple_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line') -> list:
+    """
+    Fetch simplified 7-day drying forecast from Open-Meteo for a single spot.
+    Returns list of daily dicts — see _parse_simple_forecast_days() for the schema.
+    """
+    req = line_forecast_request(lat, lon)
+    prefetch_meta = None
+    if _prefetch_bool_env('OPEN_METEO_PREFETCH_ENABLED', default=False):
+        data, prefetch_meta = load_prefetch(req)
+        if data is not None:
+            logger.info(
+                '[open_meteo_prefetch] event=hit source=%s age_minutes=%s stale=%s',
+                source, prefetch_meta.get('age_minutes'), prefetch_meta.get('stale'),
+            )
+        else:
+            prefetch_only = _prefetch_bool_env('OPEN_METEO_PREFETCH_ONLY', default=False)
+            # PREFETCH_ONLY exists to avoid a live Open-Meteo call *while Render's
+            # circuit is actually open* (429 in progress). A prefetch miss can
+            # also happen for unrelated reasons — e.g. the 2026-07-27 incident
+            # where GitHub Actions' scheduled prefetch run simply never fired —
+            # in which case Open-Meteo isn't actually blocking us and refusing
+            # to fetch live just turns a one-off scheduling miss into a
+            # guaranteed empty notification. Only skip the live fallback when
+            # the circuit is genuinely open; otherwise fall through below.
+            skip_direct_fetch = prefetch_only and is_circuit_open()
+            logger.info(
+                '[open_meteo_prefetch] event=miss source=%s reason=%s direct_fetch_skipped=%s',
+                source, prefetch_meta.get('reason'), skip_direct_fetch,
+            )
+            if skip_direct_fetch:
+                return []
+    else:
+        data = None
+
+    if data is None:
+        try:
+            resp = guarded_get(req.url(), source=source, logger=logger, requests_module=_requests, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except OpenMeteoRateLimitError:
+            raise
+        except OpenMeteoCircuitOpenError:
+            raise
+        except Exception as e:
+            logger.error('Open-Meteo request failed for (%.4f, %.4f): %s', lat, lon, e)
+            return []
+
+    return _parse_simple_forecast_days(data, lat, lon, prefetch_meta)
+
+
+# 334地点/日のバッチ用チャンクサイズ。1リクエストのURL長を安全な範囲に保ちつつ
+# （334地点分のlat/lonを1本にまとめるとURLが長大になりリスクがあるため）、
+# 実際のOpen-Meteo呼び出し回数を大幅削減する（デフォルト334→7）。
+# 2026-08-04: _fetch_open_meteo_multi()と同じ手法を _save_daily_forecast_snapshot()
+# （毎日16:20 JST・334地点の履歴保存バッチ）にも適用。
+SIMPLE_FORECAST_BATCH_CHUNK_SIZE = 50
+
+
+def _fetch_simple_forecast_chunk(lat_lon_pairs: list, timeout: int, source: str) -> list:
+    """Fetch+parse one chunk (<=SIMPLE_FORECAST_BATCH_CHUNK_SIZE points) in a single request."""
+    n = len(lat_lon_pairs)
+    lat_str = ','.join(f'{lat:.5f}' for lat, _lon in lat_lon_pairs)
+    lon_str = ','.join(f'{lon:.5f}' for _lat, lon in lat_lon_pairs)
+    tz = LINE_TIMEZONE.replace('/', '%2F')
+    url = (
+        f'https://api.open-meteo.com/v1/forecast'
+        f'?latitude={lat_str}&longitude={lon_str}'
+        f'&daily={LINE_DAILY_VARS}&hourly={LINE_HOURLY_VARS}'
+        f'&timezone={tz}&forecast_days={LINE_FORECAST_DAYS}'
+    )
+    try:
+        resp = guarded_get(url, source=source, logger=logger, requests_module=_requests, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+    except OpenMeteoRateLimitError:
+        raise
+    except OpenMeteoCircuitOpenError:
+        raise
+    except Exception as e:
+        logger.error('get_simple_forecasts_batch: chunk request failed (%d points): %s', n, e)
+        return [[] for _ in range(n)]
+
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        logger.error('get_simple_forecasts_batch: unexpected response shape: %s', type(data).__name__)
+        return [[] for _ in range(n)]
+
+    out = []
+    for i, (lat, lon) in enumerate(lat_lon_pairs):
+        point_data = data[i] if i < len(data) else {}
+        try:
+            out.append(_parse_simple_forecast_days(point_data, lat, lon))
+        except Exception as e:
+            logger.warning('get_simple_forecasts_batch: parse failed for (%.4f, %.4f): %s', lat, lon, e)
+            out.append([])
+    return out
+
+
+def get_simple_forecasts_batch(lat_lon_pairs: list, timeout: int = 30, source: str = 'history',
+                                chunk_size: int = SIMPLE_FORECAST_BATCH_CHUNK_SIZE) -> dict:
+    """
+    Fetch simplified 7-day forecasts for many spots, chunk_size points at a
+    time, each chunk as ONE Open-Meteo multi-location request (comma-separated
+    lat/lon — same technique as start.py's _fetch_open_meteo_multi()) instead
+    of one request per spot. Cuts actual Open-Meteo request volume for N spots
+    from N to ceil(N/chunk_size) (334 -> 7 at the default chunk size).
+
+    Returns {'results': list[list[dict]], 'processed': int, 'rate_limited': bool}.
+    `results` has one entry per input pair, in the same order as
+    lat_lon_pairs. If a chunk hits a rate limit / open circuit, processing
+    stops there (matching the old per-spot loop's "abort remaining spots"
+    behavior, just at chunk granularity); entries for spots not yet reached
+    are `[]` (same convention as a single failed _get_simple_forecast_for_spot
+    call), and `rate_limited` is True so the caller can report an accurate
+    aborted-spot count.
+    """
+    n = len(lat_lon_pairs)
+    results = [[] for _ in range(n)]
+    processed = 0
+    rate_limited = False
+    chunk_starts = list(range(0, n, chunk_size))
+    for pos, chunk_start in enumerate(chunk_starts):
+        chunk = lat_lon_pairs[chunk_start:chunk_start + chunk_size]
+        try:
+            chunk_results = _fetch_simple_forecast_chunk(chunk, timeout=timeout, source=source)
+        except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+            rate_limited = True
+            break
+        for offset, days in enumerate(chunk_results):
+            results[chunk_start + offset] = days
+        processed += len(chunk)
+        if pos < len(chunk_starts) - 1:
+            time.sleep(0.5)  # チャンク間ペーシング（_fetch_open_meteo_multi の教訓と同じ考え方）
+    return {'results': results, 'processed': processed, 'rate_limited': rate_limited}
 
 
 def get_forecast_for_spot(lat: float, lon: float, timeout: int = 20, source: str = 'line',

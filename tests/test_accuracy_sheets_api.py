@@ -406,8 +406,11 @@ def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
         },
     ]).to_csv(spots_file, index=False)
 
-    def fake_forecast(_lat, _lon, timeout=15):
-        return [{
+    def fake_batch(pairs, timeout=30, source="history"):
+        # 2026-08-04: _save_daily_forecast_snapshot() switched from one
+        # get_forecast_for_spot() call per spot to a single
+        # get_simple_forecasts_batch() call for all spots.
+        day = {
             "date": "2026-06-30",
             "day_number": 1,
             "max_temp": 18.5,
@@ -417,14 +420,15 @@ def test_forecast_snapshot_manual_run_batches_redis_writes(monkeypatch):
             "precipitation_0416": 0.0,
             "score": 84,
             "suitability": "good",
-        }]
+        }
+        return {"results": [[day] for _ in pairs], "processed": len(pairs), "rate_limited": False}
 
     written = {}
     monkeypatch.setattr(start, "CSV_FILE", str(spots_file))
     monkeypatch.setitem(
         sys.modules,
         "line_integration",
-        types.SimpleNamespace(get_forecast_for_spot=fake_forecast),
+        types.SimpleNamespace(get_simple_forecasts_batch=fake_batch),
     )
     monkeypatch.setattr(start, "_obs_redis_mget", lambda keys: {})
     monkeypatch.setattr(start, "_obs_redis_mset", lambda values: written.update(values) or len(values))

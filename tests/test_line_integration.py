@@ -13,6 +13,7 @@ import hashlib
 import base64
 import json
 import tempfile
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -327,6 +328,151 @@ def test_get_forecast_for_spot_falls_back_to_simple_when_enhanced_fails(monkeypa
 
     assert result[0]["score"] == 82
     assert result[0].get("forecast_source") != "web_enhanced"
+
+
+def _batch_forecast_response(n, times=("2026-08-05", "2026-08-06")):
+    return [
+        {
+            "daily": {
+                "time": list(times),
+                "precipitation_sum": [0.0] * len(times),
+                "wind_speed_10m_max": [10.0] * len(times),
+                "precipitation_probability_max": [0] * len(times),
+                "temperature_2m_max": [20.0] * len(times),
+                "relative_humidity_2m_mean": [70.0] * len(times),
+            },
+            "hourly": {
+                "relative_humidity_2m": [70.0] * (24 * len(times)),
+                "wind_speed_10m": [10.0] * (24 * len(times)),
+                "wind_direction_10m": [270.0] * (24 * len(times)),
+                "precipitation": [0.0] * (24 * len(times)),
+            },
+        }
+        for _ in range(n)
+    ]
+
+
+def test_get_simple_forecasts_batch_single_chunk(monkeypatch):
+    """
+    2026-08-04: get_simple_forecasts_batch() was added so
+    start.py's daily 334-spot history snapshot could fetch many spots per
+    Open-Meteo request instead of one request per spot (same technique as
+    start._fetch_open_meteo_multi()). N spots under chunk_size -> 1 request.
+    """
+    calls = []
+
+    def fake_guarded_get(url, **kwargs):
+        calls.append(url)
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = _batch_forecast_response(3)
+        return resp
+
+    monkeypatch.setattr(li, "guarded_get", fake_guarded_get)
+
+    batch = li.get_simple_forecasts_batch(
+        [(45.1, 141.1), (45.2, 141.2), (45.3, 141.3)], timeout=30, source="history"
+    )
+
+    assert len(calls) == 1
+    assert "45.10000,45.20000,45.30000" in calls[0]
+    assert batch["processed"] == 3
+    assert batch["rate_limited"] is False
+    assert len(batch["results"]) == 3
+    for days in batch["results"]:
+        assert len(days) == 2
+        assert days[0]["suitability"] in ("excellent", "good", "fair", "poor")
+
+
+def test_get_simple_forecasts_batch_matches_single_spot_parsing(monkeypatch):
+    """The batched path must produce identical output to the single-spot
+    path for identical raw Open-Meteo data (both delegate to
+    _parse_simple_forecast_days())."""
+    raw = _batch_forecast_response(1)[0]
+
+    def fake_guarded_get_single(url, **kwargs):
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = raw
+        return resp
+
+    monkeypatch.setattr(li, "guarded_get", fake_guarded_get_single)
+    monkeypatch.setattr(li, "_prefetch_bool_env", lambda *a, **k: False)
+    single_result = li._get_simple_forecast_for_spot(45.1, 141.1, source="history")
+
+    def fake_guarded_get_batch(url, **kwargs):
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [raw]
+        return resp
+
+    monkeypatch.setattr(li, "guarded_get", fake_guarded_get_batch)
+    batch_result = li.get_simple_forecasts_batch([(45.1, 141.1)], source="history")["results"][0]
+
+    assert single_result == batch_result
+
+
+def test_get_simple_forecasts_batch_splits_into_multiple_chunks(monkeypatch):
+    """chunk_size caps how many points go into one request; more points than
+    that must become multiple requests, not one giant URL."""
+    from urllib.parse import urlparse, parse_qs
+
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+    calls = []
+
+    def fake_guarded_get(url, **kwargs):
+        calls.append(url)
+        lat_param = parse_qs(urlparse(url).query).get("latitude", [""])[0]
+        n = len(lat_param.split(",")) if lat_param else 0
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = _batch_forecast_response(n)
+        return resp
+
+    monkeypatch.setattr(li, "guarded_get", fake_guarded_get)
+
+    pairs = [(45.0 + i * 0.01, 141.0 + i * 0.01) for i in range(5)]
+    batch = li.get_simple_forecasts_batch(pairs, source="history", chunk_size=2)
+
+    assert len(calls) == 3  # 2 + 2 + 1
+    assert batch["processed"] == 5
+    assert batch["rate_limited"] is False
+    assert len(batch["results"]) == 5
+
+
+def test_get_simple_forecasts_batch_stops_remaining_chunks_on_rate_limit(monkeypatch):
+    from open_meteo_guard import OpenMeteoRateLimitError
+
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+    calls = []
+
+    def fake_guarded_get(url, **kwargs):
+        calls.append(url)
+        if len(calls) == 2:
+            raise OpenMeteoRateLimitError(
+                http_status=429,
+                retry_after_raw=None,
+                retry_after_at="2026-08-04T00:30:00Z",
+                source="history",
+                occurred_at="2026-08-04T00:00:00Z",
+                body_excerpt="",
+                consecutive_429_count=1,
+            )
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = _batch_forecast_response(2)
+        return resp
+
+    monkeypatch.setattr(li, "guarded_get", fake_guarded_get)
+
+    pairs = [(45.0 + i * 0.01, 141.0 + i * 0.01) for i in range(6)]
+    batch = li.get_simple_forecasts_batch(pairs, source="history", chunk_size=2)
+
+    assert len(calls) == 2  # first chunk ok, second chunk hits the 429, third never attempted
+    assert batch["processed"] == 2
+    assert batch["rate_limited"] is True
+    assert batch["results"][0] and batch["results"][1]  # first chunk's data kept
+    assert batch["results"][2] == [] and batch["results"][5] == []  # never reached
 
 
 def test_notify_all_formats_enhanced_forecast_when_enabled(tmp_sub_file, monkeypatch):

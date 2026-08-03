@@ -129,10 +129,17 @@ def test_forecast_route_success_shape_is_unchanged(monkeypatch):
 
 
 def test_history_snapshot_stops_after_429(tmp_path, monkeypatch):
+    """
+    2026-08-04: _save_daily_forecast_snapshot() was redesigned to fetch all
+    spots via line_integration.get_simple_forecasts_batch() (one batched
+    Open-Meteo request per chunk) instead of one request per spot, so a rate
+    limit now aborts a whole chunk rather than a single spot -- with both
+    spots here comfortably under the default chunk size, the entire 2-spot
+    batch is one chunk, and a 429 on it aborts both.
+    """
     csv_path = tmp_path / "spots.csv"
     csv_path.write_text("name,lat,lon\nA,45.1,141.1\nB,45.2,141.2\n", encoding="utf-8")
     monkeypatch.setattr(start, "CSV_FILE", str(csv_path))
-    monkeypatch.setattr(start, "ensure_request_allowed", lambda *a, **k: None)
     monkeypatch.setattr(start, "_obs_redis_mget", lambda keys: {})
     monkeypatch.setattr(start, "_obs_redis_mset", lambda values: len(values))
 
@@ -140,11 +147,11 @@ def test_history_snapshot_stops_after_429(tmp_path, monkeypatch):
 
     calls = []
 
-    def fake_forecast(lat, lon, timeout=15, source="history"):
-        calls.append((lat, lon, source))
+    def fake_guarded_get(url, **kwargs):
+        calls.append(url)
         raise _rate_limited("history")
 
-    monkeypatch.setattr(line_integration, "get_forecast_for_spot", fake_forecast)
+    monkeypatch.setattr(line_integration, "guarded_get", fake_guarded_get)
 
     result = start._save_daily_forecast_snapshot()
 
@@ -152,6 +159,60 @@ def test_history_snapshot_stops_after_429(tmp_path, monkeypatch):
     assert result["status"] == "rate_limited"
     assert result["processed_spots"] == 0
     assert result["aborted_spots"] == 2
+
+
+def test_history_snapshot_batches_all_spots_into_one_request(tmp_path, monkeypatch):
+    """The whole point of this redesign: N spots (well under the chunk size)
+    now cost exactly 1 Open-Meteo request instead of N."""
+    csv_path = tmp_path / "spots.csv"
+    csv_path.write_text(
+        "name,lat,lon\nA,45.1,141.1\nB,45.2,141.2\nC,45.3,141.3\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(start, "CSV_FILE", str(csv_path))
+    monkeypatch.setattr(start, "_obs_redis_mget", lambda keys: {})
+    monkeypatch.setattr(start, "_obs_redis_mset", lambda values: len(values))
+
+    import line_integration
+
+    calls = []
+    times = ["2026-08-05", "2026-08-06"]
+
+    def fake_guarded_get(url, **kwargs):
+        calls.append(url)
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [
+            {
+                "daily": {
+                    "time": times,
+                    "precipitation_sum": [0.0, 0.0],
+                    "wind_speed_10m_max": [10.0, 10.0],
+                    "precipitation_probability_max": [0, 0],
+                    "temperature_2m_max": [20.0, 20.0],
+                    "relative_humidity_2m_mean": [70.0, 70.0],
+                },
+                "hourly": {
+                    "relative_humidity_2m": [70.0] * 48,
+                    "wind_speed_10m": [10.0] * 48,
+                    "wind_direction_10m": [270.0] * 48,
+                    "precipitation": [0.0] * 48,
+                },
+            }
+            for _ in range(3)
+        ]
+        return resp
+
+    monkeypatch.setattr(line_integration, "guarded_get", fake_guarded_get)
+
+    result = start._save_daily_forecast_snapshot()
+
+    assert len(calls) == 1
+    assert "45.10000,45.20000,45.30000" in calls[0]
+    assert result["status"] == "ok"
+    assert result["processed_spots"] == 3
+    assert result["aborted_spots"] == 0
+    assert result["errors"] == 0
+    assert result["planned_records"] == 6  # 3 spots x 2 forecast days
 
 
 def test_field_multi_makes_single_batched_request(monkeypatch):

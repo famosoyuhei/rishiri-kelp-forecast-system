@@ -1005,12 +1005,17 @@ def _save_forecast_history(spot_name, forecasts):
 def _save_daily_forecast_snapshot():
     """全334地点の予報を Redis に一括保存する（毎日16:20 JST バッチ）。
 
-    line_integration.get_forecast_for_spot() を使って Open-Meteo から取得し、
-    _save_forecast_history() と同じスキーマで forecast:hist:{name}:{YYYYMMDD} に保存する。
+    line_integration.get_simple_forecasts_batch() を使って Open-Meteo から
+    まとめて取得し、_save_forecast_history() と同じスキーマで
+    forecast:hist:{name}:{YYYYMMDD} に保存する。
     Webアプリへのアクセスがない日も精度検証データが欠けないようにするためのバッチ。
+
+    2026-08-04: 以前は334地点を1件ずつ個別リクエスト（0.5秒間隔でペーシング、
+    約167秒がかり）していたが、_fetch_open_meteo_multi()と同じ複数地点まとめ
+    リクエストの手法をget_simple_forecasts_batch()に実装し、実際のOpen-Meteo
+    呼び出し回数を334回→最大7回（50地点/チャンク）に削減した。
     """
     import csv as _csv
-    import time as _time
     today_str = datetime.now(tz=JST).strftime('%Y%m%d')
     spots = []
     try:
@@ -1030,42 +1035,26 @@ def _save_daily_forecast_snapshot():
         app.logger.error('[forecast_snapshot] CSV read error: %s', e)
         return
 
-    from line_integration import get_forecast_for_spot as _gffs
-    from open_meteo_guard import OpenMeteoCircuitOpenError as _OMCircuitOpen
-    from open_meteo_guard import OpenMeteoRateLimitError as _OMRateLimit
+    from line_integration import get_simple_forecasts_batch as _gsfb
+    batch = _gsfb([(lat, lon) for _name, lat, lon in spots], timeout=30, source='history')
+    results = batch['results']
+    processed_spots = batch['processed']
+    rate_limited = batch['rate_limited']
+    aborted_spots = max(0, len(spots) - processed_spots) if rate_limited else 0
+    if rate_limited:
+        app.logger.warning(
+            '[forecast_snapshot] Open-Meteo limited; stopping batch processed=%d aborted=%d',
+            processed_spots, aborted_spots,
+        )
+
     planned_records = []
     errors = 0
-    processed_spots = 0
-    aborted_spots = 0
-    rate_limited = False
-    for idx, (name, lat, lon) in enumerate(spots):
-        try:
-            ensure_request_allowed(
-                'history',
-                logger=app.logger,
-                processed_count=processed_spots,
-                remaining_count=max(0, len(spots) - idx),
-            )
-            try:
-                fcs = _gffs(lat, lon, timeout=15, source='history')
-            except TypeError as te:
-                if 'source' not in str(te):
-                    raise
-                fcs = _gffs(lat, lon, timeout=15)
-        except (_OMRateLimit, _OMCircuitOpen) as e:
-            rate_limited = True
-            aborted_spots = max(0, len(spots) - idx)
-            app.logger.warning(
-                '[forecast_snapshot] Open-Meteo limited; stopping batch processed=%d aborted=%d: %s',
-                processed_spots, aborted_spots, e,
-            )
-            break
-        except Exception as e:
-            app.logger.warning('[forecast_snapshot] fetch error %s: %s', name, e)
-            errors += 1
-            _time.sleep(1)
+    for idx, (name, _lat, _lon) in enumerate(spots):
+        fcs = results[idx]
+        if not fcs:
+            if idx < processed_spots:
+                errors += 1
             continue
-        processed_spots += 1
         for fc in fcs:
             target_date_str = fc['date'].replace('-', '')
             redis_key = f'forecast:hist:{name}:{target_date_str}'
@@ -1086,7 +1075,6 @@ def _save_daily_forecast_snapshot():
                 'foehn_adjustment':   None,
             }
             planned_records.append((redis_key, record))
-        _time.sleep(0.5)  # Open-Meteo レート制限を避ける（0.1→0.3→0.5 と段階的に低速化）
 
     saved = 0
     redis_updates = {}
