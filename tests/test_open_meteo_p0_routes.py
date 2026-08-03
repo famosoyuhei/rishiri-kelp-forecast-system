@@ -314,3 +314,128 @@ def test_field_multi_single_request_regardless_of_feature_flag(monkeypatch):
 
     assert len(result) == 2
     assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-04: /api/analysis/field prefetch-first gating (_field_prefetch_allowed
+# / _fetch_field_grid_data) -- GitHub-Actions-prefetched 49-point grid as a
+# fallback data source when Open-Meteo is rate limited, scoped initially to
+# type=score, day=0 per the explicit incremental rollout plan.
+# ---------------------------------------------------------------------------
+
+def test_field_prefetch_allowed_false_when_flag_off(monkeypatch):
+    monkeypatch.delenv("FIELD_PREFETCH_ENABLED", raising=False)
+    assert start._field_prefetch_allowed("score", 0) is False
+
+
+def test_field_prefetch_allowed_true_for_default_score_day0(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+    assert start._field_prefetch_allowed("score", 0) is True
+
+
+def test_field_prefetch_allowed_false_for_non_allowlisted_type(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    assert start._field_prefetch_allowed("wind", 0) is False
+
+
+def test_field_prefetch_allowed_false_for_non_allowlisted_day(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+    assert start._field_prefetch_allowed("score", 3) is False
+
+
+def test_field_prefetch_allowed_widens_with_env_vars(monkeypatch):
+    """The whole point of this design: widening coverage from day=0 to the
+    full week (or to more field types) is a pure env var change, no code/
+    redeploy of the prefetch data itself needed."""
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.setenv("FIELD_PREFETCH_TYPES", "score,wind")
+    monkeypatch.setenv("FIELD_PREFETCH_DAYS", "0,1,2,3,4,5,6")
+
+    assert start._field_prefetch_allowed("score", 6) is True
+    assert start._field_prefetch_allowed("wind", 3) is True
+    assert start._field_prefetch_allowed("humidity", 0) is False
+
+
+def test_fetch_field_grid_data_uses_prefetch_when_allowed_and_hit(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+
+    import open_meteo_prefetch as omp
+    prefetched_data = [{"hourly": {"time": ["x"]}}] * 49
+    monkeypatch.setattr(omp, "field_grid_request", lambda: MagicMock())
+    monkeypatch.setattr(
+        omp, "load_field_grid_prefetch",
+        lambda req: (prefetched_data, {"age_minutes": 5, "stale": False}),
+    )
+    live_calls = []
+    monkeypatch.setattr(
+        start, "_fetch_open_meteo_multi",
+        lambda lats, lons, hourly_vars: live_calls.append(1) or [],
+    )
+
+    result = start._fetch_field_grid_data("score", 0, [45.1], [141.1], ["temperature_2m"])
+
+    assert result == prefetched_data
+    assert live_calls == []  # live path never touched on a prefetch hit
+
+
+def test_fetch_field_grid_data_falls_back_to_live_on_prefetch_miss(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+
+    import open_meteo_prefetch as omp
+    monkeypatch.setattr(omp, "field_grid_request", lambda: MagicMock())
+    monkeypatch.setattr(
+        omp, "load_field_grid_prefetch",
+        lambda req: (None, {"reason": "stale_expired"}),
+    )
+    live_result = [{"hourly": {"time": ["live"]}}]
+    monkeypatch.setattr(
+        start, "_fetch_open_meteo_multi",
+        lambda lats, lons, hourly_vars: live_result,
+    )
+
+    result = start._fetch_field_grid_data("score", 0, [45.1], [141.1], ["temperature_2m"])
+
+    assert result == live_result
+
+
+def test_fetch_field_grid_data_falls_back_to_live_when_not_allowed(monkeypatch):
+    """type/day not in the allowlist (e.g. wind before it's been widened in)
+    must behave 100% like the pre-prefetch code -- never even touch the
+    prefetch loader."""
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)  # default: score only
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+
+    import open_meteo_prefetch as omp
+    prefetch_calls = []
+    monkeypatch.setattr(omp, "field_grid_request", lambda: prefetch_calls.append(1))
+    live_result = [{"hourly": {"time": ["live"]}}]
+    monkeypatch.setattr(
+        start, "_fetch_open_meteo_multi",
+        lambda lats, lons, hourly_vars: live_result,
+    )
+
+    result = start._fetch_field_grid_data("wind", 0, [45.1], [141.1], ["wind_speed_10m"])
+
+    assert result == live_result
+    assert prefetch_calls == []
+
+
+def test_fetch_field_grid_data_propagates_rate_limit_from_live_fallback(monkeypatch):
+    monkeypatch.delenv("FIELD_PREFETCH_ENABLED", raising=False)  # disabled -> straight to live
+
+    def fake_live(lats, lons, hourly_vars):
+        raise _rate_limited("field")
+
+    monkeypatch.setattr(start, "_fetch_open_meteo_multi", fake_live)
+
+    with pytest.raises(OpenMeteoRateLimitError):
+        start._fetch_field_grid_data("score", 0, [45.1], [141.1], ["temperature_2m"])

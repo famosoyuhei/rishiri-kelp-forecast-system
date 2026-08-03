@@ -731,3 +731,149 @@ def test_line_web_forecast_enabled_false_for_non_line_source(monkeypatch):
     monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_2088_1443")
     monkeypatch.setattr(li, "registered_spot_ids", lambda: {"H_1631_1434"})
     assert li._line_web_forecast_enabled("web", spot_id="H_1631_1434") is False
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-04: island-distribution 49-point grid prefetch
+# (build_rishiri_grid / field_grid_request / validate_field_grid_response /
+# load_field_grid_prefetch)
+# ---------------------------------------------------------------------------
+
+def sample_field_grid_point(hourly_vars=None):
+    """One grid point's raw Open-Meteo response, matching field_grid_request()'s
+    hourly variable list and FIELD_GRID_FORECAST_DAYS (8 days, no `daily` key)."""
+    vars_ = hourly_vars or omp._split_vars(omp.FIELD_GRID_HOURLY_VARS)
+    hours = []
+    for day in range(omp.FIELD_GRID_FORECAST_DAYS):
+        for h in range(24):
+            hours.append(f"2026-08-{day + 1:02d}T{h:02d}:00")
+    n = len(hours)
+    return {"hourly": {"time": hours, **{var: [1.0] * n for var in vars_}}}
+
+
+def sample_field_grid_response(n_points=None):
+    n_points = n_points or len(omp.build_rishiri_grid())
+    return [sample_field_grid_point() for _ in range(n_points)]
+
+
+def test_build_rishiri_grid_has_49_points_including_summit():
+    grid = omp.build_rishiri_grid()
+    assert len(grid) == 49
+    assert grid[0]["label"] == "利尻山頂"
+    assert grid[0]["lat"] == omp.SUMMIT_LAT
+    assert grid[0]["lon"] == omp.SUMMIT_LON
+    # 24 inner-ring + 24 outer-ring, remaining labels all present
+    assert sum(1 for g in grid if g["label"].startswith("内")) == 24
+    assert sum(1 for g in grid if g["label"].startswith("外")) == 24
+
+
+def test_field_grid_request_is_deterministic():
+    """The grid is fixed, so two independent calls must produce the exact
+    same identity/redis_key -- critical since GitHub Actions (writer) and
+    Render (reader) build this request independently."""
+    req1 = omp.field_grid_request()
+    req2 = omp.field_grid_request()
+    assert req1.identity == req2.identity
+    assert req1.redis_key == req2.redis_key
+    assert req1.api_type == "field_grid"
+
+
+def test_field_grid_request_url_has_comma_separated_coordinates_for_all_points():
+    req = omp.field_grid_request()
+    grid = omp.build_rishiri_grid()
+    lat_param = req.params["latitude"]
+    lon_param = req.params["longitude"]
+    assert len(lat_param.split(",")) == len(grid)
+    assert len(lon_param.split(",")) == len(grid)
+    assert f"{omp.SUMMIT_LAT:.4f}" in lat_param.split(",")
+
+
+def test_validate_field_grid_response_accepts_well_formed_array():
+    data = sample_field_grid_response()
+    ok, reason = omp.validate_field_grid_response(data, expected_points=len(omp.build_rishiri_grid()))
+    assert ok is True
+    assert reason == "ok"
+
+
+def test_validate_field_grid_response_rejects_non_array():
+    ok, reason = omp.validate_field_grid_response({"hourly": {}}, expected_points=49)
+    assert ok is False
+    assert reason == "not_json_array"
+
+
+def test_validate_field_grid_response_rejects_wrong_point_count():
+    data = sample_field_grid_response(n_points=10)
+    ok, reason = omp.validate_field_grid_response(data, expected_points=49)
+    assert ok is False
+    assert reason == "point_count_mismatch"
+
+
+def test_validate_field_grid_response_rejects_bad_point():
+    data = sample_field_grid_response(n_points=3)
+    data[1]["hourly"]["temperature_2m"] = [1.0]  # length mismatch vs "time"
+    ok, reason = omp.validate_field_grid_response(data, expected_points=3)
+    assert ok is False
+    assert reason.startswith("point_1:")
+
+
+def test_load_field_grid_prefetch_fresh_hit(monkeypatch):
+    req = omp.field_grid_request()
+    data = sample_field_grid_response()
+    record = omp.make_prefetch_record(req, data)
+    monkeypatch.setattr(omp, "redis_get_json", lambda key, requests_module=None: record)
+
+    now = datetime.now(timezone.utc)
+    loaded, meta = omp.load_field_grid_prefetch(req, now=now)
+
+    assert loaded == data
+    assert meta["prefetched"] is True
+    assert meta["stale"] is False
+
+
+def test_load_field_grid_prefetch_stale_hit_within_window(monkeypatch):
+    req = omp.field_grid_request()
+    data = sample_field_grid_response()
+    fetched_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    record = omp.make_prefetch_record(req, data, fetched_at=fetched_at)
+    monkeypatch.setattr(omp, "redis_get_json", lambda key, requests_module=None: record)
+
+    loaded, meta = omp.load_field_grid_prefetch(req, now=datetime.now(timezone.utc))
+
+    assert loaded == data
+    assert meta["stale"] is True
+
+
+def test_load_field_grid_prefetch_expired_beyond_stale_window(monkeypatch):
+    req = omp.field_grid_request()
+    data = sample_field_grid_response()
+    fetched_at = datetime.now(timezone.utc) - timedelta(hours=13)
+    record = omp.make_prefetch_record(req, data, fetched_at=fetched_at)
+    monkeypatch.setattr(omp, "redis_get_json", lambda key, requests_module=None: record)
+
+    loaded, meta = omp.load_field_grid_prefetch(req, now=datetime.now(timezone.utc))
+
+    assert loaded is None
+    assert meta["reason"] == "stale_expired"
+
+
+def test_load_field_grid_prefetch_rejects_fingerprint_mismatch(monkeypatch):
+    req = omp.field_grid_request()
+    record = omp.make_prefetch_record(req, sample_field_grid_response())
+    record["request_fingerprint"] = "wrong"
+    monkeypatch.setattr(omp, "redis_get_json", lambda key, requests_module=None: record)
+
+    loaded, meta = omp.load_field_grid_prefetch(req)
+
+    assert loaded is None
+    assert meta["reason"] == "fingerprint_mismatch"
+
+
+def test_load_field_grid_prefetch_rejects_malformed_data(monkeypatch):
+    req = omp.field_grid_request()
+    record = omp.make_prefetch_record(req, {"not": "an array"})
+    monkeypatch.setattr(omp, "redis_get_json", lambda key, requests_module=None: record)
+
+    loaded, meta = omp.load_field_grid_prefetch(req)
+
+    assert loaded is None
+    assert meta["reason"] == "not_json_array"

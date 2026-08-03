@@ -26,6 +26,11 @@ from open_meteo_guard import (
     guarded_get,
     is_enabled as open_meteo_circuit_enabled,
 )
+from open_meteo_prefetch import (
+    SUMMIT_LAT,
+    SUMMIT_LON,
+    build_rishiri_grid,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JST = timezone(timedelta(hours=9))  # 日本標準時 (UTC+9)
@@ -4377,95 +4382,12 @@ def _compute_grid_bounds() -> dict:
     return _grid_bounds_cache
 
 
-def _build_rishiri_grid() -> list:
-    """利尻島の島内分布グリッドを生成。
-
-    【構成: 利尻山頂 + 二重リング = 49点】
-    - 利尻山頂 1点 (中心) ── 山頂の気象を基準として可視化
-    - 内リング 24点: 方位 0°/15°/.../345° (15°刻み) ── 半径は方位別に異なる（下記）
-    - 外リング 24点: r=8km, 方位 7.5°/22.5°/.../352.5° (内リングと7.5°ずれで千鳥配置)
-
-    【内リング半径の方位別設計】
-    利尻山頂（JMA公式座標 SUMMIT_LAT/SUMMIT_LON、旧丸め座標45.1800N/141.2392Eから
-    約260m補正済み。2026-08-04、FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md参照）
-    は島の「東寄り」に位置する。このため、北東・東方向の海岸は5.8〜7.5km
-    （山頂に近い）、西・北西・南方向の海岸は7.1〜9.4km（遠い）と非対称になる。
-    実測データ（331干場）に基づく各方向の平均沿岸距離と内リング半径の割り当ては
-    旧丸め座標を基準に算出されたものだが、約260mのシフトはリング半径6〜9kmに
-    対して小さいため再較正はしていない:
-      北:6.9km / 北東:6.2km / 東:6.6km          → r=6km  (i=0〜8,  0°〜120°)
-      南東:7.7km / 南2,3:8.3km / 南西:7.4km / 西1,2:8.0km → r=7km  (i=9〜11, i=13〜19, 135°〜285°)
-      真南:8.3km(max 9.1km)                     → r=9km  (i=12, 180°)
-      西3:8.0km / 北西:8.8km(max 9.4km)         → r=9km  (i=20〜23, 300°〜345°)
-
-    座標計算
-    ----------
-    中心: 利尻山頂（SUMMIT_LAT/SUMMIT_LON） — mountain_azimuth()・
-          _compute_foehn_intensity_hours()の山頂リファレンスと同一の基準点。
-          旧実装はこの関数だけ45.1800N/141.2392Eという別の丸め座標を使っており、
-          _compute_score_field()側のフェーン温位差計算に系統誤差（概算+1.67℃）が
-          混入していた（PR#19で他経路は統一したがこの関数の更新が漏れていた）。
-    LAT_D = 1/111.0 °/km
-    LON_D = 1/(111.0×cos(SUMMIT_LAT°)) °/km
-    方位: 北=0°、時計回り（気象学的方位角と同一）
-
-    ラベル規則 (8方位 × 3サブ = 24点/リング)
-    ----------
-    内リング: 内北1 / 内北2 / 内北3 / 内北東1 ... 内北西3  (半径はラベルに反映しない)
-    外リング: 外北1 / 外北2 / 外北3 / 外北東1 ... 外北西3
-    山頂:     利尻山頂
-    """
-    import math as _m
-
-    _CLAT  = SUMMIT_LAT
-    _CLON  = SUMMIT_LON
-    _LAT_D = 1.0 / 111.0
-    _LON_D = 1.0 / (111.0 * _m.cos(_m.radians(_CLAT)))
-
-    _C8 = ['北', '北東', '東', '南東', '南', '南西', '西', '北西']
-
-    def _pt(bearing_deg, radius_km, label):
-        _brad = _m.radians(bearing_deg)
-        return {
-            'lat':     round(_CLAT + radius_km * _LAT_D * _m.cos(_brad), 4),
-            'lon':     round(_CLON + radius_km * _LON_D * _m.sin(_brad), 4),
-            'bearing': bearing_deg,
-            'radius':  radius_km,
-            'label':   label,
-        }
-
-    _grid = [
-        # ── 山頂 (中心) ─────────────────────────────────────────────────────
-        {'lat': _CLAT, 'lon': _CLON, 'bearing': None, 'radius': 0, 'label': '利尻山頂'},
-    ]
-
-    # ── 内リング: 方位別半径 ────────────────────────────────────────────────
-    # r=6km: i=0〜7  (0°〜105°, 北/北東/東1-2) — 東寄り海岸線(avg 6.2〜6.9km)に合わせる
-    # r=9km: i=12   (180°, 真南)              — 南avg 8.3km, max 9.1km
-    # r=9km: i=20〜23 (300°〜345°, 内西3〜北西) — 北西avg 8.8km, max 9.4km
-    # r=7km: それ以外 (内東3=120°/南東/南2,3/南西/西) — i=8(120°)は南東境界のため7kmに戻す
-    for _i in range(24):
-        _bdeg = 15.0 * _i
-        if _i <= 7:
-            _r = 6.0                       # 北/北東/東1-2(0°〜105°): 東寄り近い海岸
-        elif _i == 12 or _i >= 20:
-            _r = 9.0                       # 真南(180°)・北西〜北北西(300°〜345°): 遠い海岸
-        else:
-            _r = 7.0                       # 内東3(120°)含む南東〜西: 中間帯
-        _lbl  = f'内{_C8[_i // 3]}{(_i % 3) + 1}'
-        _grid.append(_pt(_bdeg, _r, _lbl))
-
-    # ── 外リング: 方位別半径, 7.5°, 22.5°, ..., 352.5° ──────────────────────
-    # r=7km: i=0〜6 (7.5°〜97.5°, 外北1〜外東1) — N/NE/E海岸はavg6.2〜6.9km,max6.6〜7.5km
-    #                                              8kmは沖合に出すぎのため7kmへ
-    # r=8km: それ以外 — 南/西/北西は海岸が遠い(avg7.4〜8.8km)
-    for _i in range(24):
-        _bdeg = 15.0 * _i + 7.5
-        _r    = 7.0 if _i <= 6 else 8.0
-        _lbl  = f'外{_C8[_i // 3]}{(_i % 3) + 1}'
-        _grid.append(_pt(_bdeg, _r, _lbl))
-
-    return _grid
+# 2026-08-04: _build_rishiri_grid() 本体は open_meteo_prefetch.py の
+# build_rishiri_grid() に移設（そちらが正規定義元）。GitHub Actionsのfield_grid
+# prefetchジョブとRenderの両方が、Flask/pandas非依存の同一モジュールから
+# 同じ49点グリッドを得られるようにするため。呼び出し側（_compute_*_field()系
+# 6箇所）は変更不要 — 引き続き _build_rishiri_grid() という名前で呼び出せる。
+_build_rishiri_grid = build_rishiri_grid
 
 
 def _fetch_elevations_batch(lats: list, lons: list, source: str | None = None) -> list:
@@ -4686,6 +4608,68 @@ def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
     return data[:n]
 
 
+def _field_prefetch_allowed(field_type: str, day: int) -> bool:
+    """
+    Gate for /api/analysis/field's prefetch-first data loading (Open-Meteo
+    429 resilience for the island-distribution grid — same pattern as
+    _enhanced_prefetch_enabled() for the LINE canary path). Off by default
+    (FIELD_PREFETCH_ENABLED).
+
+    2026-08-04: the underlying prefetch (open_meteo_prefetch.field_grid_request())
+    is ONE multi-location request that already covers all 49 grid points, all
+    FIELD_GRID_FORECAST_DAYS (8) days, and — since every _compute_*_field()
+    call site's hourly_vars is a subset of the score field's var list — all 6
+    field types (score/wind/humidity/temperature/solar/precipitation) at
+    once. So widening which (field_type, day) combination this function
+    allows never requires a new prefetch entry, only changing
+    FIELD_PREFETCH_TYPES / FIELD_PREFETCH_DAYS. Starts scoped to
+    type=score, day=0 per the explicit incremental rollout plan; widen as
+    production confidence builds. Any (field_type, day) not allowlisted, or
+    any request while the flag is unset/false, takes 100% of the
+    pre-existing live Open-Meteo path with no behavior change.
+    """
+    if os.environ.get('FIELD_PREFETCH_ENABLED', '').strip().lower() not in ('1', 'true', 'yes', 'on'):
+        return False
+    allowed_types_raw = os.environ.get('FIELD_PREFETCH_TYPES', 'score')
+    allowed_types = {t.strip() for t in allowed_types_raw.split(',') if t.strip()}
+    if field_type not in allowed_types:
+        return False
+    allowed_days_raw = os.environ.get('FIELD_PREFETCH_DAYS', '0')
+    allowed_days = {d.strip() for d in allowed_days_raw.split(',') if d.strip()}
+    return str(day) in allowed_days
+
+
+def _fetch_field_grid_data(field_type: str, day: int, lats: list, lons: list, hourly_vars: list) -> list:
+    """
+    Shared Open-Meteo data source for all 6 _compute_*_field() functions.
+    Tries the GitHub-Actions-prefetched 49-point grid first when
+    _field_prefetch_allowed() passes for this (field_type, day); falls back
+    to the existing live _fetch_open_meteo_multi() on a miss, load error, or
+    when not allowlisted — so this is a safe drop-in replacement everywhere
+    _fetch_open_meteo_multi() was called directly. Exceptions from the live
+    fallback (OpenMeteoRateLimitError/OpenMeteoCircuitOpenError) propagate
+    unchanged so each caller's existing except-blocks keep working as-is.
+    """
+    if _field_prefetch_allowed(field_type, day):
+        try:
+            from open_meteo_prefetch import field_grid_request, load_field_grid_prefetch
+            req = field_grid_request()
+            data, meta = load_field_grid_prefetch(req)
+            if data is not None:
+                app.logger.info(
+                    '[field_prefetch] event=hit type=%s day=%d age_minutes=%s stale=%s',
+                    field_type, day, meta.get('age_minutes'), meta.get('stale'),
+                )
+                return data
+            app.logger.info(
+                '[field_prefetch] event=miss type=%s day=%d reason=%s',
+                field_type, day, meta.get('reason'),
+            )
+        except Exception as exc:
+            app.logger.warning('[field_prefetch] load error type=%s day=%d: %s', field_type, day, exc)
+    return _fetch_open_meteo_multi(lats, lons, hourly_vars)
+
+
 def _extract_day_window(hourly: dict, target_date: str) -> dict:
     """
     Open-Meteo hourly dict から target_date の作業時間帯（04〜16時JST）だけ抽出。
@@ -4818,8 +4802,8 @@ def _compute_fog_from_dewpoint(
 # 旧: get_forecast()は45.1821/141.2421（島中心）、_compute_score_field()は
 #     45.1800/141.2392（丸め座標、GSI標高で1551m相当）を別々に使用しており
 #     不整合だった上、真の山頂から最大約260m水平にズレていた（2026-07-22検証）。
-SUMMIT_LAT = 45.1786
-SUMMIT_LON = 141.2419
+# SUMMIT_LAT/SUMMIT_LON は open_meteo_prefetch.py からインポート（ファイル冒頭）
+# — 2026-08-04、build_rishiri_grid()の移設と合わせて正規定義元を一本化。
 SUMMIT_ELEVATION_M = 1721.0
 
 _DRY_ADIABATIC_LAPSE = 0.0098  # °C/m
@@ -5230,7 +5214,7 @@ def _compute_score_field(day: int) -> dict:
         return {'error': f'Open-Meteo rate limited: {e}'}
 
     try:
-        api_results = _fetch_open_meteo_multi(lats, lons, hourly_vars)
+        api_results = _fetch_field_grid_data('score', day, lats, lons, hourly_vars)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
         return {'error': f'Open-Meteo rate limited: {e}'}
     except Exception as e:
@@ -5413,8 +5397,8 @@ def _compute_wind_field(day: int, hour: int) -> dict:
     lons = [g['lon'] for g in grid]
 
     try:
-        api_results = _fetch_open_meteo_multi(
-            lats, lons, ['wind_speed_10m', 'wind_direction_10m']
+        api_results = _fetch_field_grid_data(
+            'wind', day, lats, lons, ['wind_speed_10m', 'wind_direction_10m']
         )
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
@@ -5476,8 +5460,8 @@ def _compute_humidity_field(day: int, hour: int) -> dict:
     lons = [g['lon'] for g in grid]
 
     try:
-        api_results = _fetch_open_meteo_multi(
-            lats, lons, ['relative_humidity_2m', 'wind_direction_10m']
+        api_results = _fetch_field_grid_data(
+            'humidity', day, lats, lons, ['relative_humidity_2m', 'wind_direction_10m']
         )
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
@@ -5547,7 +5531,7 @@ def _compute_solar_field(day: int, hour: int) -> dict:
     lons = [g['lon'] for g in grid]
 
     try:
-        api_results = _fetch_open_meteo_multi(lats, lons, ['shortwave_radiation'])
+        api_results = _fetch_field_grid_data('solar', day, lats, lons, ['shortwave_radiation'])
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
 
@@ -5599,7 +5583,7 @@ def _compute_temperature_field(day: int, hour: int) -> dict:
     lons = [g['lon'] for g in grid]
 
     try:
-        api_results = _fetch_open_meteo_multi(lats, lons, ['temperature_2m'])
+        api_results = _fetch_field_grid_data('temperature', day, lats, lons, ['temperature_2m'])
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
 
@@ -5656,7 +5640,7 @@ def _compute_precipitation_field(day: int, hour: int) -> dict:
     lons = [g['lon'] for g in grid]
 
     try:
-        api_results = _fetch_open_meteo_multi(lats, lons, ['precipitation'])
+        api_results = _fetch_field_grid_data('precipitation', day, lats, lons, ['precipitation'])
     except Exception as e:
         return {'error': f'Open-Meteo fetch failed: {e}'}
 

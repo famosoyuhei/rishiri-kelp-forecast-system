@@ -1,0 +1,52 @@
+name: Prefetch Island-Distribution Grid Cache
+
+on:
+  schedule:
+    # Best-effort backup only -- GitHub Actions' `schedule` trigger has
+    # proven unreliable for time-sensitive triggers in this repo (missed
+    # slots, multi-hour delays; see docs/OPEN_METEO_TEMPORARY_PREFETCH.md and
+    # docs/RENDER_FREE_TIER_KEEPALIVE.md's 2026-08-02/08-03 incidents). The
+    # primary trigger is a cron-job.org job calling this workflow's
+    # workflow_dispatch endpoint every ~20-30 minutes, comfortably inside the
+    # 60-minute freshness window (start.py's _FIELD_CACHE_TTL /
+    # open_meteo_prefetch.py's FIELD_GRID_FRESH_MAX_AGE_MINUTES).
+    - cron: "*/45 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: field-grid-prefetch
+  cancel-in-progress: false
+
+jobs:
+  prefetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      OPEN_METEO_BASE_URL: ${{ vars.OPEN_METEO_BASE_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal dependencies
+        run: python -m pip install --disable-pip-version-check requests==2.31.0
+
+      - name: Verify required secrets
+        shell: bash
+        run: |
+          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
+            echo "Required Upstash GitHub secrets are not configured." >&2
+            exit 1
+          fi
+
+      - name: Prefetch island-distribution grid
+        run: python jobs/fetch_field_grid_cache.py

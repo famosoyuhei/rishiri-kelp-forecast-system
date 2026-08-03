@@ -49,13 +49,109 @@ ENHANCED_HOURLY_VARS = (
 SUMMIT_HOURLY_VARS = "temperature_2m"
 
 # JMA official summit coordinates (45°10'43"N 141°14'31"E, South Peak, 1721m).
-# Duplicated here (not imported from start.py) so this module stays
-# Flask/pandas-independent and importable from the lightweight GitHub Actions
-# job. MUST match start.py's SUMMIT_LAT/SUMMIT_LON exactly — these are fixed
-# JMA-published coordinates that do not change, so the duplication risk is low,
-# but keep both in sync if either is ever revised.
+# This module is the canonical source (Flask/pandas-independent, importable
+# from the lightweight GitHub Actions job) — start.py imports SUMMIT_LAT/
+# SUMMIT_LON from here rather than defining its own copy (2026-08-04, as part
+# of moving build_rishiri_grid() here too — see below).
 SUMMIT_LAT = 45.1786
 SUMMIT_LON = 141.2419
+
+
+def build_rishiri_grid() -> list[dict]:
+    """利尻島の島内分布グリッドを生成。
+
+    【構成: 利尻山頂 + 二重リング = 49点】
+    - 利尻山頂 1点 (中心) ── 山頂の気象を基準として可視化
+    - 内リング 24点: 方位 0°/15°/.../345° (15°刻み) ── 半径は方位別に異なる（下記）
+    - 外リング 24点: r=8km, 方位 7.5°/22.5°/.../352.5° (内リングと7.5°ずれで千鳥配置)
+
+    【内リング半径の方位別設計】
+    利尻山頂（JMA公式座標 SUMMIT_LAT/SUMMIT_LON、旧丸め座標45.1800N/141.2392Eから
+    約260m補正済み。2026-08-04、FOEHN_VARIABLE_CONSISTENCY_AUDIT_20260804.md参照）
+    は島の「東寄り」に位置する。このため、北東・東方向の海岸は5.8〜7.5km
+    （山頂に近い）、西・北西・南方向の海岸は7.1〜9.4km（遠い）と非対称になる。
+    実測データ（331干場）に基づく各方向の平均沿岸距離と内リング半径の割り当ては
+    旧丸め座標を基準に算出されたものだが、約260mのシフトはリング半径6〜9kmに
+    対して小さいため再較正はしていない:
+      北:6.9km / 北東:6.2km / 東:6.6km          → r=6km  (i=0〜8,  0°〜120°)
+      南東:7.7km / 南2,3:8.3km / 南西:7.4km / 西1,2:8.0km → r=7km  (i=9〜11, i=13〜19, 135°〜285°)
+      真南:8.3km(max 9.1km)                     → r=9km  (i=12, 180°)
+      西3:8.0km / 北西:8.8km(max 9.4km)         → r=9km  (i=20〜23, 300°〜345°)
+
+    座標計算
+    ----------
+    中心: 利尻山頂（SUMMIT_LAT/SUMMIT_LON） — mountain_azimuth()・
+          _compute_foehn_intensity_hours()の山頂リファレンスと同一の基準点。
+          旧実装はこの関数だけ45.1800N/141.2392Eという別の丸め座標を使っており、
+          _compute_score_field()側のフェーン温位差計算に系統誤差（概算+1.67℃）が
+          混入していた（PR#19で他経路は統一したがこの関数の更新が漏れていた）。
+    LAT_D = 1/111.0 °/km
+    LON_D = 1/(111.0×cos(SUMMIT_LAT°)) °/km
+    方位: 北=0°、時計回り（気象学的方位角と同一）
+
+    ラベル規則 (8方位 × 3サブ = 24点/リング)
+    ----------
+    内リング: 内北1 / 内北2 / 内北3 / 内北東1 ... 内北西3  (半径はラベルに反映しない)
+    外リング: 外北1 / 外北2 / 外北3 / 外北東1 ... 外北西3
+    山頂:     利尻山頂
+
+    2026-08-04: start.py の _build_rishiri_grid() から移設（このモジュールが
+    正規定義元）。start.py・GitHub Actionsのfield_grid prefetchジョブの両方が
+    同じ49点を得るための単一ソース。start.py側は
+    `from open_meteo_prefetch import build_rishiri_grid as _build_rishiri_grid`
+    として再エクスポートしている。
+    """
+    import math as _m
+
+    _CLAT  = SUMMIT_LAT
+    _CLON  = SUMMIT_LON
+    _LAT_D = 1.0 / 111.0
+    _LON_D = 1.0 / (111.0 * _m.cos(_m.radians(_CLAT)))
+
+    _C8 = ['北', '北東', '東', '南東', '南', '南西', '西', '北西']
+
+    def _pt(bearing_deg, radius_km, label):
+        _brad = _m.radians(bearing_deg)
+        return {
+            'lat':     round(_CLAT + radius_km * _LAT_D * _m.cos(_brad), 4),
+            'lon':     round(_CLON + radius_km * _LON_D * _m.sin(_brad), 4),
+            'bearing': bearing_deg,
+            'radius':  radius_km,
+            'label':   label,
+        }
+
+    _grid = [
+        # ── 山頂 (中心) ─────────────────────────────────────────────────────
+        {'lat': _CLAT, 'lon': _CLON, 'bearing': None, 'radius': 0, 'label': '利尻山頂'},
+    ]
+
+    # ── 内リング: 方位別半径 ────────────────────────────────────────────────
+    # r=6km: i=0〜7  (0°〜105°, 北/北東/東1-2) — 東寄り海岸線(avg 6.2〜6.9km)に合わせる
+    # r=9km: i=12   (180°, 真南)              — 南avg 8.3km, max 9.1km
+    # r=9km: i=20〜23 (300°〜345°, 内西3〜北西) — 北西avg 8.8km, max 9.4km
+    # r=7km: それ以外 (内東3=120°/南東/南2,3/南西/西) — i=8(120°)は南東境界のため7kmに戻す
+    for _i in range(24):
+        _bdeg = 15.0 * _i
+        if _i <= 7:
+            _r = 6.0                       # 北/北東/東1-2(0°〜105°): 東寄り近い海岸
+        elif _i == 12 or _i >= 20:
+            _r = 9.0                       # 真南(180°)・北西〜北北西(300°〜345°): 遠い海岸
+        else:
+            _r = 7.0                       # 内東3(120°)含む南東〜西: 中間帯
+        _lbl  = f'内{_C8[_i // 3]}{(_i % 3) + 1}'
+        _grid.append(_pt(_bdeg, _r, _lbl))
+
+    # ── 外リング: 方位別半径, 7.5°, 22.5°, ..., 352.5° ──────────────────────
+    # r=7km: i=0〜6 (7.5°〜97.5°, 外北1〜外東1) — N/NE/E海岸はavg6.2〜6.9km,max6.6〜7.5km
+    #                                              8kmは沖合に出すぎのため7kmへ
+    # r=8km: それ以外 — 南/西/北西は海岸が遠い(avg7.4〜8.8km)
+    for _i in range(24):
+        _bdeg = 15.0 * _i + 7.5
+        _r    = 7.0 if _i <= 6 else 8.0
+        _lbl  = f'外{_C8[_i // 3]}{(_i % 3) + 1}'
+        _grid.append(_pt(_bdeg, _r, _lbl))
+
+    return _grid
 
 # Static, manually-verified elevations (meters) for spots that participate in
 # the enhanced-forecast prefetch (currently the LINE_WEB_FORECAST_CANARY_SPOT_IDS
@@ -106,6 +202,29 @@ MARINE_STALE_MAX_AGE_MINUTES = 48 * 60   # 48h
 
 FRESH_MAX_AGE_MINUTES = 6 * 60
 STALE_MAX_AGE_MINUTES = 12 * 60
+
+# Island-distribution grid prefetch (/api/analysis/field's 49-point grid) —
+# mirrors start.py's _fetch_open_meteo_multi() call from _compute_score_field()
+# exactly, which already requests the superset of hourly variables every one
+# of the 6 field types (score/wind/humidity/temperature/solar/precipitation)
+# needs — so this ONE multi-location request's cached response can serve all
+# 6 types, not just score. It also already requests FIELD_GRID_FORECAST_DAYS
+# in one shot, covering every `day` (0-6) the frontend might request — unlike
+# the per-spot prefetch types above, widening which (type, day) combination is
+# *allowed* to consume this prefetch (start.py's _field_prefetch_allowed())
+# never requires a new prefetch entry, only a gating change.
+FIELD_GRID_HOURLY_VARS = (
+    "temperature_2m,relative_humidity_2m,wind_speed_10m,"
+    "precipitation,precipitation_probability,shortwave_radiation,"
+    "dewpoint_2m,cape,wind_direction_10m"
+)
+FIELD_GRID_FORECAST_DAYS = 8
+FIELD_GRID_MODELS = "jma_seamless"
+# Mirrors start.py's _FIELD_CACHE_TTL (60min fresh) / _FIELD_CACHE_STALE_TTL
+# (12h stale fallback) so the prefetch and the in-process field cache expire
+# on comparable schedules.
+FIELD_GRID_FRESH_MAX_AGE_MINUTES = 60
+FIELD_GRID_STALE_MAX_AGE_MINUTES = 12 * 60
 
 
 @dataclass(frozen=True)
@@ -302,6 +421,51 @@ def marine_forecast_request(lat: float, lon: float, base_url: str | None = None)
     )
 
 
+def field_grid_request(base_url: str | None = None) -> PrefetchRequest:
+    """
+    Build a prefetch request for the 49-point island-distribution grid — ONE
+    multi-location Forecast API call (comma-separated lat/lon, matching
+    start.py's _fetch_open_meteo_multi()) instead of one request per grid
+    point or per (type, day) combination. The grid itself (build_rishiri_grid())
+    is fixed/deterministic, so this request never varies — no lat/lon
+    parameters on this function, unlike the single-point builders above.
+    """
+    grid = build_rishiri_grid()
+    lats = [g["lat"] for g in grid]
+    lons = [g["lon"] for g in grid]
+    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or "https://api.open-meteo.com/v1/forecast").rstrip("/")
+    params = {
+        "latitude": ",".join(f"{lat:.4f}" for lat in lats),
+        "longitude": ",".join(f"{lon:.4f}" for lon in lons),
+        "hourly": FIELD_GRID_HOURLY_VARS,
+        "timezone": LINE_TIMEZONE,
+        "forecast_days": str(FIELD_GRID_FORECAST_DAYS),
+        "models": FIELD_GRID_MODELS,
+    }
+    # The grid is fixed, so identity doesn't need a per-point lat/lon hash —
+    # just the point count (as a drift guard) and the request shape.
+    identity_payload = {
+        "api_type": "field_grid",
+        "grid_size": len(grid),
+        "hourly": _split_vars(params["hourly"]),
+        "timezone": params["timezone"],
+        "forecast_days": params["forecast_days"],
+        "models": params["models"],
+    }
+    identity = _hash_obj(identity_payload)
+    fingerprint = _hash_obj({"endpoint": endpoint, "identity": identity_payload})
+    return PrefetchRequest(
+        api_type="field_grid",
+        lat=SUMMIT_LAT,
+        lon=SUMMIT_LON,
+        endpoint=endpoint,
+        params=params,
+        identity=identity,
+        fingerprint=fingerprint,
+        redis_key=f"{KEY_PREFIX}:field_grid:{identity}",
+    )
+
+
 def validate_forecast_response(data: dict, *, daily_vars: str | None = LINE_DAILY_VARS,
                                hourly_vars: str | None = LINE_HOURLY_VARS) -> tuple[bool, str]:
     """
@@ -340,6 +504,26 @@ def validate_forecast_response(data: dict, *, daily_vars: str | None = LINE_DAIL
             values = hourly.get(var)
             if not isinstance(values, list) or len(values) != len(hourly_time):
                 return False, f"bad_hourly_length:{var}"
+    return True, "ok"
+
+
+def validate_field_grid_response(data, *, expected_points: int,
+                                 hourly_vars: str = FIELD_GRID_HOURLY_VARS) -> tuple[bool, str]:
+    """
+    Structural validation for field_grid_request()'s multi-location response
+    — a JSON array of `expected_points` per-location objects (no `daily`
+    section requested), unlike validate_forecast_response()'s single-object
+    shape. Each element is validated with validate_forecast_response()
+    (daily_vars=None since field_grid_request() never requests `&daily=`).
+    """
+    if not isinstance(data, list):
+        return False, "not_json_array"
+    if len(data) != expected_points:
+        return False, "point_count_mismatch"
+    for i, point in enumerate(data):
+        ok, reason = validate_forecast_response(point, daily_vars=None, hourly_vars=hourly_vars)
+        if not ok:
+            return False, f"point_{i}:{reason}"
     return True, "ok"
 
 
@@ -459,14 +643,15 @@ def registered_spot_ids(requests_module=requests, now: float | None = None) -> s
     return ids
 
 
-def load_prefetch(req: PrefetchRequest, *, allow_stale: bool = True,
-                  now: datetime | None = None, requests_module=requests,
-                  fresh_max_age_minutes: int = FRESH_MAX_AGE_MINUTES,
-                  stale_max_age_minutes: int = STALE_MAX_AGE_MINUTES) -> tuple[dict | None, dict]:
+def _load_prefetch_generic(req: PrefetchRequest, *, validate_data_fn, allow_stale: bool,
+                           now: datetime | None, requests_module,
+                           fresh_max_age_minutes: int, stale_max_age_minutes: int):
     """
-    fresh_max_age_minutes/stale_max_age_minutes default to the simple-LINE-
-    forecast windows for backward compatibility. Pass MARINE_FRESH_MAX_AGE_MINUTES/
-    MARINE_STALE_MAX_AGE_MINUTES (or similar) for slower-changing data types.
+    Shared Redis-lookup + schema/fingerprint/freshness logic behind
+    load_prefetch() (single-location dict responses) and
+    load_field_grid_prefetch() (multi-location array responses) — the two
+    differ only in how they validate `record["data"]`'s shape, which is why
+    that step is a caller-supplied callback rather than baked in here.
     """
     meta = {"prefetched": False, "stale": False, "age_minutes": None, "reason": "miss"}
     record = redis_get_json(req.redis_key, requests_module=requests_module)
@@ -481,12 +666,7 @@ def load_prefetch(req: PrefetchRequest, *, allow_stale: bool = True,
     if record.get("api_type") != req.api_type or record.get("source") != SOURCE:
         meta["reason"] = "source_mismatch"
         return None, meta
-    daily_vars, hourly_vars = _VALIDATION_SPECS.get(
-        req.api_type, (LINE_DAILY_VARS, LINE_HOURLY_VARS)
-    )
-    ok, reason = validate_forecast_response(
-        record.get("data"), daily_vars=daily_vars, hourly_vars=hourly_vars
-    )
+    ok, reason = validate_data_fn(record.get("data"))
     if not ok:
         meta["reason"] = reason
         return None, meta
@@ -511,3 +691,44 @@ def load_prefetch(req: PrefetchRequest, *, allow_stale: bool = True,
     meta["prefetched"] = False
     meta["reason"] = "stale_expired"
     return None, meta
+
+
+def load_prefetch(req: PrefetchRequest, *, allow_stale: bool = True,
+                  now: datetime | None = None, requests_module=requests,
+                  fresh_max_age_minutes: int = FRESH_MAX_AGE_MINUTES,
+                  stale_max_age_minutes: int = STALE_MAX_AGE_MINUTES) -> tuple[dict | None, dict]:
+    """
+    fresh_max_age_minutes/stale_max_age_minutes default to the simple-LINE-
+    forecast windows for backward compatibility. Pass MARINE_FRESH_MAX_AGE_MINUTES/
+    MARINE_STALE_MAX_AGE_MINUTES (or similar) for slower-changing data types.
+    """
+    daily_vars, hourly_vars = _VALIDATION_SPECS.get(
+        req.api_type, (LINE_DAILY_VARS, LINE_HOURLY_VARS)
+    )
+    return _load_prefetch_generic(
+        req,
+        validate_data_fn=lambda data: validate_forecast_response(
+            data, daily_vars=daily_vars, hourly_vars=hourly_vars
+        ),
+        allow_stale=allow_stale, now=now, requests_module=requests_module,
+        fresh_max_age_minutes=fresh_max_age_minutes, stale_max_age_minutes=stale_max_age_minutes,
+    )
+
+
+def load_field_grid_prefetch(req: PrefetchRequest, *, allow_stale: bool = True,
+                             now: datetime | None = None, requests_module=requests,
+                             fresh_max_age_minutes: int = FIELD_GRID_FRESH_MAX_AGE_MINUTES,
+                             stale_max_age_minutes: int = FIELD_GRID_STALE_MAX_AGE_MINUTES
+                             ) -> tuple[list | None, dict]:
+    """
+    Same freshness/staleness semantics as load_prefetch(), but validates the
+    array-of-49-points response shape produced by field_grid_request()
+    instead of load_prefetch()'s single-location dict shape.
+    """
+    expected_points = len(build_rishiri_grid())
+    return _load_prefetch_generic(
+        req,
+        validate_data_fn=lambda data: validate_field_grid_response(data, expected_points=expected_points),
+        allow_stale=allow_stale, now=now, requests_module=requests_module,
+        fresh_max_age_minutes=fresh_max_age_minutes, stale_max_age_minutes=stale_max_age_minutes,
+    )

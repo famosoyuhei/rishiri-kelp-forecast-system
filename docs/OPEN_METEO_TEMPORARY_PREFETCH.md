@@ -290,6 +290,62 @@ existing `open_meteo_blocked` logic in `notify_all()` already skips all
 entire run now fails fast in roughly one attempt's worth of time instead of
 `spot_count × up to 3 attempts × up to 7s of sleep`).
 
+### 2026-08-04: island-distribution (`/api/analysis/field`) grid prefetch
+
+Two changes landed the same day, both aimed at making the "429 continues
+forever" scenario survivable rather than just less frequent:
+
+**1. `_fetch_open_meteo_multi()` (start.py) and the daily 334-spot history
+snapshot (`_save_daily_forecast_snapshot()`) were rewritten to use
+Open-Meteo's comma-separated multi-location request format** (the same
+technique `_fetch_elevations_batch()` already used for elevation data),
+cutting real Open-Meteo request volume from up to 49/tab-load and 334/day
+down to 1 and at most 7/day respectively. This reduces how often this app
+triggers its own rate limiting, but does not by itself make the app work
+*during* a sustained 429 — hence part 2.
+
+**2. A new prefetch type, `field_grid` (`open_meteo_prefetch.field_grid_request()`
+/ `build_rishiri_grid()` / `validate_field_grid_response()` /
+`load_field_grid_prefetch()`), covers the 49-point island-distribution grid
+itself.** Unlike the per-spot prefetch types above, this is a single
+multi-location request whose response already contains every forecast day
+(`FIELD_GRID_FORECAST_DAYS=8`) and, since every one of the 6 field types'
+(`score`/`wind`/`humidity`/`temperature`/`solar`/`precipitation`) hourly
+variable list is a subset of `score`'s, every field type — all from one
+cached entry. `build_rishiri_grid()` was moved here from start.py's
+`_build_rishiri_grid()` (this module is now the canonical source; start.py
+re-exports it) so both GitHub Actions and Render compute the identical 49
+points without duplicating the algorithm.
+
+New job: `jobs/fetch_field_grid_cache.py`, run by
+`.github/workflows/fetch-field-grid-cache.yml` (`workflow_dispatch`, plus a
+best-effort `*/45 * * * *` schedule backup — GitHub Actions' `schedule`
+trigger is not the primary path here either, same lesson as everywhere else
+in this doc; the primary path is a cron-job.org job hitting this workflow's
+`workflow_dispatch` REST endpoint roughly every 20-30 minutes, comfortably
+inside the 60-minute freshness window).
+
+On the Render side, `start.py`'s `_field_prefetch_allowed(field_type, day)`
+gates consumption — **off by default** (`FIELD_PREFETCH_ENABLED=false`).
+When enabled, it starts scoped to `FIELD_PREFETCH_TYPES=score` and
+`FIELD_PREFETCH_DAYS=0` (both env-overridable, comma-separated) per an
+explicit incremental rollout decision: prove `type=score, day=0` (the most
+commonly viewed combination) works in production first, then widen the
+allowlist — which, because the underlying prefetch already contains all
+days and all types, is a pure env var change with **no new prefetch data
+or redeploy of the job required**. `_fetch_field_grid_data()` is the single
+call site all 6 `_compute_*_field()` functions now go through; on a
+prefetch miss, load error, or when the (type, day) isn't allowlisted, it
+falls back to the pre-existing live `_fetch_open_meteo_multi()` path
+unchanged.
+
+Elevation (`_fetch_elevations_batch()`) and sea-surface temperature
+(`get_sea_surface_temperature()`) calls inside `_compute_score_field()` are
+**not yet** covered by this prefetch — noted as a follow-up, since elevation
+for the 49 fixed grid points could in principle be hardcoded (never
+changes) and SST already has a `marine_forecast_request()` prefetch type
+from the LINE canary work above, just not wired into the field path yet.
+
 ## Customer API Decision
 
 Consider Open-Meteo Customer API in August or September if any of these occur:
@@ -303,9 +359,11 @@ Consider Open-Meteo Customer API in August or September if any of these occur:
 
 This temporary workflow does not prefetch:
 
-- `/api/forecast`
-- `/api/analysis/field`
-- forecast history for all 334 spots
+- `/api/forecast` (except the enhanced/canary path — see above)
+- `/api/analysis/field`'s elevation and sea-surface-temperature inputs
+  (the weather grid itself is now prefetched — see the 2026-08-04 section
+  above; only `FIELD_PREFETCH_TYPES=score`/`FIELD_PREFETCH_DAYS=0` consume
+  it by default)
 - archive API
-- marine analysis
+- marine analysis (outside the field-grid path)
 - high-altitude/emagram analysis
