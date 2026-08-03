@@ -1086,7 +1086,7 @@ def _save_daily_forecast_snapshot():
                 'foehn_adjustment':   None,
             }
             planned_records.append((redis_key, record))
-        _time.sleep(0.3)  # Open-Meteo レート制限を避ける（2026-08-05: 0.1→0.3、低速化）
+        _time.sleep(0.5)  # Open-Meteo レート制限を避ける（0.1→0.3→0.5 と段階的に低速化）
 
     saved = 0
     redis_updates = {}
@@ -4029,7 +4029,13 @@ def fetch_marine_data(lat, lon, forecast_hours=168):
 import math as _math
 
 _analysis_field_cache: dict = {}
-_FIELD_CACHE_TTL = 3600  # 60 min TTL
+_FIELD_CACHE_TTL = 3600  # 60 min: normal freshness window
+# 2026-08-04: Open-Meteoの429が長期化する中、島内分布(/api/analysis/field)には
+# LINE予報のようなprefetchフォールバックが無く、60分キャッシュが切れるとサーキットが
+# 開いている間ずっと503を返し続けていた。フレッシュ判定は_FIELD_CACHE_TTLのまま、
+# Redis/in-memory側の保持期間だけこの値まで延ばし、ライブ取得が失敗した場合に
+# 「無いよりまし」の古いデータをstale=trueで返せるようにする。
+_FIELD_CACHE_STALE_TTL = 12 * 3600  # 12 hours: how long a value survives for stale fallback
 _ALLOWED_HOURS = [4, 7, 10, 13, 16]  # JST hours allowed for non-score field types
 
 # Redis helpers for field cache (Upstash REST API).
@@ -4675,6 +4681,7 @@ def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
             return {'hourly': {}}
 
     if open_meteo_circuit_enabled():
+        import time as _time
         results = []
         total = len(lats)
         for idx, lat_lon in enumerate(zip(lats, lons)):
@@ -4686,6 +4693,12 @@ def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
                     idx, max(0, total - idx - 1),
                 )
                 raise
+            # 2026-08-04: このループには待機が一切なく、49地点を待機なしで連続
+            # リクエストしていた（_save_daily_forecast_snapshot()の334地点バッチと
+            # 同様、Open-Meteoのレート制限を誘発しうるバースト状の呼び出しパターン）。
+            # 島内分布タブを開くたびに発生するため、日次バッチより頻度は高い。
+            if idx < total - 1:
+                _time.sleep(0.3)
         return results
 
     with _cf.ThreadPoolExecutor(max_workers=10) as ex:
@@ -5760,19 +5773,40 @@ def get_analysis_field():
     # _field_cache_get() は dict または None のみを返す。'status'/'type' は
     # response_data 構築時に必ず含まれるキー（下記）— このキャッシュ固有の
     # 必須キーチェック（防御的、schema mismatch対策）。
+    #
+    # 2026-08-04: キャッシュは_FIELD_CACHE_STALE_TTL(12h)まで保持されるが、
+    # 「フレッシュ」とみなすのは_FIELD_CACHE_TTL(60分)以内のみ。60分を過ぎたら
+    # 一旦ライブ取得を試み、それが失敗した場合（429継続中など）にだけ、この
+    # 古いキャッシュをstale=trueで返す最終フォールバックとして使う。
     cache_key = f'{field_type}:{day}:{hour}'
     cached = _field_cache_get(cache_key)
     if cached and 'status' in cached and 'type' in cached:
-        # キャッシュ本体を変更しないよう、コピーしてからレスポンス用情報を追加する
-        # （2026-08-05修正: 以前は cached['cache']=... で共有オブジェクトを直接
-        # 変更しており、in-memoryキャッシュを汚染する不具合があった）。
-        cached_copy = dict(cached)
-        cached_copy['cache'] = {'hit': True}
-        return jsonify(cached_copy)
+        cached_generated_at = None
+        try:
+            cached_generated_at = datetime.fromisoformat(cached.get('generated_at', ''))
+        except (TypeError, ValueError):
+            pass
+        is_fresh = (
+            cached_generated_at is not None
+            and (now_jst - cached_generated_at) <= timedelta(seconds=_FIELD_CACHE_TTL)
+        )
+        if is_fresh:
+            # キャッシュ本体を変更しないよう、コピーしてからレスポンス用情報を追加する
+            # （2026-08-05修正: 以前は cached['cache']=... で共有オブジェクトを直接
+            # 変更しており、in-memoryキャッシュを汚染する不具合があった）。
+            cached_copy = dict(cached)
+            cached_copy['cache'] = {'hit': True, 'stale': False}
+            return jsonify(cached_copy)
+        # フレッシュでなければ cached は「stale fallback」として保持したまま、
+        # 下でライブ取得を試みる（cached はここでは返さない）。
 
     try:
         ensure_request_allowed('field', logger=app.logger)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
+        if cached:
+            cached_copy = dict(cached)
+            cached_copy['cache'] = {'hit': True, 'stale': True}
+            return jsonify(cached_copy)
         return jsonify({'status': 'error', 'message': str(e)}), 503
 
     target_date = _field_target_date(day)
@@ -5794,6 +5828,10 @@ def get_analysis_field():
         data = {'error': 'unknown type'}
 
     if 'error' in data:
+        if cached:
+            cached_copy = dict(cached)
+            cached_copy['cache'] = {'hit': True, 'stale': True}
+            return jsonify(cached_copy)
         return jsonify({'status': 'error', 'message': data['error']}), 503
 
     response_data = {
@@ -5803,7 +5841,7 @@ def get_analysis_field():
         'target_date':  target_date,
         'timezone':     'Asia/Tokyo',
         'generated_at': now_jst.isoformat(),
-        'cache':        {'hit': False},
+        'cache':        {'hit': False, 'stale': False},
         'data_resolution': {
             'source_model': 'Open-Meteo JMA MSM/GSM',
             'note': '利尻島内はMSMで概ね5kmメッシュ。干場間の差は地形補正による推定値',
@@ -5811,7 +5849,7 @@ def get_analysis_field():
         },
         **data,
     }
-    _field_cache_set(cache_key, response_data)
+    _field_cache_set(cache_key, response_data, ttl=_FIELD_CACHE_STALE_TTL)
     return jsonify(response_data)
 
 

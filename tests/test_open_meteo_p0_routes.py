@@ -152,6 +152,39 @@ def test_history_snapshot_stops_after_429(tmp_path, monkeypatch):
     assert result["aborted_spots"] == 2
 
 
+def test_field_multi_paces_requests_between_successful_fetches(monkeypatch):
+    """
+    2026-08-04: this loop made up to 49 consecutive Open-Meteo requests with
+    no delay at all between successful fetches (unlike the 334-spot history
+    snapshot batch, which already paced itself) -- a burst pattern that can
+    plausibly trigger Open-Meteo's rate limiting on its own, and this runs on
+    every /api/analysis/field request, not just once a day. Verifies a sleep
+    now happens between each pair of successful requests (N-1 sleeps for N
+    points), and none after the last one.
+    """
+    import time as real_time
+
+    sleeps = []
+    monkeypatch.setattr(real_time, "sleep", lambda s: sleeps.append(s))
+
+    def fake_guarded_get(url, **kwargs):
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": {"time": []}}
+        return resp
+
+    monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
+
+    result = start._fetch_open_meteo_multi(
+        [45.1, 45.2, 45.3],
+        [141.1, 141.2, 141.3],
+        ["temperature_2m"],
+    )
+
+    assert len(result) == 3
+    assert sleeps == [0.3, 0.3]  # N-1 sleeps for 3 points, none trailing after the last
+
+
 def test_feature_flag_off_keeps_field_parallel_path(monkeypatch):
     monkeypatch.setenv("OPEN_METEO_CIRCUIT_BREAKER_ENABLED", "false")
     calls = []

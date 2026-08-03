@@ -15,6 +15,7 @@ propagate to a caller that would crash on it.
 Run from project root:
     python -m pytest tests/test_field_cache.py -v
 """
+from datetime import datetime
 import json
 from unittest.mock import patch, MagicMock
 
@@ -210,7 +211,8 @@ def test_get_analysis_field_cache_hit_does_not_mutate_shared_cache_object():
     cached_entry = {
         'status': 'success', 'type': 'score', 'day': 0,
         'target_date': '2026-08-05', 'timezone': 'Asia/Tokyo',
-        'generated_at': 'x', 'cache': {'hit': False},
+        'generated_at': datetime.now(start.JST).isoformat(),  # fresh (within _FIELD_CACHE_TTL)
+        'cache': {'hit': False},
         'points': [], 'summary': {},
     }
     client = start.app.test_client()
@@ -218,6 +220,98 @@ def test_get_analysis_field_cache_hit_does_not_mutate_shared_cache_object():
         resp = client.get('/api/analysis/field?type=score&day=0')
         assert resp.status_code == 200
         body = resp.get_json()
-        assert body['cache'] == {'hit': True}
+        assert body['cache'] == {'hit': True, 'stale': False}
     # The object _field_cache_get() returned must not have been mutated in place.
     assert cached_entry['cache'] == {'hit': False}
+
+
+# ---------------------------------------------------------------------------
+# get_analysis_field(): stale-cache fallback (2026-08-04, sustained 429 fix)
+# ---------------------------------------------------------------------------
+
+def _stale_cached_entry(start_module, age_seconds):
+    from datetime import timedelta
+    generated_at = datetime.now(start_module.JST) - timedelta(seconds=age_seconds)
+    return {
+        'status': 'success', 'type': 'score', 'day': 0,
+        'target_date': '2026-08-04', 'timezone': 'Asia/Tokyo',
+        'generated_at': generated_at.isoformat(),
+        'cache': {'hit': False, 'stale': False},
+        'points': [], 'summary': {},
+    }
+
+
+def test_get_analysis_field_serves_stale_cache_when_circuit_open():
+    """
+    2026-08-04 incident: a stale (>60min) cached value used to be discarded
+    entirely, so once the Open-Meteo circuit opened, every request got a 503
+    with no fallback for as long as the 429 lasted (observed: real user
+    requests via LINE's in-app browser hitting 503). Now falls back to the
+    stale value instead of failing outright.
+    """
+    import start
+    from open_meteo_guard import OpenMeteoCircuitOpenError
+
+    stale = _stale_cached_entry(start, age_seconds=7200)  # 2h old: stale, not expired (< 12h)
+    client = start.app.test_client()
+    with patch.object(start, '_field_cache_get', return_value=stale), \
+         patch.object(start, 'ensure_request_allowed',
+                      side_effect=OpenMeteoCircuitOpenError('field', '2026-08-04T12:00:00Z')):
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['cache'] == {'hit': True, 'stale': True}
+    assert body['status'] == 'success'
+
+
+def test_get_analysis_field_serves_stale_cache_when_compute_fails():
+    """Same fallback, but for a live-fetch failure that isn't a circuit-open exception."""
+    import start
+
+    stale = _stale_cached_entry(start, age_seconds=7200)
+    client = start.app.test_client()
+    with patch.object(start, '_field_cache_get', return_value=stale), \
+         patch.object(start, 'ensure_request_allowed', return_value=None), \
+         patch.object(start, '_compute_score_field', return_value={'error': 'Open-Meteo fetch failed: boom'}):
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['cache'] == {'hit': True, 'stale': True}
+
+
+def test_get_analysis_field_still_503_when_no_cache_and_circuit_open():
+    """Regression guard: with no cache at all, behavior is unchanged (503, no fallback to invent)."""
+    import start
+    from open_meteo_guard import OpenMeteoCircuitOpenError
+
+    client = start.app.test_client()
+    with patch.object(start, '_field_cache_get', return_value=None), \
+         patch.object(start, 'ensure_request_allowed',
+                      side_effect=OpenMeteoCircuitOpenError('field', '2026-08-04T12:00:00Z')):
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 503
+
+
+def test_get_analysis_field_prefers_fresh_live_data_over_stale_cache():
+    """A successful live refresh must win over an available stale cache, not just short-circuit to it."""
+    import start
+
+    stale = _stale_cached_entry(start, age_seconds=7200)
+    fresh_data = {'points': [{'lat': 45.18, 'lon': 141.23, 'score': 88}], 'summary': {'excellent': 1}}
+    client = start.app.test_client()
+    with patch.object(start, '_field_cache_get', return_value=stale), \
+         patch.object(start, 'ensure_request_allowed', return_value=None), \
+         patch.object(start, '_compute_score_field', return_value=fresh_data), \
+         patch.object(start, '_field_cache_set') as mock_set:
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['cache'] == {'hit': False, 'stale': False}
+    assert body['points'] == fresh_data['points']
+    # Re-cached with the longer stale-survival TTL, not the short freshness TTL.
+    mock_set.assert_called_once()
+    assert mock_set.call_args.kwargs.get('ttl') == start._FIELD_CACHE_STALE_TTL
