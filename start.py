@@ -4654,55 +4654,48 @@ def _field_target_date(day: int) -> str:
 
 def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
     """
-    Open-Meteo JMA-MSM 予報を複数地点並列取得（ThreadPoolExecutor）。
+    Open-Meteo JMA-MSM 予報を複数地点まとめて1回のリクエストで取得。
+
+    2026-08-04: 以前は49地点を個別に(逐次または並列)リクエストしており、島内分布
+    タブを開くたびに最大49回のOpen-Meteo呼び出しが発生し、レート制限を誘発する
+    バースト状のアクセスパターンになっていた。Open-Meteoの緯度経度カンマ区切り
+    複数地点指定（_fetch_elevations_batch()の標高取得で既に使っている手法と同じ）
+    を使い、1リクエストにまとめる。実際のOpen-Meteo呼び出し回数を49回→1回に削減。
+
     Returns list[dict] — 順序は lats/lons と一致。
-    失敗した地点は {'hourly': {}} で補完するため呼び出し元が IndexError にならない。
+    リクエスト全体が失敗した場合は全地点 {'hourly': {}} で補完するため、
+    呼び出し元が IndexError にならない。
     """
-    import concurrent.futures as _cf
-
+    n = len(lats)
     vars_str = ','.join(hourly_vars)
+    lat_str = ','.join(f'{lat:.4f}' for lat in lats)
+    lon_str = ','.join(f'{lon:.4f}' for lon in lons)
+    url = (
+        f'https://api.open-meteo.com/v1/forecast'
+        f'?latitude={lat_str}&longitude={lon_str}'
+        f'&hourly={vars_str}'
+        f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless'
+    )
+    try:
+        r = guarded_get(url, source='field', logger=app.logger, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        raise
+    except Exception as exc:
+        print(f'[field-multi] batch request for {n} points failed: {exc}')
+        return [{'hourly': {}} for _ in range(n)]
 
-    def _fetch_one(lat_lon):
-        lat, lon = lat_lon
-        url = (
-            f'https://api.open-meteo.com/v1/forecast'
-            f'?latitude={lat:.4f}&longitude={lon:.4f}'
-            f'&hourly={vars_str}'
-            f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless'
-        )
-        try:
-            r = guarded_get(url, source='field', logger=app.logger, timeout=15)
-            r.raise_for_status()
-            return r.json()
-        except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
-            raise
-        except Exception as exc:
-            print(f'[field-multi] {lat:.4f},{lon:.4f} failed: {exc}')
-            return {'hourly': {}}
-
-    if open_meteo_circuit_enabled():
-        import time as _time
-        results = []
-        total = len(lats)
-        for idx, lat_lon in enumerate(zip(lats, lons)):
-            try:
-                results.append(_fetch_one(lat_lon))
-            except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
-                app.logger.info(
-                    '[open_meteo] {"source":"field","event":"circuit_open","processed_count":%d,"remaining_count":%d}',
-                    idx, max(0, total - idx - 1),
-                )
-                raise
-            # 2026-08-04: このループには待機が一切なく、49地点を待機なしで連続
-            # リクエストしていた（_save_daily_forecast_snapshot()の334地点バッチと
-            # 同様、Open-Meteoのレート制限を誘発しうるバースト状の呼び出しパターン）。
-            # 島内分布タブを開くたびに発生するため、日次バッチより頻度は高い。
-            if idx < total - 1:
-                _time.sleep(0.3)
-        return results
-
-    with _cf.ThreadPoolExecutor(max_workers=10) as ex:
-        return list(ex.map(_fetch_one, zip(lats, lons)))
+    # Open-Meteoは複数地点指定時、地点ごとのオブジェクトを含むJSON配列を返す
+    # （1地点だけの場合は単一オブジェクトのことがあるため、念のため両対応）。
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        print(f'[field-multi] unexpected response shape: {type(data).__name__}')
+        return [{'hourly': {}} for _ in range(n)]
+    if len(data) < n:
+        data = data + [{'hourly': {}}] * (n - len(data))
+    return data[:n]
 
 
 def _extract_day_window(hourly: dict, target_date: str) -> dict:

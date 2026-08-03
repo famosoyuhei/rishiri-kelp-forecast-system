@@ -25,17 +25,19 @@ def _rate_limited(source="field"):
     )
 
 
-def test_field_multi_stops_remaining_points_on_429(monkeypatch):
+def test_field_multi_propagates_rate_limit_error(monkeypatch):
+    """
+    2026-08-04: _fetch_open_meteo_multi() was redesigned to issue a single
+    batched request (comma-separated lat/lon, mirroring
+    _fetch_elevations_batch()) instead of up to 49 individual requests, so
+    there is no longer a "some points already succeeded" partial state --
+    a 429 on the one request must simply propagate.
+    """
     calls = []
 
     def fake_guarded_get(url, **kwargs):
         calls.append(url)
-        if len(calls) == 3:
-            raise _rate_limited("field")
-        resp = MagicMock(status_code=200)
-        resp.raise_for_status.return_value = None
-        resp.json.return_value = {"hourly": {"time": []}}
-        return resp
+        raise _rate_limited("field")
 
     monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
 
@@ -46,7 +48,7 @@ def test_field_multi_stops_remaining_points_on_429(monkeypatch):
             ["temperature_2m"],
         )
 
-    assert len(calls) == 3
+    assert len(calls) == 1
 
 
 def test_forecast_route_circuit_open_skips_open_meteo(monkeypatch):
@@ -152,25 +154,24 @@ def test_history_snapshot_stops_after_429(tmp_path, monkeypatch):
     assert result["aborted_spots"] == 2
 
 
-def test_field_multi_paces_requests_between_successful_fetches(monkeypatch):
+def test_field_multi_makes_single_batched_request(monkeypatch):
     """
-    2026-08-04: this loop made up to 49 consecutive Open-Meteo requests with
-    no delay at all between successful fetches (unlike the 334-spot history
-    snapshot batch, which already paced itself) -- a burst pattern that can
-    plausibly trigger Open-Meteo's rate limiting on its own, and this runs on
-    every /api/analysis/field request, not just once a day. Verifies a sleep
-    now happens between each pair of successful requests (N-1 sleeps for N
-    points), and none after the last one.
+    2026-08-04: verifies the 49-request burst pattern that could plausibly
+    trigger Open-Meteo's rate limiting was replaced with exactly one request
+    per /api/analysis/field call, using comma-separated lat/lon (the same
+    technique _fetch_elevations_batch() already uses for elevation data).
     """
-    import time as real_time
-
-    sleeps = []
-    monkeypatch.setattr(real_time, "sleep", lambda s: sleeps.append(s))
+    calls = []
 
     def fake_guarded_get(url, **kwargs):
+        calls.append(url)
         resp = MagicMock(status_code=200)
         resp.raise_for_status.return_value = None
-        resp.json.return_value = {"hourly": {"time": []}}
+        resp.json.return_value = [
+            {"hourly": {"time": []}},
+            {"hourly": {"time": []}},
+            {"hourly": {"time": []}},
+        ]
         return resp
 
     monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
@@ -182,10 +183,61 @@ def test_field_multi_paces_requests_between_successful_fetches(monkeypatch):
     )
 
     assert len(result) == 3
-    assert sleeps == [0.3, 0.3]  # N-1 sleeps for 3 points, none trailing after the last
+    assert len(calls) == 1
+    assert "45.1000,45.2000,45.3000" in calls[0]
+    assert "141.1000,141.2000,141.3000" in calls[0]
 
 
-def test_feature_flag_off_keeps_field_parallel_path(monkeypatch):
+def test_field_multi_pads_response_when_shorter_than_requested(monkeypatch):
+    def fake_guarded_get(url, **kwargs):
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = [{"hourly": {"time": []}}]  # only 1 of 2 points returned
+        return resp
+
+    monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
+
+    result = start._fetch_open_meteo_multi([45.1, 45.2], [141.1, 141.2], ["temperature_2m"])
+
+    assert len(result) == 2
+    assert result[1] == {"hourly": {}}
+
+
+def test_field_multi_wraps_single_object_response(monkeypatch):
+    """Open-Meteo may return a bare object (not a list) for a single point."""
+
+    def fake_guarded_get(url, **kwargs):
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {"hourly": {"time": ["2026-08-04T00:00"]}}
+        return resp
+
+    monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
+
+    result = start._fetch_open_meteo_multi([45.1], [141.1], ["temperature_2m"])
+
+    assert result == [{"hourly": {"time": ["2026-08-04T00:00"]}}]
+
+
+def test_field_multi_returns_empty_hourly_for_all_points_on_unexpected_failure(monkeypatch):
+    def fake_guarded_get(url, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(start, "guarded_get", fake_guarded_get)
+
+    result = start._fetch_open_meteo_multi([45.1, 45.2], [141.1, 141.2], ["temperature_2m"])
+
+    assert result == [{"hourly": {}}, {"hourly": {}}]
+
+
+def test_field_multi_single_request_regardless_of_feature_flag(monkeypatch):
+    """
+    2026-08-04: the old ThreadPoolExecutor fallback path (used when
+    OPEN_METEO_CIRCUIT_BREAKER_ENABLED=false) is gone -- guarded_get() itself
+    already bypasses circuit-breaker bookkeeping when the flag is off
+    (see open_meteo_guard.guarded_get -> is_enabled()), so this function now
+    always issues exactly one batched request either way.
+    """
     monkeypatch.setenv("OPEN_METEO_CIRCUIT_BREAKER_ENABLED", "false")
     calls = []
 
@@ -193,11 +245,11 @@ def test_feature_flag_off_keeps_field_parallel_path(monkeypatch):
         calls.append(url)
         resp = MagicMock(status_code=200)
         resp.raise_for_status.return_value = None
-        resp.json.return_value = {"hourly": {"time": []}}
+        resp.json.return_value = [{"hourly": {"time": []}}, {"hourly": {"time": []}}]
         return resp
 
     monkeypatch.setattr(start.requests, "get", fake_get)
     result = start._fetch_open_meteo_multi([45.1, 45.2], [141.1, 141.2], ["temperature_2m"])
 
     assert len(result) == 2
-    assert len(calls) == 2
+    assert len(calls) == 1
