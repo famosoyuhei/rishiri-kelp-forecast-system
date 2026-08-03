@@ -103,6 +103,34 @@ instance has woken back up — this is expected, not a real outage, and is
 an accepted cost of staying on the free tier. If this email noise becomes
 too disruptive in practice, revisit the paid Maintenance Windows option.
 
+## 2026-08-03: keep-alive moved to cron-job.org
+
+**Incident**: the 01:30 JST morning LINE notification arrived at 03:21 JST —
+almost two hours late. Investigation found Render's process had restarted
+twice in that window (`Handling signal: term` at 18:11 UTC, reboot at 18:21
+UTC), meaning the `*/30`-minute keep-alive ping introduced in the
+2026-08-02 fix above was too infrequent — Render's free tier sleeps after
+roughly **15 minutes** of no traffic, so a 30-minute gap let it fall back
+asleep between every single ping, silently defeating the "always warm
+01:00–20:00 JST" goal the moment that change shipped. Separately, GitHub
+Actions itself ran roughly two hours late that day across multiple
+unrelated scheduled workflows in this repo (the notification backups *and*
+this keep-alive ping), confirming GitHub Actions' `schedule` trigger is not
+dependable at any frequency for this repo, not just at high frequency as
+the 2026-08-02 note assumed.
+
+**Fix**: `render-keepalive.yml`'s `schedule` trigger was removed entirely
+(kept as `workflow_dispatch`-only for manual/emergency use). Keep-alive
+duty moved to a `render-keepalive` job on **cron-job.org** — the same
+service already proven far more punctual for the LINE notification and
+Open-Meteo prefetch triggers (see `docs/OPEN_METEO_TEMPORARY_PREFETCH.md`).
+cron-job.org pings `/health` every 10 minutes (safely under the ~15-minute
+sleep threshold) during 01:00–19:59 JST, configured directly in the job's
+own Asia/Tokyo timezone setting — no UTC conversion needed, unlike the old
+GitHub Actions cron. Since cron-job.org is a separate service from GitHub
+Actions, moving keep-alive here also removes any remaining scheduling
+contention with the notification/prefetch GitHub Actions workflows.
+
 ## Revisit if
 
 - The 750h/month usage still approaches the cap after this change (check

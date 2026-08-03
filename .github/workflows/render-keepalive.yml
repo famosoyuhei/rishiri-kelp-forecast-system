@@ -1,31 +1,25 @@
 name: Render Keep-Alive Ping
 
-# Keeps the free-tier Render web service from sleeping during hours LINE
-# users (kelp fishermen) are realistically active, without running 24/7 —
-# see docs/RENDER_FREE_TIER_KEEPALIVE.md for the full rationale (2026-07-30
-# Render instance-hour usage warning).
+# 2026-08-03: keep-alive duty moved to cron-job.org (job "render-keepalive"),
+# which pings /health every 10 minutes during 01:00-20:00 JST directly —
+# see docs/RENDER_FREE_TIER_KEEPALIVE.md for the full history. This
+# workflow's `schedule` trigger is intentionally removed:
 #
-# Awake window: 01:00-20:00 JST daily (ping every 30 minutes).
-# Deliberately asleep: 20:00-01:00 JST daily (no pings — Render free tier
-# sleeps after ~15 minutes of no traffic).
+# 1. GitHub Actions' scheduler proved unreliable at any frequency we tried
+#    here (*/5 caused other workflows in this repo to be delayed/dropped;
+#    */30 was too infrequent to actually prevent Render's ~15-minute
+#    sleep timeout, so the "keep it warm" goal silently stopped working
+#    the moment that change shipped). A 2026-08-03 incident showed GitHub
+#    Actions itself running ~2 hours late across multiple unrelated
+#    workflows in this repo during the same window.
+# 2. cron-job.org has proven far more punctual for time-sensitive triggers
+#    (see the LINE notification and Open-Meteo prefetch triggers, both
+#    already moved there) and isn't subject to GitHub Actions' scheduling
+#    contention at all, since it's a separate service.
 #
-# 01:00-20:00 JST == 16:00-11:00 UTC (spans midnight UTC), i.e. every UTC
-# hour EXCEPT 11:00-15:59 UTC (== 20:00-00:59 JST).
-#
-# 2026-08-02 incident: this workflow originally requested */5 (up to 228
-# triggers/day). That same day, two unrelated scheduled workflows in this
-# repo (fetch-open-meteo-cache.yml's evening prefetch AND
-# line-notifications.yml's 16:05 JST backup) both silently failed to fire at
-# all, causing a missed 16:00 JST LINE notification — GitHub Actions
-# explicitly documents that repos with many/frequent scheduled workflows can
-# have OTHER scheduled runs delayed or dropped entirely. Reduced to */30
-# (matching UptimeRobot's own interval) to relieve that pressure; the
-# genuinely important workflows (LINE notifications, Open-Meteo prefetch)
-# take priority over precise keep-alive timing.
+# `workflow_dispatch` is kept for manual/emergency pings only.
 
 on:
-  schedule:
-    - cron: "*/30 0-10,16-23 * * *"
   workflow_dispatch: {}
 
 permissions:
