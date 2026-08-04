@@ -192,8 +192,14 @@ def approximate_elevation_m(lat: float, lon: float) -> float:
     return max(0.0, 200 - distance * 10000)
 
 # Marine SST — mirrors start.py's get_sea_surface_temperature(). Separate
-# endpoint (Marine API, not the Forecast API) and no `hourly` section at all.
-MARINE_DAILY_VARS = "sea_surface_temperature"
+# endpoint (Marine API, not the Forecast API) and no `daily` section at all --
+# sea_surface_temperature is an hourly-only variable there; requesting it via
+# `&daily=` 400s ("Cannot initialize ForecastVariableDaily from invalid
+# String value sea_surface_temperature"), a bug present since this was first
+# added and only caught 2026-08-04 while debugging why the LINE canary bundle
+# never had usable marine prefetch data (its generic except-clause silently
+# degraded to [None]*7 on every call, so nothing ever surfaced the 400).
+MARINE_HOURLY_VARS = "sea_surface_temperature"
 MARINE_ENDPOINT_DEFAULT = "https://marine-api.open-meteo.com/v1/marine"
 # SST changes slowly day to day; a missed daily prefetch run shouldn't
 # immediately go stale the way a fast-moving hourly forecast would.
@@ -396,13 +402,14 @@ def marine_forecast_request(lat: float, lon: float, base_url: str | None = None)
     Build a prefetch request for marine sea-surface-temperature data —
     mirrors start.py's get_sea_surface_temperature(). Uses the Marine API
     endpoint (distinct from the main Forecast API used by the other
-    builders here) and has no `hourly` section in its response at all.
+    builders here) and has no `daily` section in its response at all --
+    sea_surface_temperature is hourly-only (see MARINE_HOURLY_VARS comment).
     """
     endpoint = (base_url or os.environ.get("OPEN_METEO_MARINE_BASE_URL") or MARINE_ENDPOINT_DEFAULT).rstrip("/")
     params = {
         "latitude": f"{float(lat):.5f}",
         "longitude": f"{float(lon):.5f}",
-        "daily": MARINE_DAILY_VARS,
+        "hourly": MARINE_HOURLY_VARS,
         "timezone": LINE_TIMEZONE,
         "forecast_days": str(LINE_FORECAST_DAYS),
     }
@@ -534,7 +541,7 @@ _VALIDATION_SPECS: dict[str, tuple[str | None, str | None]] = {
     "forecast": (LINE_DAILY_VARS, LINE_HOURLY_VARS),
     "enhanced_forecast": (ENHANCED_DAILY_VARS, ENHANCED_HOURLY_VARS),
     "summit_forecast": (None, SUMMIT_HOURLY_VARS),
-    "marine": (MARINE_DAILY_VARS, None),
+    "marine": (None, MARINE_HOURLY_VARS),
 }
 
 

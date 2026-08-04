@@ -276,7 +276,7 @@ def test_fetch_request_network_timeout_does_not_crash_the_run(monkeypatch):
 
     req = omp.marine_forecast_request(45.1, 141.1)
     ok, reason = job.fetch_request(
-        req, ttl_seconds=100, daily_vars=omp.MARINE_DAILY_VARS, hourly_vars=None, session=session,
+        req, ttl_seconds=100, daily_vars=None, hourly_vars=omp.MARINE_HOURLY_VARS, session=session,
     )
 
     assert ok is False
@@ -424,8 +424,11 @@ def sample_summit_open_meteo():
 
 
 def sample_marine_open_meteo():
-    days, _ = _hourly_time_series()
-    return {"daily": {"time": days, "sea_surface_temperature": [16.0] * 7}}
+    # 2026-08-04: sea_surface_temperature is an hourly-only Marine API
+    # variable -- requesting it as `daily` 400s in production (see
+    # MARINE_HOURLY_VARS comment in open_meteo_prefetch.py).
+    _, hours = _hourly_time_series()
+    return {"hourly": {"time": hours, "sea_surface_temperature": [16.0] * len(hours)}}
 
 
 def test_enhanced_forecast_request_has_distinct_namespace_and_ignores_elevation_in_identity():
@@ -467,10 +470,10 @@ def test_summit_forecast_request_has_no_daily_section(monkeypatch):
     assert meta["prefetched"] is True
 
 
-def test_marine_forecast_request_has_no_hourly_section(monkeypatch):
+def test_marine_forecast_request_has_no_daily_section(monkeypatch):
     req = omp.marine_forecast_request(45.1, 141.1)
     data = sample_marine_open_meteo()
-    ok, reason = omp.validate_forecast_response(data, daily_vars=omp.MARINE_DAILY_VARS, hourly_vars=None)
+    ok, reason = omp.validate_forecast_response(data, daily_vars=None, hourly_vars=omp.MARINE_HOURLY_VARS)
     assert ok is True, reason
 
     record = omp.make_prefetch_record(req, data)
@@ -607,7 +610,7 @@ def test_fetch_request_429_opens_circuit_and_raises(monkeypatch):
 
     req = omp.marine_forecast_request(45.1, 141.1)
     with pytest.raises(job.RateLimited):
-        job.fetch_request(req, ttl_seconds=100, daily_vars=omp.MARINE_DAILY_VARS, hourly_vars=None, session=session)
+        job.fetch_request(req, ttl_seconds=100, daily_vars=None, hourly_vars=omp.MARINE_HOURLY_VARS, session=session)
 
     assert writes[0][0] == job.GITHUB_ACTIONS_CIRCUIT_KEY
 

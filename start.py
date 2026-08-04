@@ -1235,7 +1235,10 @@ def _load_enhanced_prefetch_bundle(lat: float, lon: float) -> dict | None:
     )
     if marine_data is None:
         return None
-    sst_list = marine_data.get('daily', {}).get('sea_surface_temperature') or [None] * 7
+    # 2026-08-04: sea_surface_temperature は hourly 変数（marine_forecast_request()
+    # 参照）。_reduce_hourly_sst_to_daily() で7要素の日別平均に変換する。
+    _hourly_sst = marine_data.get('hourly', {}).get('sea_surface_temperature') or []
+    sst_list = _reduce_hourly_sst_to_daily(_hourly_sst) if _hourly_sst else [None] * 7
 
     fetched_at = parse_iso_utc(forecast_meta.get('fetched_at'))
     fetched_at_jst = fetched_at.astimezone(JST) if fetched_at else datetime.now(JST)
@@ -8857,16 +8860,39 @@ def assess_cape_risk(cape_value):
         return {'risk': 'none',   'score_penalty': 0, 'warning': None}
 
 
+def _reduce_hourly_sst_to_daily(hourly_sst: list, days: int = 7) -> list:
+    """
+    Open-Meteo Marine API の sea_surface_temperature は hourly 変数としてのみ
+    提供される（`&daily=sea_surface_temperature` を指定すると
+    "Cannot initialize ForecastVariableDaily from invalid String value"
+    400エラーになる）。get_sea_surface_temperature() と
+    _load_enhanced_prefetch_bundle() の両方が「1日1値」のリストを前提に
+    実装されているため、24時間ぶんを日別平均に集約してインターフェースを
+    変えずに済ませる。
+    """
+    daily = []
+    for day in range(days):
+        window = hourly_sst[day * 24:(day + 1) * 24]
+        valid = [v for v in window if v is not None]
+        daily.append(sum(valid) / len(valid) if valid else None)
+    return daily
+
+
 def get_sea_surface_temperature(lat, lon, source: str | None = None):
     """
     Open-Meteo Marine API から海面水温 (SST) を取得（WINDY_RESEARCH.md §6 W6）
     SST < 15°C のとき海霧リスク高（ISLAND_METEOROLOGY_RESEARCH §7）
+
+    2026-08-04: `&daily=sea_surface_temperature` は無効なパラメータで常に
+    400エラーになっており、except節で [None]*7 に静かに縮退していたため、
+    SSTに基づく霧リスク判定がこれまで一度も機能していなかった不具合を修正
+    （hourly指定に変更し、_reduce_hourly_sst_to_daily()で日別平均に変換）。
     """
     try:
         url = (
             f"https://marine-api.open-meteo.com/v1/marine"
             f"?latitude={lat}&longitude={lon}"
-            f"&daily=sea_surface_temperature"
+            f"&hourly=sea_surface_temperature"
             f"&timezone=Asia/Tokyo"
             f"&forecast_days=7"
         )
@@ -8876,8 +8902,8 @@ def get_sea_surface_temperature(lat, lon, source: str | None = None):
             response = requests.get(url, timeout=8)
         response.raise_for_status()
         data = response.json()
-        sst_list = data.get('daily', {}).get('sea_surface_temperature', [])
-        return sst_list  # list of 7 values (°C)
+        hourly_sst = data.get('hourly', {}).get('sea_surface_temperature', [])
+        return _reduce_hourly_sst_to_daily(hourly_sst)  # list of 7 values (°C)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
         raise
     except Exception:

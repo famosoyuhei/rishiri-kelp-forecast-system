@@ -93,6 +93,16 @@ def sample_sst_list():
     return [16.0] * 7
 
 
+def sample_sst_hourly():
+    # 2026-08-04: sea_surface_temperature is hourly-only in the Marine API
+    # (daily errors 400 in production -- see MARINE_HOURLY_VARS comment in
+    # open_meteo_prefetch.py). A constant value across all hours means the
+    # daily average _load_enhanced_prefetch_bundle() computes still equals
+    # sample_sst_list() exactly, so existing assertions don't need to change.
+    _, hours = _hourly_time_series()
+    return {"time": hours, "sea_surface_temperature": [16.0] * len(hours)}
+
+
 def fake_guarded_get_response(data):
     resp = MagicMock()
     resp.raise_for_status.return_value = None
@@ -173,7 +183,7 @@ def test_bundle_uses_approximate_elevation_without_manual_entry(monkeypatch):
             return sample_enhanced_forecast_data(), {"fetched_at": "2026-07-26T00:00:00Z"}
         if req.api_type == "summit_forecast":
             return {"hourly": sample_summit_hourly()}, {"fetched_at": "2026-07-26T00:00:00Z"}
-        return {"daily": {"time": [], "sea_surface_temperature": sample_sst_list()}}, {"fetched_at": "2026-07-26T00:00:00Z"}
+        return {"hourly": sample_sst_hourly()}, {"fetched_at": "2026-07-26T00:00:00Z"}
 
     monkeypatch.setattr(omp, "load_prefetch", fake_load_prefetch)
 
@@ -204,7 +214,7 @@ def test_bundle_full_hit_assembles_all_pieces(monkeypatch):
 
     enhanced_data = sample_enhanced_forecast_data()
     summit_hourly = sample_summit_hourly()
-    marine_daily = {"time": enhanced_data["daily"]["time"], "sea_surface_temperature": sample_sst_list()}
+    marine_hourly = sample_sst_hourly()
 
     def fake_load_prefetch(req, **kwargs):
         if req.api_type == "enhanced_forecast":
@@ -212,7 +222,7 @@ def test_bundle_full_hit_assembles_all_pieces(monkeypatch):
         if req.api_type == "summit_forecast":
             return {"hourly": summit_hourly}, {"fetched_at": "2026-07-26T00:00:00Z"}
         if req.api_type == "marine":
-            return {"daily": marine_daily}, {"fetched_at": "2026-07-26T00:00:00Z"}
+            return {"hourly": marine_hourly}, {"fetched_at": "2026-07-26T00:00:00Z"}
         raise AssertionError(f"unexpected api_type {req.api_type}")
 
     monkeypatch.setattr(omp, "load_prefetch", fake_load_prefetch)

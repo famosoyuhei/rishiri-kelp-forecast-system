@@ -595,3 +595,53 @@ def test_compute_score_field_survives_open_circuit_when_prefetch_hits(monkeypatc
 
     assert "error" not in result
     assert len(result.get("points", [])) == n
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-04 incident: get_sea_surface_temperature() used `&daily=
+# sea_surface_temperature`, which Open-Meteo's Marine API 400s on
+# ("Cannot initialize ForecastVariableDaily from invalid String value") --
+# sea_surface_temperature is an hourly-only variable there. The function's
+# own generic except-clause silently degraded every call to [None]*7, so
+# SST-based fog-risk detection had likely never worked in production.
+# Discovered while live-verifying the LINE canary prefetch bundle, which
+# also depended on the (also-broken) daily-shaped marine prefetch data.
+# ---------------------------------------------------------------------------
+
+def test_reduce_hourly_sst_to_daily_averages_each_day():
+    hourly = [10.0] * 24 + [20.0] * 24  # day0 all 10, day1 all 20
+    result = start._reduce_hourly_sst_to_daily(hourly, days=2)
+    assert result == [10.0, 20.0]
+
+
+def test_reduce_hourly_sst_to_daily_skips_none_values():
+    hourly = [10.0, None, 12.0] + [None] * 21  # day0: avg of [10, 12]
+    result = start._reduce_hourly_sst_to_daily(hourly, days=1)
+    assert result == [11.0]
+
+
+def test_reduce_hourly_sst_to_daily_all_none_day_is_none():
+    hourly = [None] * 24
+    result = start._reduce_hourly_sst_to_daily(hourly, days=1)
+    assert result == [None]
+
+
+def test_get_sea_surface_temperature_requests_hourly_not_daily(monkeypatch):
+    captured_urls = []
+
+    def fake_get(url, timeout=8):
+        captured_urls.append(url)
+        resp = MagicMock(status_code=200)
+        resp.raise_for_status.return_value = None
+        hours = [f"2026-08-{d + 1:02d}T{h:02d}:00" for d in range(7) for h in range(24)]
+        resp.json.return_value = {"hourly": {"time": hours, "sea_surface_temperature": [16.0] * len(hours)}}
+        return resp
+
+    monkeypatch.setattr(start.requests, "get", fake_get)
+
+    result = start.get_sea_surface_temperature(45.1821, 141.2421)
+
+    assert len(captured_urls) == 1
+    assert "hourly=sea_surface_temperature" in captured_urls[0]
+    assert "daily=sea_surface_temperature" not in captured_urls[0]
+    assert result == [16.0] * 7

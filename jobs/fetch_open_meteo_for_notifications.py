@@ -26,7 +26,7 @@ from open_meteo_prefetch import (  # noqa: E402
     ENHANCED_DAILY_VARS,
     ENHANCED_HOURLY_VARS,
     GITHUB_ACTIONS_CIRCUIT_KEY,
-    MARINE_DAILY_VARS,
+    MARINE_HOURLY_VARS,
     MARINE_STALE_MAX_AGE_MINUTES,
     STALE_MAX_AGE_MINUTES,
     SUMMIT_HOURLY_VARS,
@@ -183,7 +183,7 @@ def _canary_requests_for_target(target: dict):
     req = enhanced_forecast_request(target["lat"], target["lon"], elevation)
     yield req, TTL_SECONDS, ENHANCED_DAILY_VARS, ENHANCED_HOURLY_VARS
     marine_req = marine_forecast_request(target["lat"], target["lon"])
-    yield marine_req, MARINE_TTL_SECONDS, MARINE_DAILY_VARS, None
+    yield marine_req, MARINE_TTL_SECONDS, None, MARINE_HOURLY_VARS
 
 
 def _open_github_circuit(retry_after: str | None) -> None:
