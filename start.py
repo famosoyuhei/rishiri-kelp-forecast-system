@@ -5825,8 +5825,17 @@ def get_analysis_field():
         # フレッシュでなければ cached は「stale fallback」として保持したまま、
         # 下でライブ取得を試みる（cached はここでは返さない）。
 
+    # 2026-08-04: この一括ゲートが _compute_*_field() 内のprefetch対応コードより
+    # 先に実行され、サーキットが開いている間は常にここで即503になっていた
+    # （_get_field_grid_elevations()/_get_field_sst()を先に修正したにも関わらず、
+    # 本番で/api/analysis/field?type=score&day=0が503のままだった直接の原因）。
+    # prefetchが許可されている(type, day)は、prefetch消費自体がサーキット
+    # ブレーカーに一切触れない（Redis読み取りのみ）ため、このライブ専用ゲートを
+    # スキップする。prefetchがミスした場合でも、各 _compute_*_field() 内部の
+    # ライブフォールバック経路が同じ例外を適切に投げる。
     try:
-        ensure_request_allowed('field', logger=app.logger)
+        if not _field_prefetch_allowed(field_type, day):
+            ensure_request_allowed('field', logger=app.logger)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
         if cached:
             cached_copy = dict(cached)

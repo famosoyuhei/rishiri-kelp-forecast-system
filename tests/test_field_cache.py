@@ -295,6 +295,57 @@ def test_get_analysis_field_still_503_when_no_cache_and_circuit_open():
     assert resp.status_code == 503
 
 
+def test_get_analysis_field_skips_circuit_gate_when_prefetch_allowed(monkeypatch):
+    """
+    2026-08-04 incident: get_analysis_field() calls ensure_request_allowed('field', ...)
+    unconditionally, BEFORE dispatching to _compute_score_field() -- so even
+    after _compute_score_field() itself was made prefetch-aware
+    (_get_field_grid_elevations()/_get_field_sst()/_fetch_field_grid_data()),
+    this earlier, route-level gate alone kept returning 503 with the P0
+    circuit open (confirmed live on production with
+    FIELD_PREFETCH_ENABLED=true). ensure_request_allowed() must now be
+    skipped when _field_prefetch_allowed() passes for this (type, day),
+    since prefetch consumption never touches the circuit breaker itself.
+    """
+    import start
+    from open_meteo_guard import OpenMeteoCircuitOpenError
+
+    monkeypatch.setenv('FIELD_PREFETCH_ENABLED', 'true')
+    monkeypatch.delenv('FIELD_PREFETCH_TYPES', raising=False)  # default: score
+    monkeypatch.delenv('FIELD_PREFETCH_DAYS', raising=False)   # default: 0
+
+    client = start.app.test_client()
+    fresh_data = {'points': [{'lat': 45.18, 'lon': 141.23, 'score': 88}], 'summary': {'excellent': 1}}
+    with patch.object(start, '_field_cache_get', return_value=None), \
+         patch.object(start, 'ensure_request_allowed',
+                      side_effect=OpenMeteoCircuitOpenError('field', '2026-08-04T00:29:17Z')) as mock_gate, \
+         patch.object(start, '_compute_score_field', return_value=fresh_data):
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body['points'] == fresh_data['points']
+    mock_gate.assert_not_called()  # the whole point: never even reached
+
+
+def test_get_analysis_field_keeps_circuit_gate_when_prefetch_not_allowed(monkeypatch):
+    """Regression guard: type/day not allowlisted (or the flag off, the
+    default) must behave 100% like before -- gate still enforced, still 503."""
+    import start
+    from open_meteo_guard import OpenMeteoCircuitOpenError
+
+    monkeypatch.delenv('FIELD_PREFETCH_ENABLED', raising=False)
+
+    client = start.app.test_client()
+    with patch.object(start, '_field_cache_get', return_value=None), \
+         patch.object(start, 'ensure_request_allowed',
+                      side_effect=OpenMeteoCircuitOpenError('field', '2026-08-04T00:29:17Z')) as mock_gate:
+        resp = client.get('/api/analysis/field?type=score&day=0')
+
+    assert resp.status_code == 503
+    mock_gate.assert_called_once()
+
+
 def test_get_analysis_field_prefers_fresh_live_data_over_stale_cache():
     """A successful live refresh must win over an available stale cache, not just short-circuit to it."""
     import start
