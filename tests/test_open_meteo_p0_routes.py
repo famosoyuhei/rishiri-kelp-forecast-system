@@ -439,3 +439,117 @@ def test_fetch_field_grid_data_propagates_rate_limit_from_live_fallback(monkeypa
 
     with pytest.raises(OpenMeteoRateLimitError):
         start._fetch_field_grid_data("score", 0, [45.1], [141.1], ["temperature_2m"])
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-04 incident fix: _compute_score_field()'s elevation fetch happens
+# BEFORE _fetch_field_grid_data()'s weather-grid prefetch, so with the P0
+# circuit open, the live elevation call short-circuited the whole function
+# before the weather prefetch ever ran -- confirmed live on production
+# (/api/analysis/field?type=score&day=0 still 503'd with
+# FIELD_PREFETCH_ENABLED=true). _get_field_grid_elevations() closes this gap.
+# ---------------------------------------------------------------------------
+
+def test_get_field_grid_elevations_uses_approximation_when_prefetch_allowed(monkeypatch):
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)  # default: score
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)   # default: 0
+
+    live_calls = []
+    monkeypatch.setattr(
+        start, "_fetch_elevations_batch",
+        lambda lats, lons, source=None: live_calls.append(1) or [0.0] * len(lats),
+    )
+
+    result = start._get_field_grid_elevations("score", 0, [45.1786, 45.2], [141.2419, 141.3])
+
+    assert live_calls == []  # never touches the live Elevation API
+    assert len(result) == 2
+    assert all(isinstance(v, (int, float)) for v in result)
+
+
+def test_get_field_grid_elevations_uses_live_batch_when_not_allowed(monkeypatch):
+    """type/day not allowlisted (or the flag off, the default) must behave
+    100% like the pre-fix code -- still a live elevation batch call."""
+    monkeypatch.delenv("FIELD_PREFETCH_ENABLED", raising=False)
+
+    live_calls = []
+
+    def fake_batch(lats, lons, source=None):
+        live_calls.append((lats, lons, source))
+        return [10.0, 20.0]
+
+    monkeypatch.setattr(start, "_fetch_elevations_batch", fake_batch)
+
+    result = start._get_field_grid_elevations("score", 0, [45.1, 45.2], [141.1, 141.2])
+
+    assert result == [10.0, 20.0]
+    assert len(live_calls) == 1
+    assert live_calls[0][2] == "field"
+
+
+def test_get_field_grid_elevations_propagates_circuit_open_when_not_allowed(monkeypatch):
+    monkeypatch.delenv("FIELD_PREFETCH_ENABLED", raising=False)
+
+    def fake_batch(lats, lons, source=None):
+        raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
+
+    monkeypatch.setattr(start, "_fetch_elevations_batch", fake_batch)
+
+    with pytest.raises(OpenMeteoCircuitOpenError):
+        start._get_field_grid_elevations("score", 0, [45.1], [141.1])
+
+
+def test_compute_score_field_survives_open_circuit_when_prefetch_hits(monkeypatch):
+    """End-to-end: both the elevation short-circuit AND the weather fetch
+    must be bypassed for _compute_score_field() to actually succeed while
+    the live Open-Meteo circuit is open."""
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+
+    def circuit_open_batch(lats, lons, source=None):
+        raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
+
+    def circuit_open_multi(lats, lons, hourly_vars):
+        raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
+
+    monkeypatch.setattr(start, "_fetch_elevations_batch", circuit_open_batch)
+    monkeypatch.setattr(start, "_fetch_open_meteo_multi", circuit_open_multi)
+    monkeypatch.setattr(start, "get_sea_surface_temperature", lambda *a, **k: [None] * 7)
+    monkeypatch.setattr(start, "_get_summit_hourly_temps", lambda *a, **k: None)
+
+    grid = start._build_rishiri_grid()
+    n = len(grid)
+    hours = []
+    for day in range(8):
+        for h in range(24):
+            hours.append(f"2026-08-{day + 1:02d}T{h:02d}:00")
+    m = len(hours)
+    point = {
+        "hourly": {
+            "time": hours,
+            "temperature_2m": [15.0] * m,
+            "relative_humidity_2m": [70.0] * m,
+            "wind_speed_10m": [10.0] * m,
+            "precipitation": [0.0] * m,
+            "precipitation_probability": [0] * m,
+            "shortwave_radiation": [300.0] * m,
+            "dewpoint_2m": [5.0] * m,
+            "cape": [0.0] * m,
+            "wind_direction_10m": [270.0] * m,
+        }
+    }
+    prefetched = [point for _ in range(n)]
+
+    import open_meteo_prefetch as omp
+    monkeypatch.setattr(omp, "field_grid_request", lambda: MagicMock())
+    monkeypatch.setattr(
+        omp, "load_field_grid_prefetch",
+        lambda req: (prefetched, {"age_minutes": 3, "stale": False}),
+    )
+
+    result = start._compute_score_field(0)
+
+    assert "error" not in result
+    assert len(result.get("points", [])) == n

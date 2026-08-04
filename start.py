@@ -4670,6 +4670,35 @@ def _fetch_field_grid_data(field_type: str, day: int, lats: list, lons: list, ho
     return _fetch_open_meteo_multi(lats, lons, hourly_vars)
 
 
+def _get_field_grid_elevations(field_type: str, day: int, lats: list, lons: list) -> list:
+    """
+    Elevation for _compute_score_field()'s 49 grid points.
+
+    2026-08-04 incident: _compute_score_field() fetches elevation via
+    _fetch_elevations_batch() BEFORE it reaches _fetch_field_grid_data()'s
+    weather-grid prefetch -- so with the P0 circuit open, this live
+    elevation call raised OpenMeteoCircuitOpenError and short-circuited the
+    whole function before the newly-added weather prefetch ever got a
+    chance to run, defeating the point of this resilience work for `score`
+    (the only field type actually allowlisted at launch). Confirmed live:
+    the deployed /api/analysis/field?type=score&day=0 endpoint returned 503
+    even with FIELD_PREFETCH_ENABLED=true.
+
+    Fix: when _field_prefetch_allowed() passes for this (field_type, day),
+    use the same network-free elevation approximation already used for
+    LINE canary spots without a manually-verified elevation
+    (_approximate_elevation_no_network) instead of a live Elevation API
+    call -- the 49 grid points are fixed/deterministic, so this trades a
+    small accuracy loss (already an approximation on an already-coarse
+    49-point representative grid) for zero live-network dependency. Any
+    (field_type, day) not allowlisted takes the pre-existing live
+    _fetch_elevations_batch() path with no behavior change.
+    """
+    if _field_prefetch_allowed(field_type, day):
+        return [_approximate_elevation_no_network(lat, lon) for lat, lon in zip(lats, lons)]
+    return _fetch_elevations_batch(lats, lons, source='field')
+
+
 def _extract_day_window(hourly: dict, target_date: str) -> dict:
     """
     Open-Meteo hourly dict から target_date の作業時間帯（04〜16時JST）だけ抽出。
@@ -5208,8 +5237,12 @@ def _compute_score_field(day: int) -> dict:
 
     # 標高を一括取得（1HTTPリクエスト ≈ 2s）
     # 個別取得(48×get_elevation() ≈ 72s)を回避する核心の高速化
+    # 2026-08-04: prefetch対象(type, day)の場合はネットワーク不要の概算標高を使う
+    # （_get_field_grid_elevations()のdocstring参照 — この呼び出しが気象データの
+    # prefetchより先に実行されるため、ここでライブ取得に失敗すると
+    # _fetch_field_grid_data()のprefetch経路まで到達できなかった問題への対応）。
     try:
-        grid_elevations = _fetch_elevations_batch(lats, lons, source='field')
+        grid_elevations = _get_field_grid_elevations('score', day, lats, lons)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
         return {'error': f'Open-Meteo rate limited: {e}'}
 
