@@ -44,6 +44,12 @@ jobs:
       OPEN_METEO_BASE_URL: ${{ vars.OPEN_METEO_BASE_URL }}
       OPEN_METEO_MARINE_BASE_URL: ${{ vars.OPEN_METEO_MARINE_BASE_URL }}
       OPEN_METEO_API_KEY: ${{ secrets.OPEN_METEO_API_KEY }}
+      # 2026-08-04: このjobのcollect_canary_targets()にカナリア地点リストを渡す
+      # ためのマッピングが抜けており、実際に登録済みのLINE通知対象と重ならない限り
+      # enhanced_forecast/marineのprefetchが一度も作られていなかった不具合の修正。
+      # Renderの環境変数LINE_WEB_FORECAST_CANARY_SPOT_IDSと同じ値をGitHub Actions
+      # のrepository variableとして設定すること（単一の真実源はRender側）。
+      LINE_WEB_FORECAST_CANARY_SPOT_IDS: ${{ vars.LINE_WEB_FORECAST_CANARY_SPOT_IDS }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
