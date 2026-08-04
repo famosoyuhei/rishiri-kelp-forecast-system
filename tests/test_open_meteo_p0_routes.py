@@ -500,10 +500,49 @@ def test_get_field_grid_elevations_propagates_circuit_open_when_not_allowed(monk
         start._get_field_grid_elevations("score", 0, [45.1], [141.1])
 
 
+def test_get_field_sst_degrades_to_none_when_prefetch_allowed(monkeypatch):
+    """
+    2026-08-04 incident: get_sea_surface_temperature() is a live-only call
+    that re-raises circuit-open/rate-limit -- even after fixing elevation
+    and the weather-grid fetch, this alone still aborted
+    _compute_score_field() during an open circuit. Confirmed live on
+    production (/api/analysis/field?type=score&day=0 still 503'd with
+    FIELD_PREFETCH_ENABLED=true) before this fix.
+    """
+    monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
+    monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
+    monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
+
+    def fake_sst(lat, lon, source=None):
+        raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
+
+    monkeypatch.setattr(start, "get_sea_surface_temperature", fake_sst)
+
+    result = start._get_field_sst("score", 0, 45.1821, 141.2421)
+
+    assert result == [None] * 7
+
+
+def test_get_field_sst_propagates_when_not_allowed(monkeypatch):
+    monkeypatch.delenv("FIELD_PREFETCH_ENABLED", raising=False)
+
+    def fake_sst(lat, lon, source=None):
+        raise OpenMeteoRateLimitError(
+            http_status=429, retry_after_raw=None, retry_after_at="2026-08-04T00:30:00Z",
+            source="field", occurred_at="2026-08-04T00:00:00Z", body_excerpt="",
+            consecutive_429_count=1,
+        )
+
+    monkeypatch.setattr(start, "get_sea_surface_temperature", fake_sst)
+
+    with pytest.raises(OpenMeteoRateLimitError):
+        start._get_field_sst("score", 0, 45.1821, 141.2421)
+
+
 def test_compute_score_field_survives_open_circuit_when_prefetch_hits(monkeypatch):
-    """End-to-end: both the elevation short-circuit AND the weather fetch
-    must be bypassed for _compute_score_field() to actually succeed while
-    the live Open-Meteo circuit is open."""
+    """End-to-end: the elevation short-circuit, the weather fetch, AND the
+    SST fetch must all be bypassed for _compute_score_field() to actually
+    succeed while the live Open-Meteo circuit is open."""
     monkeypatch.setenv("FIELD_PREFETCH_ENABLED", "true")
     monkeypatch.delenv("FIELD_PREFETCH_TYPES", raising=False)
     monkeypatch.delenv("FIELD_PREFETCH_DAYS", raising=False)
@@ -514,9 +553,12 @@ def test_compute_score_field_survives_open_circuit_when_prefetch_hits(monkeypatc
     def circuit_open_multi(lats, lons, hourly_vars):
         raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
 
+    def circuit_open_sst(lat, lon, source=None):
+        raise OpenMeteoCircuitOpenError("field", "2026-08-04T00:29:17Z")
+
     monkeypatch.setattr(start, "_fetch_elevations_batch", circuit_open_batch)
     monkeypatch.setattr(start, "_fetch_open_meteo_multi", circuit_open_multi)
-    monkeypatch.setattr(start, "get_sea_surface_temperature", lambda *a, **k: [None] * 7)
+    monkeypatch.setattr(start, "get_sea_surface_temperature", circuit_open_sst)
     monkeypatch.setattr(start, "_get_summit_hourly_temps", lambda *a, **k: None)
 
     grid = start._build_rishiri_grid()

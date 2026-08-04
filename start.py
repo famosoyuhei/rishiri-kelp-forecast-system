@@ -4699,6 +4699,33 @@ def _get_field_grid_elevations(field_type: str, day: int, lats: list, lons: list
     return _fetch_elevations_batch(lats, lons, source='field')
 
 
+def _get_field_sst(field_type: str, day: int, lat: float, lon: float) -> list:
+    """
+    Sea-surface temperature for _compute_score_field()'s fog-risk adjustment.
+
+    2026-08-04: like elevation above, get_sea_surface_temperature() is a
+    live-only call (no prefetch yet) that re-raises
+    OpenMeteoRateLimitError/OpenMeteoCircuitOpenError -- so even after fixing
+    the elevation and weather-grid fetches, this SST call alone still
+    aborted _compute_score_field() during an open circuit (confirmed live:
+    /api/analysis/field?type=score&day=0 kept 503'ing with
+    FIELD_PREFETCH_ENABLED=true until this fix).
+
+    SST only feeds a fog-risk score nudge (assess_sst_fog_risk(), which
+    already treats sst=None as 'unknown' gracefully) -- not worth blocking
+    the whole field over. When prefetch is allowed for this (field_type,
+    day), a rate-limit/circuit-open here degrades to "no SST data"
+    ([None] * 7) instead of aborting; any (field_type, day) not allowlisted
+    keeps today's existing behavior (propagates the error, unchanged).
+    """
+    try:
+        return get_sea_surface_temperature(lat, lon, source='field')
+    except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError):
+        if _field_prefetch_allowed(field_type, day):
+            return [None] * 7
+        raise
+
+
 def _extract_day_window(hourly: dict, target_date: str) -> dict:
     """
     Open-Meteo hourly dict から target_date の作業時間帯（04〜16時JST）だけ抽出。
@@ -5258,7 +5285,7 @@ def _compute_score_field(day: int) -> dict:
     # 島中心1点で代表し全48格子点に共通適用する。
     _ISLAND_LAT,  _ISLAND_LON  = 45.1821, 141.2421   # 利尻島地理中心
     try:
-        _sst_field = get_sea_surface_temperature(_ISLAND_LAT, _ISLAND_LON, source='field')
+        _sst_field = _get_field_sst('score', day, _ISLAND_LAT, _ISLAND_LON)
     except (OpenMeteoRateLimitError, OpenMeteoCircuitOpenError) as e:
         return {'error': f'Open-Meteo rate limited: {e}'}
     _sst_today_field = _sst_field[day] if day < len(_sst_field) else None
