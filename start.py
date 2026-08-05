@@ -3011,12 +3011,11 @@ def delete_spot():
         block_reasons = []
 
         # 制限1: 記録データ存在チェック（機械学習訓練データとしても使用）
-        try:
-            records_df = pd.read_csv(RECORD_FILE)
-            if name in records_df["name"].values:
-                block_reasons.append("乾燥記録がある")
-        except FileNotFoundError:
-            pass
+        # 2026-08-04: RECORD_FILEを直接読むとRedis復元前のデプロイ直後に
+        # 空扱いになりうるため、_load_records()経由に統一。
+        records_df = _load_records()
+        if not records_df.empty and name in records_df["name"].values:
+            block_reasons.append("乾燥記録がある")
 
         # 制限2: お気に入り登録チェック（v2.6.5でお気に入り機能廃止済み・条件は削除）
 
@@ -3091,6 +3090,51 @@ VALID_RESULTS = ["完全乾燥", "概ね乾燥", "半乾燥", "ほぼ乾燥な�
 VALID_STOP_CAUSES = ["雨が降った", "霧が出た・昆布が湿り戻った", "飛散リスク・強風",
                      "曇り続きで乾かなかった", "天候以外"]
 VALID_CORRECTION_REASONS = ["記録の誤り（日付・干場の選択ミス）", "判断が変わった（再評価）", "その他"]
+
+_RECORDS_REDIS_KEY = 'hoshiba_records:csv'
+_RECORDS_REDIS_TTL = 365 * 24 * 3600  # 1年（デプロイをまたいで恒久保持、feedback_logと同方式）
+
+
+def _records_redis_save(df) -> bool:
+    """hoshiba_records DataFrame を CSV 文字列として Redis に永続保存する。
+
+    2026-08-04緊急修正: hoshiba_records.csv への書き込みがRenderのその場限りの
+    ディスクにしか行われておらず、再デプロイのたびに漁業者の乾燥記録が消失
+    していた重大な不具合の修正。既存の feedback_log.csv 永続化
+    （_feedback_log_redis_save/_restore、L3157-3197）と全く同じ方式を踏襲する。
+    add_record() での書き込みと必ずセットで呼ぶこと。
+    """
+    try:
+        csv_str = df.to_csv(index=False)
+        ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
+        if not ok:
+            app.logger.error('[records_redis] Redis save returned False — record may be lost on next deploy')
+        return ok
+    except Exception as e:
+        app.logger.error('[records_redis] save error: %s', e)
+        return False
+
+
+def _records_redis_restore() -> bool:
+    """Redis から hoshiba_records.csv をローカルに復元する。
+
+    Render デプロイ後などローカルファイルが消えている場合のみ実行。
+    _load_records() の先頭で呼ぶことでデプロイ後の記録消失を防ぐ。
+    Returns True if restored from Redis, False otherwise.
+    """
+    if os.path.exists(RECORD_FILE):
+        return False
+    csv_str = _obs_redis_get(_RECORDS_REDIS_KEY)
+    if not csv_str or not isinstance(csv_str, str):
+        return False
+    try:
+        with open(RECORD_FILE, 'w', encoding='utf-8') as f:
+            f.write(csv_str)
+        app.logger.info('[records_redis] restored hoshiba_records.csv from Redis (%d chars)', len(csv_str))
+        return True
+    except Exception as e:
+        app.logger.error('[records_redis] restore error: %s', e)
+        return False
 
 def merge_records_with_spots(records_df, spots_df):
     """
@@ -3738,7 +3782,15 @@ def _record_forecast_feedback(name, date_str, result):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _load_records():
-    """hoshiba_records.csvを読み込み、旧カラム構造を自動移行して返す"""
+    """hoshiba_records.csvを読み込み、旧カラム構造を自動移行して返す。
+
+    2026-08-04: 呼び出しのたびに _records_redis_restore() でRedisからの復元を
+    試みる（デプロイ後にローカルファイルが消えていた場合のみ実際に復元する）。
+    さらに、ローカルにデータがあるのにRedis側にまだ何もない場合（このバックフィル
+    自体が初めて動く初回デプロイ時など）は、この場でRedisへ書き戻しておく
+    ——次の add_record() の書き込みを待たずに、既存データを保護するため。
+    """
+    _records_redis_restore()
     try:
         df = pd.read_csv(RECORD_FILE)
     except FileNotFoundError:
@@ -3746,7 +3798,10 @@ def _load_records():
     for col in RECORD_COLUMNS:
         if col not in df.columns:
             df[col] = None
-    return df[RECORD_COLUMNS]
+    df = df[RECORD_COLUMNS]
+    if len(df) > 0 and _obs_redis_get(_RECORDS_REDIS_KEY) is None:
+        _records_redis_save(df)
+    return df
 
 @app.route('/record', methods=['POST'])
 def add_record():
@@ -3830,6 +3885,8 @@ def add_record():
             message = f"記録が追加されました: {name} ({date}) - {result}"
 
         df.to_csv(RECORD_FILE, index=False, encoding="utf-8")
+        # 主: デプロイをまたいで永続化（2026-08-04緊急修正、feedback_logと同方式）
+        _records_redis_save(df)
 
         # 予報精度フィードバックを自動記録（失敗してもメインの記録保存には影響しない）
         _record_forecast_feedback(name, date, result)
@@ -7322,6 +7379,7 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     # ── 3. 干し記録（records）を事前に日付で絞り込む ─────────────────────
     target_date_fmt = f'{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}'  # YYYY-MM-DD
     records_on_date: dict[str, str] = {}  # spot_name → result
+    _records_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     try:
         if os.path.exists(RECORD_FILE):
             with open(RECORD_FILE, 'r', encoding='utf-8') as rf:
