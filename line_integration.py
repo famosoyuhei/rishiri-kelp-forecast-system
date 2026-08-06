@@ -838,8 +838,59 @@ def _parse_date_for_record(arg: str) -> 'str | None | str':
     return date_str
 
 
+def _records_redis_restore() -> bool:
+    """Redis から hoshiba_records.csv をローカルに復元する（start.pyと同一キーを共有）。
+
+    2026-08-05緊急修正: write_line_record()（LINE経由の記録）が
+    start.py側のRedis永続化修正（2026-08-04, _records_redis_save/_restore）を
+    一切通らない独立実装になっており、依然としてRenderのその場限りの
+    ディスクにしか保存されていなかった不具合の修正。start.pyの低レベル
+    Redisヘルパー（_obs_redis_get/_obs_redis_set）と_RECORDS_REDIS_KEYを
+    関数スコープimportで共有し、Web側(/record)とLINE側の両方が同一の
+    永続化データを読み書きするようにする（start.pyは重量級モジュールの
+    ためモジュールレベルでは import せず、このファイル内の既存の
+    get_enhanced_forecasts_for_line 呼び出しと同じ遅延import方式を踏襲）。
+    """
+    if os.path.exists(RECORDS_CSV):
+        return False
+    try:
+        from start import _obs_redis_get, _RECORDS_REDIS_KEY
+    except ImportError:
+        return False
+    csv_str = _obs_redis_get(_RECORDS_REDIS_KEY)
+    if not csv_str or not isinstance(csv_str, str):
+        return False
+    try:
+        with open(RECORDS_CSV, 'w', encoding='utf-8', newline='') as f:
+            f.write(csv_str)
+        logger.info('restored hoshiba_records.csv from Redis (%d chars)', len(csv_str))
+        return True
+    except Exception as e:
+        logger.error('records restore error: %s', e)
+        return False
+
+
+def _records_redis_save_from_file() -> bool:
+    """現在の hoshiba_records.csv 全体を Redis に保存する（start.pyと同一キー）。"""
+    try:
+        from start import _obs_redis_set, _RECORDS_REDIS_KEY, _RECORDS_REDIS_TTL
+    except ImportError:
+        return False
+    try:
+        with open(RECORDS_CSV, 'r', encoding='utf-8', newline='') as f:
+            csv_str = f.read()
+        ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
+        if not ok:
+            logger.error('records Redis save returned False — record may be lost on next deploy')
+        return ok
+    except Exception as e:
+        logger.error('records save error: %s', e)
+        return False
+
+
 def read_existing_record(spot_id: str, date_str: str) -> 'dict | None':
     """Return existing record row for spot+date, or None if not found."""
+    _records_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     if not os.path.exists(RECORDS_CSV):
         return None
     try:
@@ -855,6 +906,7 @@ def read_existing_record(spot_id: str, date_str: str) -> 'dict | None':
 def write_line_record(spot_id: str, date_str: str, result: str,
                       stop_cause: str = '') -> bool:
     """Append or overwrite a record in hoshiba_records.csv."""
+    _records_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     now_jst = datetime.now(JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
     did_dry = '1' if result in ('完全乾燥', '概ね乾燥') else '0'
     new_row = {
@@ -882,6 +934,7 @@ def write_line_record(spot_id: str, date_str: str, result: str,
             writer = csv.DictWriter(f, fieldnames=_LINE_RECORD_COLUMNS)
             writer.writeheader()
             writer.writerows(existing)
+        _records_redis_save_from_file()  # 主: デプロイをまたいで永続化
         return True
     except Exception as e:
         logger.error('Failed to write line record: %s', e)

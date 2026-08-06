@@ -2300,6 +2300,100 @@ def test_record_confirm_no_warning_without_existing(tmp_sub_file, tmp_path, monk
 
 
 # ---------------------------------------------------------------------------
+# 2026-08-05 emergency fix: write_line_record()/read_existing_record() were a
+# fully independent implementation from start.py's /record route, and never
+# went through start.py's 2026-08-04 Redis persistence fix -- every LINE-
+# submitted drying record was still being silently lost on every Render
+# redeploy, discovered only after a user's live LINE submission. Fixed to
+# share start.py's exact Redis key/helpers via the same function-scoped
+# cross-import pattern this file already uses for get_enhanced_forecasts_for_line.
+# ---------------------------------------------------------------------------
+
+def test_write_line_record_saves_to_redis(tmp_path, monkeypatch):
+    import start
+
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    redis_writes = []
+    monkeypatch.setattr(
+        start, "_obs_redis_set",
+        lambda key, data, ttl=None: redis_writes.append((key, data, ttl)) or True,
+    )
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)  # local file exists -> restore is a no-op anyway
+
+    ok = li.write_line_record("H_1631_1434", "2026-08-05", "完全乾燥")
+
+    assert ok is True
+    assert len(redis_writes) == 1
+    key, data, ttl = redis_writes[0]
+    assert key == start._RECORDS_REDIS_KEY
+    assert "H_1631_1434" in data
+    assert "2026-08-05" in data
+    assert ttl == start._RECORDS_REDIS_TTL
+
+
+def test_write_line_record_still_succeeds_when_redis_save_fails(tmp_path, monkeypatch):
+    """Redis being briefly unavailable must not block a fisherman from recording."""
+    import start
+
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(start, "_obs_redis_set", lambda key, data, ttl=None: False)
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
+
+    ok = li.write_line_record("H_1631_1434", "2026-08-05", "完全乾燥")
+
+    assert ok is True  # local write still succeeded
+    assert (tmp_path / "records.csv").exists()
+
+
+def test_records_redis_restore_noop_when_local_file_exists(tmp_path, monkeypatch):
+    import start
+
+    records_path = tmp_path / "records.csv"
+    records_path.write_text("date,name,result\n2026-07-01,H_1631_1434,完全乾燥\n", encoding="utf-8")
+    monkeypatch.setattr(li, "RECORDS_CSV", str(records_path))
+    redis_get = MagicMock(return_value="should not be used")
+    monkeypatch.setattr(start, "_obs_redis_get", redis_get)
+
+    restored = li._records_redis_restore()
+
+    assert restored is False
+    redis_get.assert_not_called()
+
+
+def test_records_redis_restore_writes_file_from_redis_when_local_missing(tmp_path, monkeypatch):
+    import start
+
+    records_path = tmp_path / "records.csv"
+    monkeypatch.setattr(li, "RECORDS_CSV", str(records_path))
+    assert not records_path.exists()
+    csv_str = "date,name,result\n2026-07-01,H_1631_1434,完全乾燥\n"
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: csv_str)
+
+    restored = li._records_redis_restore()
+
+    assert restored is True
+    assert records_path.read_text(encoding="utf-8") == csv_str
+
+
+def test_read_existing_record_restores_from_redis_before_reading(tmp_path, monkeypatch):
+    import start
+
+    records_path = tmp_path / "records.csv"
+    monkeypatch.setattr(li, "RECORDS_CSV", str(records_path))
+    assert not records_path.exists()
+    csv_str = (
+        "date,name,result,stop_cause,did_dry,collection_time,recorded_at,correction_count,correction_reason\n"
+        "2026-07-01,H_1631_1434,完全乾燥,,1,,2026-07-01T16:00:00+09:00,0,\n"
+    )
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: csv_str)
+
+    row = li.read_existing_record("H_1631_1434", "2026-07-01")
+
+    assert row is not None
+    assert row["result"] == "完全乾燥"
+
+
+# ---------------------------------------------------------------------------
 # handle_record_start — robustness: always replies even if storage fails
 # ---------------------------------------------------------------------------
 
