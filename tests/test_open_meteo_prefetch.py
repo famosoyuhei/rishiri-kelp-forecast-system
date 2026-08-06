@@ -261,6 +261,10 @@ def test_job_fetch_one_network_timeout_does_not_crash_the_run(monkeypatch):
     # the entire prefetch script (exit code 1 -> GitHub "Run failed" email),
     # aborting every remaining spot in the run over a single transient
     # network hiccup unrelated to Open-Meteo rate-limiting.
+    # 2026-08-06: a retry was added (_get_with_retry) -- a persistent
+    # (both-attempts-fail) timeout must still degrade to network_error
+    # rather than crash, just after one extra retry attempt.
+    monkeypatch.setattr(job.time, "sleep", lambda s: None)
     session = MagicMock()
     session.get.side_effect = requests.exceptions.ReadTimeout("read timed out")
 
@@ -268,9 +272,11 @@ def test_job_fetch_one_network_timeout_does_not_crash_the_run(monkeypatch):
 
     assert ok is False
     assert reason == "network_error"
+    assert session.get.call_count == 2  # original attempt + one retry
 
 
 def test_fetch_request_network_timeout_does_not_crash_the_run(monkeypatch):
+    monkeypatch.setattr(job.time, "sleep", lambda s: None)
     session = MagicMock()
     session.get.side_effect = requests.exceptions.ConnectionError("connection reset")
 
@@ -281,14 +287,37 @@ def test_fetch_request_network_timeout_does_not_crash_the_run(monkeypatch):
 
     assert ok is False
     assert reason == "network_error"
+    assert session.get.call_count == 2  # original attempt + one retry
 
 
-def test_main_continues_past_a_single_network_timeout(monkeypatch):
-    # End-to-end: one target's fetch times out, the run must still complete
-    # (not raise) and continue processing the rest. fetch_one()'s session
-    # parameter defaults to the real `requests` module (bound at function
-    # definition time), so patch requests.get directly rather than the
-    # module-level `job.requests` name.
+def test_fetch_one_retries_and_recovers_a_transient_timeout(monkeypatch):
+    """
+    2026-08-06 incident: a single ReadTimeout on an otherwise-healthy
+    connection permanently dropped a spot's prefetch for the whole 2x-daily
+    cycle (no stale fallback existed yet for a newly-widened canary target),
+    silently downgrading that spot's LINE notification to the simplified
+    forecast. One retry should recover a merely-transient timeout.
+    """
+    monkeypatch.setattr(job.time, "sleep", lambda s: None)
+    monkeypatch.setattr(job, "redis_set_json", lambda *args, **kwargs: True)
+    session = MagicMock()
+    ok_resp = MagicMock(status_code=200)
+    ok_resp.json.return_value = sample_open_meteo()
+    session.get.side_effect = [requests.exceptions.ReadTimeout("read timed out"), ok_resp]
+
+    ok, reason = job.fetch_one({"lat": 45.1, "lon": 141.1}, session=session)
+
+    assert ok is True
+    assert reason == "ok"
+    assert session.get.call_count == 2
+
+
+def test_main_retries_and_recovers_a_transient_network_timeout(monkeypatch):
+    # End-to-end: the first target's first attempt times out, but the retry
+    # succeeds, so the run completes with all targets covered. fetch_one()'s
+    # session parameter defaults to the real `requests` module (bound at
+    # function definition time), so patch requests.get directly rather than
+    # the module-level `job.requests` name.
     monkeypatch.setattr(
         job, "collect_target_spots",
         lambda kind, now_jst=None: [
@@ -297,6 +326,7 @@ def test_main_continues_past_a_single_network_timeout(monkeypatch):
         ],
     )
     monkeypatch.setattr(job, "collect_canary_targets", lambda kind, now_jst=None: [])
+    monkeypatch.setattr(job.time, "sleep", lambda s: None)
 
     calls = []
 
@@ -313,7 +343,37 @@ def test_main_continues_past_a_single_network_timeout(monkeypatch):
     exit_code = job.main(["--kind", "morning"])
 
     assert exit_code == 0
-    assert len(calls) == 2
+    assert len(calls) == 3  # spot1: fail + retry-success, spot2: success
+
+
+def test_main_continues_past_a_persistent_network_timeout(monkeypatch):
+    """Both attempts for the first spot fail; the run must still cover the rest."""
+    monkeypatch.setattr(
+        job, "collect_target_spots",
+        lambda kind, now_jst=None: [
+            {"lat": 45.1, "lon": 141.1},
+            {"lat": 45.2, "lon": 141.2},
+        ],
+    )
+    monkeypatch.setattr(job, "collect_canary_targets", lambda kind, now_jst=None: [])
+    monkeypatch.setattr(job.time, "sleep", lambda s: None)
+
+    calls = []
+
+    def flaky_get(url, timeout=None):
+        calls.append(url)
+        if len(calls) <= 2:  # both attempts for spot1 fail
+            raise requests.exceptions.ReadTimeout("read timed out")
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = sample_open_meteo()
+        return resp
+
+    monkeypatch.setattr(requests, "get", flaky_get)
+
+    exit_code = job.main(["--kind", "morning"])
+
+    assert exit_code == 0
+    assert len(calls) == 3  # spot1: fail+fail, spot2: success
 
 
 def test_job_main_stops_after_first_429(monkeypatch):

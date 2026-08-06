@@ -60,6 +60,35 @@ class RateLimited(Exception):
         super().__init__("Open-Meteo returned 429")
 
 
+def _get_with_retry(session, url: str, timeout: int = 20, retries: int = 1,
+                    retry_delay: float = 2.0):
+    """
+    GET with one retry on transient network errors (timeout, connection
+    reset, DNS hiccup, etc.) -- NOT on 429, which callers handle separately
+    by inspecting resp.status_code (a 429 is a successful HTTP response, so
+    it never raises RequestException and is unaffected by this retry).
+
+    2026-08-06: observed live that a single ReadTimeout (transient
+    Open-Meteo/network flakiness, not a sustained outage -- most other
+    requests in the same run succeeded) permanently dropped a spot's
+    enhanced_forecast/marine prefetch for that entire run, with no stale
+    fallback yet available for a newly-widened canary target -- silently
+    downgrading that spot's LINE notification to the simplified forecast
+    for the whole cycle. One retry is cheap relative to this job's existing
+    20s per-request timeout budget and should recover most transient
+    timeouts without adding meaningful 429 risk.
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return session.get(url, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            if attempt < retries:
+                time.sleep(retry_delay)
+    raise last_exc
+
+
 def log_event(**fields) -> None:
     safe = {k: v for k, v in fields.items() if v is not None}
     print(json.dumps(safe, ensure_ascii=False, sort_keys=True))
@@ -218,7 +247,7 @@ def fetch_one(target: dict, session=requests) -> tuple[bool, str]:
     started = time.perf_counter()
     log_event(event="request", api_type=req.api_type, status="start")
     try:
-        resp = session.get(req.url(), timeout=20)
+        resp = _get_with_retry(session, req.url(), timeout=20)
     except requests.exceptions.RequestException as e:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         log_event(event="network_error", api_type=req.api_type, status=type(e).__name__, elapsed_ms=elapsed_ms)
@@ -272,7 +301,7 @@ def fetch_request(req, *, ttl_seconds: int, daily_vars: str | None, hourly_vars:
     started = time.perf_counter()
     log_event(event="request", api_type=req.api_type, status="start")
     try:
-        resp = session.get(req.url(), timeout=20)
+        resp = _get_with_retry(session, req.url(), timeout=20)
     except requests.exceptions.RequestException as e:
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         log_event(event="network_error", api_type=req.api_type, status=type(e).__name__, elapsed_ms=elapsed_ms)
