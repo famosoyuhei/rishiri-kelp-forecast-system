@@ -871,7 +871,14 @@ def _records_redis_restore() -> bool:
 
 
 def _records_redis_save_from_file() -> bool:
-    """現在の hoshiba_records.csv 全体を Redis に保存する（start.pyと同一キー）。"""
+    """現在の hoshiba_records.csv 全体を Redis に保存する（start.pyと同一キー）。
+
+    2026-08-06追加: 呼び出し元（write_line_record）が戻り値を確認せず
+    「ローカル書き込み成功＝保存できた」と誤認し、実際にはこのRedis保存が
+    失敗していた記録を再デプロイで失う事故が発生した。start.py の
+    _records_redis_save() と同じ再試行を追加し、呼び出し元にも戻り値を
+    伝播させ、失敗時はLINEのメッセージ上でユーザーに警告する。
+    """
     try:
         from start import _obs_redis_set, _RECORDS_REDIS_KEY, _RECORDS_REDIS_TTL
     except ImportError:
@@ -879,13 +886,24 @@ def _records_redis_save_from_file() -> bool:
     try:
         with open(RECORDS_CSV, 'r', encoding='utf-8', newline='') as f:
             csv_str = f.read()
-        ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
-        if not ok:
-            logger.error('records Redis save returned False — record may be lost on next deploy')
-        return ok
     except Exception as e:
-        logger.error('records save error: %s', e)
+        logger.error('records save error (read local file): %s', e)
         return False
+
+    last_error = None
+    for attempt in range(2):
+        try:
+            ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
+            if ok:
+                return True
+            last_error = 'Redis SET returned False'
+        except Exception as e:
+            last_error = str(e)
+        if attempt == 0:
+            import time as _time
+            _time.sleep(0.5)
+    logger.error('records Redis save failed after retry — record may be lost on next deploy: %s', last_error)
+    return False
 
 
 def read_existing_record(spot_id: str, date_str: str) -> 'dict | None':
@@ -905,7 +923,26 @@ def read_existing_record(spot_id: str, date_str: str) -> 'dict | None':
 
 def write_line_record(spot_id: str, date_str: str, result: str,
                       stop_cause: str = '') -> bool:
-    """Append or overwrite a record in hoshiba_records.csv."""
+    """Append or overwrite a record in hoshiba_records.csv.
+
+    Returns True if the local file write succeeded (existing contract, kept
+    for backward compatibility). Callers that need to know whether the
+    write actually survives a redeploy (Redis persistence) should use
+    write_line_record_detailed() instead.
+    """
+    local_ok, _redis_persisted = write_line_record_detailed(spot_id, date_str, result, stop_cause)
+    return local_ok
+
+
+def write_line_record_detailed(spot_id: str, date_str: str, result: str,
+                               stop_cause: str = '') -> tuple[bool, bool]:
+    """Same as write_line_record(), but returns (local_ok, redis_persisted).
+
+    2026-08-06追加: 以前は write_line_record() がローカル書き込み成功だけを
+    見て True を返し、呼び出し元はRedis保存が実際に成功したかを知る術が
+    なかった。この関数は両方の成否を返すので、呼び出し元（確認フロー）が
+    Redis保存失敗時にユーザーへ警告できるようにする。
+    """
     _records_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
     now_jst = datetime.now(JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
     did_dry = '1' if result in ('完全乾燥', '概ね乾燥') else '0'
@@ -934,11 +971,16 @@ def write_line_record(spot_id: str, date_str: str, result: str,
             writer = csv.DictWriter(f, fieldnames=_LINE_RECORD_COLUMNS)
             writer.writeheader()
             writer.writerows(existing)
-        _records_redis_save_from_file()  # 主: デプロイをまたいで永続化
-        return True
+        redis_persisted = _records_redis_save_from_file()  # 主: デプロイをまたいで永続化
+        if not redis_persisted:
+            logger.error(
+                'Redis persistence failed for %s %s — local-only, at risk on next deploy',
+                spot_id, date_str,
+            )
+        return True, redis_persisted
     except Exception as e:
         logger.error('Failed to write line record: %s', e)
-        return False
+        return False, False
 
 
 # ---------------------------------------------------------------------------
@@ -1158,14 +1200,24 @@ def handle_record_flow(source_type: str, source_id: str, text: str) -> str:
             result = pa['result']
             stop_cause = pa.get('stop_cause') or ''
             clear_pending_action(source_type, source_id)
-            if write_line_record(spot_id, date_str, result, stop_cause):
+            local_ok, redis_persisted = write_line_record_detailed(spot_id, date_str, result, stop_cause)
+            if local_ok:
                 dt = datetime.strptime(date_str, '%Y-%m-%d')
-                return (
+                msg = (
                     f'✅ 記録しました。\n'
                     f'干場: {pa["nickname"]}\n'
                     f'日付: {dt.month}/{dt.day}\n'
                     f'結果: {result}'
                 )
+                # 2026-08-06: Redis保存に失敗した場合、以前は誰も気づかないまま
+                # 次の再デプロイで記録が消えていた。ここで直接ユーザーに伝え、
+                # 再送信を促す（サイレント消失の再発防止）。
+                if not redis_persisted:
+                    msg += (
+                        '\n\n⚠️ 保存処理で一部エラーが発生した可能性があります。'
+                        '念のため少し時間をおいてから、同じ内容をもう一度「記録」で送信してください。'
+                    )
+                return msg
             return '⚠️ 記録の保存に失敗しました。もう一度お試しください。'
         if text in ('いいえ', 'キャンセル', 'やり直し', 'no'):
             clear_pending_action(source_type, source_id)

@@ -2345,6 +2345,72 @@ def test_write_line_record_still_succeeds_when_redis_save_fails(tmp_path, monkey
     assert (tmp_path / "records.csv").exists()
 
 
+def test_write_line_record_detailed_reports_redis_failure_separately(tmp_path, monkeypatch):
+    """
+    2026-08-06 incident: write_line_record() only ever reported local-write
+    success, so a silent Redis failure looked identical to a fully-persisted
+    record -- a real user's LINE-submitted record was lost this way on the
+    next redeploy. write_line_record_detailed() must surface both outcomes.
+    """
+    import start
+
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(start, "_obs_redis_set", lambda key, data, ttl=None: False)
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+
+    local_ok, redis_persisted = li.write_line_record_detailed("H_1631_1434", "2026-08-05", "完全乾燥")
+
+    assert local_ok is True
+    assert redis_persisted is False
+
+
+def test_write_line_record_detailed_retries_once_before_giving_up(tmp_path, monkeypatch):
+    import start
+
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+
+    calls = []
+
+    def flaky_set(key, data, ttl=None):
+        calls.append(1)
+        return len(calls) >= 2  # fails first attempt, succeeds on retry
+
+    monkeypatch.setattr(start, "_obs_redis_set", flaky_set)
+
+    local_ok, redis_persisted = li.write_line_record_detailed("H_1631_1434", "2026-08-05", "完全乾燥")
+
+    assert local_ok is True
+    assert redis_persisted is True
+    assert len(calls) == 2
+
+
+def test_record_confirm_warns_user_when_redis_persistence_fails(tmp_sub_file, tmp_path, monkeypatch):
+    """The LINE confirmation message itself must warn the user when Redis
+    persistence fails, instead of silently reporting full success."""
+    import start
+
+    monkeypatch.setattr(li, "RECORDS_CSV", str(tmp_path / "records.csv"))
+    monkeypatch.setattr(li, "find_spot_by_id",
+                        lambda sid: {"name": sid, "lat": 45.1, "lon": 141.1})
+    monkeypatch.setattr(start, "_obs_redis_set", lambda key, data, ttl=None: False)
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
+    monkeypatch.setattr(li.time, "sleep", lambda s: None)
+
+    li.upsert_subscription("user", "U1", {"spot_nicknames": {"浜": "H_1631_1434"}})
+    li.handle_record_start("user", "U1")
+    li.handle_record_flow("user", "U1", "浜")
+    li.handle_record_flow("user", "U1", "今日")
+    li.handle_record_flow("user", "U1", "1")  # 完全乾燥 → confirm
+
+    r = li.handle_record_flow("user", "U1", "確定")
+
+    assert "記録しました" in r
+    assert "もう一度" in r  # the added warning tells them to resend
+
+
 def test_records_redis_restore_noop_when_local_file_exists(tmp_path, monkeypatch):
     import start
 

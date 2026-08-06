@@ -3103,16 +3103,28 @@ def _records_redis_save(df) -> bool:
     していた重大な不具合の修正。既存の feedback_log.csv 永続化
     （_feedback_log_redis_save/_restore、L3157-3197）と全く同じ方式を踏襲する。
     add_record() での書き込みと必ずセットで呼ぶこと。
+
+    2026-08-06追加: 初回実装ではRedis保存の成否をadd_record()側が一切確認
+    しておらず、ローカル書き込み成功だけを見て「保存できた」と誤認し、実際には
+    Redis保存が失敗していた記録を再デプロイでもう一度失う事故が発生した。
+    再試行を追加し、呼び出し元（add_record）が戻り値を確認してレスポンスに
+    含めるようにする。
     """
-    try:
-        csv_str = df.to_csv(index=False)
-        ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
-        if not ok:
-            app.logger.error('[records_redis] Redis save returned False — record may be lost on next deploy')
-        return ok
-    except Exception as e:
-        app.logger.error('[records_redis] save error: %s', e)
-        return False
+    csv_str = df.to_csv(index=False)
+    last_error = None
+    for attempt in range(2):
+        try:
+            ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
+            if ok:
+                return True
+            last_error = 'Redis SET returned False'
+        except Exception as e:
+            last_error = str(e)
+        if attempt == 0:
+            import time as _time
+            _time.sleep(0.5)
+    app.logger.error('[records_redis] save failed after retry — record may be lost on next deploy: %s', last_error)
+    return False
 
 
 def _records_redis_restore() -> bool:
@@ -3886,12 +3898,24 @@ def add_record():
 
         df.to_csv(RECORD_FILE, index=False, encoding="utf-8")
         # 主: デプロイをまたいで永続化（2026-08-04緊急修正、feedback_logと同方式）
-        _records_redis_save(df)
+        # 2026-08-06: 戻り値をレスポンスに含める（呼び出し元がRedis保存の成否を
+        # 推測せず直接確認できるようにする — 過去に「ローカル読み取りが成功した
+        # からRedisも成功したはず」という誤認で記録を失った事故の再発防止）。
+        redis_persisted = _records_redis_save(df)
+        if not redis_persisted:
+            app.logger.error(
+                '[add_record] Redis persistence failed for %s (%s) — local-only, at risk on next deploy',
+                name, date,
+            )
 
         # 予報精度フィードバックを自動記録（失敗してもメインの記録保存には影響しない）
         _record_forecast_feedback(name, date, result)
 
-        return jsonify({"status": "success", "message": message})
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "redis_persisted": redis_persisted,
+        })
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
