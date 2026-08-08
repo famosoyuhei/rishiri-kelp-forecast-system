@@ -214,3 +214,22 @@ def test_nearest_amedas_archive_station():
     assert start._nearest_amedas_archive_station(45.2480376, 141.2198462)["id"] == "11311"
     # H_1631_1434 (沓形地区): very close to 沓形(11151)
     assert start._nearest_amedas_archive_station(45.1631035, 141.1434784)["id"] == "11151"
+
+
+def test_collect_amedas_offset_shifts_the_date_window(monkeypatch):
+    """offset lets a large historical backfill be split into chunks that each
+    finish within Render's proxy timeout (added 2026-08-09 after a days=70
+    request timed out with a 502 partway through)."""
+    calls = []
+    monkeypatch.setattr(start, "_collect_amedas_from_openmeteo", lambda d: calls.append(d) or True)
+    monkeypatch.setattr(start, "_auto_compare_precip_forecast", lambda d: 0)
+
+    client = start.app.test_client()
+    client.get("/api/collect_amedas?days=5&offset=10")
+
+    assert len(calls) == 5
+    # offset=10 means "skip the 10 most recent days, then take the next 5"
+    from datetime import datetime, timedelta
+    expected = [(datetime.now(tz=start.JST) - timedelta(days=i)).strftime('%Y%m%d')
+                for i in range(11, 16)]
+    assert calls == expected

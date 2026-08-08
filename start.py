@@ -7288,11 +7288,16 @@ def collect_amedas():
 
     Query params:
       days (int, default 1): how many past days to collect (1 = yesterday only)
+      offset (int, default 0): skip this many most-recent days before starting
+                                (2026-08-09追加: 大きい days をRenderのプロキシ
+                                タイムアウト内に収まるチャンクに分割して呼べる
+                                ようにするため。例: offset=0&days=10, offset=10&days=10, ...)
     """
     days = int(request.args.get('days', 1))
     days = min(days, 90)  # cap at 90 days to avoid abuse
+    offset = max(int(request.args.get('offset', 0)), 0)
     results = []
-    for i in range(1, days + 1):
+    for i in range(1 + offset, days + offset + 1):
         target = (datetime.now(tz=JST) - timedelta(days=i)).strftime('%Y%m%d')
         ok = _collect_amedas_from_openmeteo(target)
         compared = 0
