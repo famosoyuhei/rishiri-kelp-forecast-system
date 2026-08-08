@@ -7286,13 +7286,38 @@ def _collect_amedas_from_openmeteo(target_date_str):
 def collect_amedas():
     """Manually trigger amedas data collection for one or more past days.
 
-    Query params:
+    Query params (island-wide mode, default):
       days (int, default 1): how many past days to collect (1 = yesterday only)
       offset (int, default 0): skip this many most-recent days before starting
                                 (2026-08-09追加: 大きい days をRenderのプロキシ
                                 タイムアウト内に収まるチャンクに分割して呼べる
                                 ようにするため。例: offset=0&days=10, offset=10&days=10, ...)
+
+    Query params (pinpoint mode, spot指定時):
+      spot (str): 対象干場名（例: H_2480_2198）
+      dates (str): カンマ区切りYYYYMMDD（例: 20260703,20260704）
+
+      2026-08-09追加: タイムカード等で過去記録をまとめて遡及入力したとき、
+      降水の実測検証（actual_rain_0416等）だけを後追いで埋めるための経路。
+      島全体（334干場）モードは1日あたり数十秒かかり、--workers 1の本番を
+      長時間ブロックして複数回の自動再起動を引き起こした事故があったため、
+      記録のある干場・日付だけを指定できるこちらを使うこと。
+      spot指定時はdaysやoffsetは無視される。
     """
+    spot = request.args.get('spot')
+    if spot:
+        dates_param = request.args.get('dates', '')
+        dates = [d.strip() for d in dates_param.split(',') if d.strip()]
+        dates = dates[:60]  # 乱用防止の上限
+        results = []
+        for target in dates:
+            ok = _collect_amedas_from_openmeteo(target)
+            compared = 0
+            if ok:
+                compared = _auto_compare_precip_forecast(target, spot_name=spot)
+            results.append({'date': target, 'success': ok, 'feedback_rows': compared})
+        return jsonify({'status': 'ok', 'mode': 'pinpoint', 'spot': spot, 'results': results})
+
     days = int(request.args.get('days', 1))
     days = min(days, 90)  # cap at 90 days to avoid abuse
     offset = max(int(request.args.get('offset', 0)), 0)
@@ -7304,7 +7329,7 @@ def collect_amedas():
         if ok:
             compared = _auto_compare_precip_forecast(target)
         results.append({'date': target, 'success': ok, 'feedback_rows': compared})
-    return jsonify({'status': 'ok', 'results': results})
+    return jsonify({'status': 'ok', 'mode': 'island_wide', 'results': results})
 
 
 @app.route('/api/integrity_check')
@@ -7451,11 +7476,19 @@ def _daily_amedas_collection():
         _record_nowcast_snapshot()  # 03:00/03:30 JST ナウキャストスナップショット
 
 
-def _auto_compare_precip_forecast(date_str: str) -> int:
+def _auto_compare_precip_forecast(date_str: str, spot_name: str | None = None) -> int:
     """実測降水量（04:00-16:00）と予報降水量を自動照合し feedback_log.csv に記録する。
 
     毎日 _daily_amedas_collection() から呼ばれる（03:00 JST）。
     手動で /api/collect_amedas?days=N を叩いた後にも自動実行される。
+
+    2026-08-09追加: spot_name を指定すると、その干場1件だけを対象にした
+    軽量経路になる（ナウキャストを1干場分だけ集計し、forecast:hist も
+    SCANではなく直接GETする）。全334干場を毎回舐める既定の経路は、
+    タイムカードなど過去記録のピンポイント遡及バックフィルには重すぎ、
+    実際に本番のシングルワーカー（--workers 1）を長時間ブロックして
+    複数回の自動再起動を引き起こした事故が2026-08-09にあったため、
+    「記録のある1干場・1日だけ」を安全に処理できる経路を用意した。
 
     処理フロー:
     1. 干場ごとのJMA高解像度降水ナウキャスト実測（nowcast:daily:{date}）を読む（主）
@@ -7487,6 +7520,7 @@ def _auto_compare_precip_forecast(date_str: str) -> int:
 
     Args:
         date_str: 対象日 YYYYMMDD
+        spot_name: 指定時はその干場1件のみ処理する軽量経路（省略時は既定の全干場走査）
     Returns:
         新規または更新したフィードバック行数
     """
@@ -7494,7 +7528,8 @@ def _auto_compare_precip_forecast(date_str: str) -> int:
     import csv as _csv
 
     # ── 0a. 干場ごとのナウキャスト実測データ取得（主） ─────────────────────
-    nowcast_rows, _ = _load_nowcast_daily_summary_rows(date_str)
+    # spot_name指定時は該当干場のみ集計（334干場分を毎回集計する必要がない）
+    nowcast_rows, _ = _load_nowcast_daily_summary_rows(date_str, spot_name)
     nowcast_by_spot = {
         row['spot_name']: row
         for row in nowcast_rows
@@ -7544,19 +7579,26 @@ def _auto_compare_precip_forecast(date_str: str) -> int:
     # (spot_name は H_/A_/R_ 形式で : を含まない)
     fc_entries: list[tuple[str, dict]] = []  # [(spot_name, record), ...]
 
-    redis_keys = _obs_redis_scan_keys(f'forecast:hist:*:{date_str}')
-    for rk in redis_keys:
-        parts = rk.split(':')
-        if len(parts) < 4:
-            continue
-        spot_from_key = parts[2]
-        hist = _obs_redis_get(rk) or []
+    if spot_name:
+        # 軽量経路: SCANせず該当干場のキーだけ直接GET
+        hist = _obs_redis_get(f'forecast:hist:{spot_name}:{date_str}') or []
         for entry in hist:
-            fc_entries.append((spot_from_key, entry))
+            fc_entries.append((spot_name, entry))
+    else:
+        redis_keys = _obs_redis_scan_keys(f'forecast:hist:*:{date_str}')
+        for rk in redis_keys:
+            parts = rk.split(':')
+            if len(parts) < 4:
+                continue
+            spot_from_key = parts[2]
+            hist = _obs_redis_get(rk) or []
+            for entry in hist:
+                fc_entries.append((spot_from_key, entry))
 
     if not fc_entries:
         # ローカルファイル fallback（ローカル開発環境またはRedis未設定時）
-        fc_pattern = os.path.join(FORECAST_HISTORY_DIR, '*',
+        fc_glob_spot = spot_name or '*'
+        fc_pattern = os.path.join(FORECAST_HISTORY_DIR, fc_glob_spot,
                                   f'forecast_*_for_{date_str}.json')
         for fc_file in _glob.glob(fc_pattern):
             try:

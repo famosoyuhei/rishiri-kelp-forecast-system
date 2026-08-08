@@ -86,7 +86,7 @@ def test_uses_nowcast_when_spot_coverage_is_complete(precip_env, monkeypatch):
         "observed_rain_0416": False, "observed_precip_sum_0416_mm": 0.0,
         "first_rain_time": None, "last_rain_time": None,
     }
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([nowcast_row], {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([nowcast_row], {}))
     # AMEDAS fallback says the opposite (rain) -- must NOT be used since nowcast covers this spot.
     amedas = {
         "hourly": [{"time": "2026-07-14T10:00", "precipitation": 5.0}],
@@ -107,7 +107,7 @@ def test_uses_nowcast_when_spot_coverage_is_complete(precip_env, monkeypatch):
 
 def test_falls_back_to_amedas_when_spot_missing_from_nowcast(precip_env, monkeypatch):
     # This spot has no complete nowcast row for the day (e.g. background thread gap).
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([], {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([], {}))
     amedas = {
         "hourly": [{"time": "2026-07-14T10:00", "precipitation": 2.0}],
         "daily_summary": {"total_precipitation": 3.0},
@@ -132,7 +132,7 @@ def pd_isna(v):
 
 
 def test_skips_spot_with_neither_nowcast_nor_amedas(precip_env, monkeypatch):
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([], {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([], {}))
     _mock_redis(monkeypatch, {"H_1631_1434": [FC_ENTRY]}, amedas=None)
 
     n = start._auto_compare_precip_forecast("20260714")
@@ -142,7 +142,7 @@ def test_skips_spot_with_neither_nowcast_nor_amedas(precip_env, monkeypatch):
 
 
 def test_returns_zero_when_no_actual_data_source_exists_at_all(precip_env, monkeypatch):
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([], {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([], {}))
     monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
     monkeypatch.setattr(start, "_obs_redis_scan_keys", lambda pattern: [])
 
@@ -161,7 +161,7 @@ def test_two_spots_get_independently_correct_precip_forecast_correct(precip_env,
         {"spot_name": "H_WET", "coverage_pct": 100.0, "observed_rain_0416": True,
          "observed_precip_sum_0416_mm": 4.2, "first_rain_time": "09:10", "last_rain_time": "11:40"},
     ]
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: (rows, {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: (rows, {}))
     _mock_redis(monkeypatch, {"H_DRY": [FC_ENTRY], "H_WET": [FC_ENTRY]}, amedas=None)
 
     n = start._auto_compare_precip_forecast("20260714")
@@ -181,7 +181,7 @@ def test_amedas_fallback_picks_nearest_station_not_always_kutsugata(precip_env, 
     """The actual point of this fix: a spot far from Kutsugata (11151) but
     close to Motodomari (11311) must use Motodomari's reading when nowcast
     coverage is unavailable, instead of always defaulting to Kutsugata."""
-    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([], {}))
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([], {}))
     # H_2480_2198's real coordinates: ~10km from Kutsugata, ~2.7km from Motodomari.
     monkeypatch.setattr(start, "_load_spot_metadata_map", lambda: {
         "H_2480_2198": {"lat": 45.2480376, "lon": 141.2198462,
@@ -214,6 +214,57 @@ def test_nearest_amedas_archive_station():
     assert start._nearest_amedas_archive_station(45.2480376, 141.2198462)["id"] == "11311"
     # H_1631_1434 (沓形地区): very close to 沓形(11151)
     assert start._nearest_amedas_archive_station(45.1631035, 141.1434784)["id"] == "11151"
+
+
+def test_spot_scoped_call_skips_the_full_redis_scan(precip_env, monkeypatch):
+    """2026-08-09 fix: the default (no spot_name) path SCANs forecast:hist:*
+    for every spot with a forecast that day (~334), which took 25+ seconds
+    per day in production and triggered repeated worker restarts on the
+    single-worker (--workers 1) deployment. Passing spot_name must skip
+    that SCAN entirely and GET only the one relevant key."""
+    nowcast_row = {
+        "spot_name": "H_2480_2198", "coverage_pct": 100.0,
+        "observed_rain_0416": False, "observed_precip_sum_0416_mm": 0.0,
+        "first_rain_time": None, "last_rain_time": None,
+    }
+    seen_spot_filter = []
+    monkeypatch.setattr(
+        start, "_load_nowcast_daily_summary_rows",
+        lambda date_str, spot_name=None: (seen_spot_filter.append(spot_name) or [nowcast_row], {}),
+    )
+    scan_called = []
+    monkeypatch.setattr(start, "_obs_redis_scan_keys", lambda pattern: scan_called.append(pattern) or [])
+
+    def fake_get(key):
+        if key == "forecast:hist:H_2480_2198:20260714":
+            return [FC_ENTRY]
+        return None
+
+    monkeypatch.setattr(start, "_obs_redis_get", fake_get)
+
+    n = start._auto_compare_precip_forecast("20260714", spot_name="H_2480_2198")
+
+    assert n == 1
+    assert seen_spot_filter == ["H_2480_2198"]  # nowcast lookup was scoped
+    assert scan_called == []  # SCAN never called -- direct GET only
+
+
+def test_collect_amedas_pinpoint_mode_processes_only_named_pairs(precip_env, monkeypatch):
+    """/api/collect_amedas?spot=X&dates=... must call the spot-scoped path
+    for exactly the given dates, not sweep an island-wide day range."""
+    calls = []
+    monkeypatch.setattr(start, "_collect_amedas_from_openmeteo", lambda d: True)
+    monkeypatch.setattr(
+        start, "_auto_compare_precip_forecast",
+        lambda d, spot_name=None: calls.append((d, spot_name)) or 1,
+    )
+
+    client = start.app.test_client()
+    resp = client.get("/api/collect_amedas?spot=H_2480_2198&dates=20260703,20260714")
+
+    body = resp.get_json()
+    assert body["mode"] == "pinpoint"
+    assert calls == [("20260703", "H_2480_2198"), ("20260714", "H_2480_2198")]
 
 
 def test_collect_amedas_offset_shifts_the_date_window(monkeypatch):
