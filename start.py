@@ -4029,7 +4029,8 @@ def diagnose_records_redis():
         raw = {
             'http_status': resp.status_code,
             'body_len': len(body_text),
-            'body_preview': body_text[:300],
+            'body_head': body_text[:300],
+            'body_tail': body_text[-1500:],
         }
         return jsonify({'status': 'ok', 'info': info, 'raw': raw})
     except Exception as e:
