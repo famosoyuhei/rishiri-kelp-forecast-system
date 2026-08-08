@@ -3703,20 +3703,43 @@ def get_accuracy_sheet_summaries():
 def _record_forecast_feedback(name, date_str, result):
     """
     記録追加・更新のたびに呼び出す。
-    forecast_history/{name}/ から対象日の予報ファイルを検索し、
-    予報判定と実結果の正誤を feedback_log.csv に記録する。
-    記録が訂正された場合は既存行を上書きする。
+    forecast:hist:{name}:{target_date}（Redis, 主）と forecast_history/{name}/
+    （ローカル, 副）から対象日の予報スナップショットを検索し、予報判定と実結果の
+    正誤を feedback_log.csv に記録する。記録が訂正された場合は既存行を上書きする。
+
+    2026-08-08修正: 以前はローカルディスクのJSONファイルのみを参照していたが、
+    Renderのディスクは再デプロイのたびに消去されるため、記録が提出される時点で
+    対象の予報スナップショットがローカルに残っている確率は非常に低く、
+    judgment_correct が実質的に一度も書き込まれていなかった
+    （本番で has_drying_record=True の行が0件という形で発覚）。
+    _save_forecast_history() が既に書き込んでいる forecast:hist:{name}:{YYYYMMDD}
+    のRedisリスト（保存側は既にRedis主体で永続化済み）を主として読み、
+    ローカルJSONはRedis欠落時のフォールバックとする。
     """
     try:
-        import glob as _glob
         from datetime import datetime as _dt, timezone as _tz2, timedelta as _td2
 
         target_date_str = date_str.replace('-', '')
-        spot_dir = os.path.join(FORECAST_HISTORY_DIR, name)
-        fc_files = _glob.glob(os.path.join(spot_dir, f'forecast_*_for_{target_date_str}.json'))
 
-        if not fc_files:
-            return  # 予報履歴なし → フィードバック不可
+        fc_data_list = []
+        try:
+            fc_data_list = _obs_redis_get(f'forecast:hist:{name}:{target_date_str}') or []
+        except Exception as e:
+            print(f'[feedback] redis history read error {name} {target_date_str}: {e}')
+
+        if not fc_data_list:
+            import glob as _glob
+            spot_dir = os.path.join(FORECAST_HISTORY_DIR, name)
+            fc_files = _glob.glob(os.path.join(spot_dir, f'forecast_*_for_{target_date_str}.json'))
+            for fc_file in fc_files:
+                try:
+                    with open(fc_file, 'r', encoding='utf-8') as f:
+                        fc_data_list.append(json.load(f))
+                except Exception as e:
+                    print(f'[feedback] parse error {fc_file}: {e}')
+
+        if not fc_data_list:
+            return  # 予報履歴なし（Redis・ローカル共に無し）→ フィードバック不可
 
         actual_label = _result_to_label(result)
         jst = _tz2(_td2(hours=9))
@@ -3724,6 +3747,7 @@ def _record_forecast_feedback(name, date_str, result):
         spot_meta = _load_spot_metadata_map().get(name, {})
 
         # 既存フィードバックログを読み込み
+        _feedback_log_redis_restore()  # デプロイ後にローカルファイルが消えていれば Redis から復元
         try:
             fb_df = pd.read_csv(FEEDBACK_FILE)
             for col in FEEDBACK_COLUMNS:
@@ -3733,11 +3757,8 @@ def _record_forecast_feedback(name, date_str, result):
             fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
 
         new_rows = []
-        for fc_file in fc_files:
+        for fc_data in fc_data_list:
             try:
-                with open(fc_file, 'r', encoding='utf-8') as f:
-                    fc_data = json.load(f)
-
                 forecast_date_str = fc_data.get('forecast_date', '')
                 if not forecast_date_str:
                     continue
@@ -3792,13 +3813,16 @@ def _record_forecast_feedback(name, date_str, result):
                         'recorded_at':           now_jst,
                     })
             except Exception as e:
-                print(f'[feedback] parse error {fc_file}: {e}')
+                print(f'[feedback] parse error for {name} {date_str}: {e}')
 
         if new_rows:
             fb_df = pd.concat([fb_df, pd.DataFrame(new_rows)], ignore_index=True)
 
         fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
-        print(f'[feedback] {name} {date_str} → {result} ({len(fc_files)} forecast(s) evaluated)')
+        # 主: デプロイをまたいで永続化（_auto_compare_precip_forecast()の定期実行を待たず、
+        # 記録提出のたびに即座に保護する。records/2026-08-08と同じ理由）。
+        _feedback_log_redis_save(fb_df)
+        print(f'[feedback] {name} {date_str} → {result} ({len(fc_data_list)} forecast(s) evaluated)')
 
     except Exception as e:
         print(f'[feedback] error: {e}')
