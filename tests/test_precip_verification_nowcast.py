@@ -55,18 +55,23 @@ FC_ENTRY = {
 }
 
 
-def _mock_redis(monkeypatch, forecast_by_spot: dict, amedas: dict | None):
+def _mock_redis(monkeypatch, forecast_by_spot: dict, amedas: dict | None,
+                 amedas_by_station: dict | None = None):
     """forecast_by_spot: {spot_name: [fc_entry, ...]}. Wires up
     _obs_redis_scan_keys/_obs_redis_get so the forecast-history + AMEDAS
     reads inside _auto_compare_precip_forecast() come from these fixtures
-    instead of real Redis."""
+    instead of real Redis. `amedas` maps to the 沓形(11151) station only
+    (kept for tests that don't care about multi-station selection);
+    pass amedas_by_station={'11151': {...}, '11311': {...}} for tests that do."""
     date_str = "20260714"
     scan_keys = [f"forecast:hist:{name}:{date_str}" for name in forecast_by_spot]
     monkeypatch.setattr(start, "_obs_redis_scan_keys", lambda pattern: scan_keys)
+    by_station = amedas_by_station or ({"11151": amedas} if amedas is not None else {})
 
     def fake_get(key):
-        if key == f"amedas:obs:11151:{date_str}":
-            return amedas
+        for sid, data in by_station.items():
+            if key == f"amedas:obs:{sid}:{date_str}":
+                return data
         for name, entries in forecast_by_spot.items():
             if key == f"forecast:hist:{name}:{date_str}":
                 return entries
@@ -114,7 +119,7 @@ def test_falls_back_to_amedas_when_spot_missing_from_nowcast(precip_env, monkeyp
     assert n == 1
     df = start.pd.read_csv(precip_env)
     row = df.iloc[0]
-    assert row["data_source"] == "jma_amedas_station"
+    assert row["data_source"] == "jma_amedas_station_沓形"
     assert row["actual_rain_0416"] == True  # noqa: E712
     assert row["actual_precip_0416_mm"] == 2.0
     assert pd_isna(row["actual_rain_first_time_0416"])
@@ -170,3 +175,42 @@ def test_two_spots_get_independently_correct_precip_forecast_correct(precip_env,
     assert wet["precip_forecast_correct"] == True  # noqa: E712
     assert wet["actual_rain_first_time_0416"] == "09:10"
     assert wet["actual_rain_last_time_0416"] == "11:40"
+
+
+def test_amedas_fallback_picks_nearest_station_not_always_kutsugata(precip_env, monkeypatch):
+    """The actual point of this fix: a spot far from Kutsugata (11151) but
+    close to Motodomari (11311) must use Motodomari's reading when nowcast
+    coverage is unavailable, instead of always defaulting to Kutsugata."""
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str: ([], {}))
+    # H_2480_2198's real coordinates: ~10km from Kutsugata, ~2.7km from Motodomari.
+    monkeypatch.setattr(start, "_load_spot_metadata_map", lambda: {
+        "H_2480_2198": {"lat": 45.2480376, "lon": 141.2198462,
+                         "town": None, "district": None, "buraku": None},
+    })
+    amedas_by_station = {
+        "11151": {  # 沓形 -- rain fell here
+            "hourly": [{"time": "2026-07-14T10:00", "precipitation": 7.6}],
+            "daily_summary": {"total_precipitation": 7.6},
+        },
+        "11311": {  # 本泊 -- dry, and this is the nearer station for H_2480_2198
+            "hourly": [{"time": "2026-07-14T10:00", "precipitation": 0.0}],
+            "daily_summary": {"total_precipitation": 0.0},
+        },
+    }
+    _mock_redis(monkeypatch, {"H_2480_2198": [FC_ENTRY]}, amedas=None, amedas_by_station=amedas_by_station)
+
+    n = start._auto_compare_precip_forecast("20260714")
+
+    assert n == 1
+    df = start.pd.read_csv(precip_env)
+    row = df.iloc[0]
+    assert row["data_source"] == "jma_amedas_station_本泊"
+    assert row["actual_rain_0416"] == False  # noqa: E712
+    assert row["actual_precip_0416_mm"] == 0.0
+
+
+def test_nearest_amedas_archive_station():
+    # H_2480_2198: ~10km from 沓形(11151), ~2.7km from 本泊(11311)
+    assert start._nearest_amedas_archive_station(45.2480376, 141.2198462)["id"] == "11311"
+    # H_1631_1434 (沓形地区): very close to 沓形(11151)
+    assert start._nearest_amedas_archive_station(45.1631035, 141.1434784)["id"] == "11151"
