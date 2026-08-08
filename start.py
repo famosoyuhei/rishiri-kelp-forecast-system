@@ -4001,6 +4001,40 @@ def delete_record(name, date):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/records/diagnose', methods=['GET'])
+@limiter.limit("20 per hour")
+def diagnose_records_redis():
+    """一時診断エンドポイント（2026-08-08: 再デプロイ後に記録が全消失した事故の原因調査用）。
+    Upstash REST への生のGET結果を返し、_obs_redis_get()の except Exception: return None
+    が握りつぶしているエラー内容を可視化する。トークン自体は絶対に返さない。"""
+    auth_error = _check_admin_secret()
+    if auth_error:
+        return auth_error
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    info = {
+        'rest_url_configured': bool(rest_url),
+        'token_configured': bool(token),
+        'rest_url_host': rest_url.split('//')[-1].split('.')[0] if rest_url else None,
+    }
+    if not rest_url or not token:
+        return jsonify({'status': 'ok', 'info': info, 'raw': None})
+    try:
+        resp = requests.get(
+            f'{rest_url}/get/{_RECORDS_REDIS_KEY}',
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=5,
+        )
+        body_text = resp.text
+        raw = {
+            'http_status': resp.status_code,
+            'body_len': len(body_text),
+            'body_preview': body_text[:300],
+        }
+        return jsonify({'status': 'ok', 'info': info, 'raw': raw})
+    except Exception as e:
+        return jsonify({'status': 'ok', 'info': info, 'raw': None, 'error': str(e)})
+
 @app.route('/api/records/recent', methods=['GET'])
 @limiter.limit("20 per hour")
 def list_recent_records():
