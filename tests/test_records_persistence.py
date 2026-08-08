@@ -239,3 +239,88 @@ def test_delete_spot_blocked_by_redis_only_record(record_file, monkeypatch, tmp_
     assert "乾燥記録がある" in body.get("message", "") or any(
         "乾燥記録がある" in r for r in body.get("reasons", [])
     )
+
+
+# ---------------------------------------------------------------------------
+# delete_record() / list_recent_records(): admin-only mis-entry cleanup
+# (added 2026-08-08 after a fisherman submitted a duplicate/mistaken record
+# via LINE and asked for it to be removed -- there was previously no way to
+# remove a row at all, only to overwrite its result via add_record()).
+# ---------------------------------------------------------------------------
+
+def test_delete_record_requires_admin_secret(record_file, monkeypatch):
+    monkeypatch.setenv("LINE_ADMIN_NOTIFY_SECRET", "s3cret")
+    client = start.app.test_client()
+    resp = client.delete("/record/H_1631_1434/2026-08-04")
+    assert resp.status_code == 401
+
+
+def test_delete_record_removes_row_and_persists_to_redis(record_file, monkeypatch):
+    monkeypatch.setenv("LINE_ADMIN_NOTIFY_SECRET", "s3cret")
+    record_file.write_text(
+        "date,name,result,stop_cause,did_dry,collection_time,recorded_at,correction_count,correction_reason\n"
+        "2026-07-02,H_2480_2198,完全乾燥,,True,,2026-08-08T16:43:56+09:00,0,\n"
+        "2026-06-29,H_2480_2198,完全乾燥,,True,,2026-06-29T16:00:00+09:00,0,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(start, "_records_redis_restore", lambda: False)
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: "dummy")  # skip _load_records() backfill save
+
+    redis_saves = []
+    monkeypatch.setattr(start, "_records_redis_save", lambda df: redis_saves.append(df) or True)
+
+    client = start.app.test_client()
+    resp = client.delete(
+        "/record/H_2480_2198/2026-07-02",
+        headers={"X-Admin-Secret": "s3cret"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "success"
+    assert body["removed"]["date"] == "2026-07-02"
+    assert len(redis_saves) == 1
+    remaining = redis_saves[-1]
+    assert "2026-07-02" not in remaining["date"].values
+    assert "2026-06-29" in remaining["date"].values
+
+
+def test_delete_record_returns_404_when_not_found(record_file, monkeypatch):
+    monkeypatch.setenv("LINE_ADMIN_NOTIFY_SECRET", "s3cret")
+    record_file.write_text(
+        "date,name,result,stop_cause,did_dry,collection_time,recorded_at,correction_count,correction_reason\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(start, "_records_redis_restore", lambda: False)
+
+    client = start.app.test_client()
+    resp = client.delete(
+        "/record/H_9999_9999/2026-01-01",
+        headers={"X-Admin-Secret": "s3cret"},
+    )
+    assert resp.status_code == 404
+
+
+def test_list_recent_records_filters_by_recorded_at(record_file, monkeypatch):
+    monkeypatch.setenv("LINE_ADMIN_NOTIFY_SECRET", "s3cret")
+    record_file.write_text(
+        "date,name,result,stop_cause,did_dry,collection_time,recorded_at,correction_count,correction_reason\n"
+        "2026-08-08,H_1631_1434,完全乾燥,,True,,2026-08-08T16:00:00+09:00,0,\n"
+        "2025-06-20,H_2065_1375,中止,,False,,2025-06-20T09:00:00+09:00,0,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(start, "_records_redis_restore", lambda: False)
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: None)
+    monkeypatch.setattr(start, "_records_redis_save", lambda df: True)
+
+    client = start.app.test_client()
+    resp = client.get(
+        "/api/records/recent?hours=24",
+        headers={"X-Admin-Secret": "s3cret"},
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "ok"
+    assert body["count"] == 1
+    assert body["records"][0]["name"] == "H_1631_1434"

@@ -3959,6 +3959,69 @@ def get_record(name, date):
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def _check_admin_secret():
+    """LINE_ADMIN_NOTIFY_SECRET と同じ既存パターンで管理系エンドポイントを保護する。"""
+    admin_secret = os.environ.get('LINE_ADMIN_NOTIFY_SECRET', '')
+    data = request.get_json(silent=True) or {}
+    provided = request.headers.get('X-Notify-Secret') or request.headers.get('X-Admin-Secret') or data.get('secret', '')
+    if admin_secret and not hmac.compare_digest(str(provided), admin_secret):
+        return jsonify({'status': 'unauthorized'}), 401
+    if not admin_secret and os.environ.get('RENDER'):
+        return jsonify({'status': 'LINE_ADMIN_NOTIFY_SECRET not configured'}), 503
+    return None
+
+@app.route('/record/<name>/<date>', methods=['DELETE'])
+@limiter.limit("10 per hour")
+def delete_record(name, date):
+    """誤登録された記録を削除する（管理者専用、LINE_ADMIN_NOTIFY_SECRETで保護）。"""
+    auth_error = _check_admin_secret()
+    if auth_error:
+        return auth_error
+    try:
+        df = _load_records()
+        mask = (df["name"] == name) & (df["date"] == date)
+        if not mask.any():
+            return jsonify({"status": "error", "message": "指定の記録が見つかりません"}), 404
+
+        removed = df[mask].iloc[0].to_dict()
+        df = df[~mask].reset_index(drop=True)
+        df.to_csv(RECORD_FILE, index=False, encoding="utf-8")
+        redis_persisted = _records_redis_save(df)
+        if not redis_persisted:
+            app.logger.error(
+                '[delete_record] Redis persistence failed for %s (%s) — local-only, at risk on next deploy',
+                name, date,
+            )
+        return jsonify({
+            "status": "success",
+            "message": f"記録を削除しました: {name} ({date})",
+            "removed": removed,
+            "redis_persisted": redis_persisted,
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/records/recent', methods=['GET'])
+@limiter.limit("20 per hour")
+def list_recent_records():
+    """直近N時間に記録されたエントリ一覧を返す（管理者専用、記録確認用）。"""
+    auth_error = _check_admin_secret()
+    if auth_error:
+        return auth_error
+    try:
+        hours = min(max(int(request.args.get('hours', 24)), 1), 24 * 30)
+        df = _load_records()
+        if df.empty:
+            return jsonify({"status": "ok", "count": 0, "records": []})
+        recorded_at = pd.to_datetime(df["recorded_at"], errors="coerce", utc=True)
+        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours)
+        recent = df[recorded_at >= cutoff].copy()
+        recent = recent.sort_values("recorded_at")
+        records = recent.where(pd.notnull(recent), None).to_dict(orient="records")
+        return jsonify({"status": "ok", "count": len(records), "records": records})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/terrain/<spot_name>')
 def get_terrain_info(spot_name):
     """
