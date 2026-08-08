@@ -3198,10 +3198,17 @@ FEEDBACK_COLUMNS = [
     "town",                     # 記録作成時点の町（削除後も履歴保持）
     "district",                 # 記録作成時点の地区
     "buraku",                   # 記録作成時点の部落
-    # ── 実測降水量（Open-Meteo Archive / 沓形局基準）────────────────────
+    # ── 実測降水量（干場ごとのJMAナウキャスト実測が主。未取得時のみ沓形AMEDAS局）──
+    # 2026-08-09: 単一のAMEDAS局(沓形)を全334干場に一律適用していたため、
+    # 山を挟んで反対側の干場では「答え合わせ」自体が実態と食い違う事故があった
+    # （H_2480_2198で2026年7月の見逃し22件中21件がこれに起因）。
+    # 干場ごとに取得済みのJMA高解像度ナウキャスト（_record_nowcast_snapshot()）
+    # を主とし、その干場の観測が揃っていない場合のみAMEDAS局にフォールバックする。
     "actual_precip_0416_mm",    # 04:00-16:00 実測降水量合計 (mm)
-    "actual_precip_total_mm",   # 全日 実測降水量合計 (mm)
+    "actual_precip_total_mm",   # 全日 実測降水量合計 (mm)（AMEDAS局のみ提供。ナウキャストは04-16時窓のみのためNaN）
     "actual_rain_0416",         # 04:00-16:00 に降水あり (True/False)
+    "actual_rain_first_time_0416",  # 04:00-16:00で最初に降水を観測した時刻 (HH:MM、ナウキャストのみ)
+    "actual_rain_last_time_0416",   # 04:00-16:00で最後に降水を観測した時刻 (HH:MM、ナウキャストのみ)
     # ── 予報降水量 ────────────────────────────────────────────────────────
     "forecast_precip_mm",       # 予報降水量・全日 (mm)
     "forecast_rain",            # 予報で降水あり (True/False)
@@ -3217,7 +3224,7 @@ FEEDBACK_COLUMNS = [
     "judgment_correct",         # 乾燥可否の判定正誤 (True/False)
     "has_drying_record",        # 干し記録があるか (True/False)
     # ── メタデータ ────────────────────────────────────────────────────────
-    "data_source",              # openmeteo_archive / jma_realtime
+    "data_source",              # jma_nowcast_per_spot / jma_amedas_station
     "recorded_at",              # ログ追記日時
 ]
 
@@ -7424,49 +7431,78 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
     手動で /api/collect_amedas?days=N を叩いた後にも自動実行される。
 
     処理フロー:
-    1. amedas_data/amedas_{station_id}_{date_str}.json を読む
-    2. 04:00-16:00 JST の時間帯の降水量を合計する（昆布干し時間帯）
+    1. 干場ごとのJMA高解像度降水ナウキャスト実測（nowcast:daily:{date}）を読む（主）
+    2. 沓形AMEDAS局の実測（amedas_data/amedas_{station_id}_{date_str}.json）を
+       フォールバック用に読む（ナウキャストが未取得の干場のみ使用）
     3. 対象日に予報を保存した全干場の forecast_history/ を走査
     4. 予報降水量 vs 実測降水量（有雨/無雨）の正誤を判定
     5. hoshiba_records.csv と照合して干し記録の有無を付加
     6. feedback_log.csv を upsert（date + spot + days_ahead がキー）
 
+    2026-08-09修正: 実測降水量の主たる情報源を、単一のAMEDAS局（沓形）から
+    干場ごとのJMA高解像度降水ナウキャスト（250mメッシュ、_record_nowcast_snapshot()
+    が既に334干場分を毎日Redisへ保存済み）に切り替えた。利尻山を挟むと降水
+    パターンが大きく異なり得るため、単一局を全干場に一律適用すると、山の
+    反対側の干場では「答え合わせ」自体が実態と食い違うことが判明した
+    （H_2480_2198＝鴛泊側は沓形局から10km、一方で使っていない本泊局からは2.7km
+    しかなく、2026年7月の「見逃し」22件中21件がこの手法起因と特定できた）。
+    ナウキャスト観測が04:00-16:00の全スナップショットで揃っている（coverage_pct
+    ==100）干場のみ信頼して使い、それ以外の干場は従来どおりAMEDAS局にフォール
+    バックする。
+
+    降水が発生した時刻帯（早い/遅い）による意味合いの違い（早朝の一時的な降水は
+    その後の乾燥時間が十分残るが、午後遅くの降水は再吸湿リスクが高い等）は
+    actual_rain_first_time_0416 / actual_rain_last_time_0416 に生データとして
+    記録するのみに留め、正誤判定（judgment_correct 等）のロジックにはまだ
+    反映しない。フェーン補正のときと同様、十分な実測件数が蓄積してから
+    閾値・重み付けを較正する方針。
+
     Args:
         date_str: 対象日 YYYYMMDD
-        station_id: アメダス局ID（デフォルト沓形 11151）
+        station_id: フォールバック用アメダス局ID（デフォルト沓形 11151）
     Returns:
         新規または更新したフィードバック行数
     """
     import glob as _glob
     import csv as _csv
 
-    # ── 0. 実測データ取得（Redis 優先 → ローカルファイル fallback） ──────────
+    # ── 0a. 干場ごとのナウキャスト実測データ取得（主） ─────────────────────
+    nowcast_rows, _ = _load_nowcast_daily_summary_rows(date_str)
+    nowcast_by_spot = {
+        row['spot_name']: row
+        for row in nowcast_rows
+        if row.get('coverage_pct') == 100.0  # 04:00-16:00 全スナップショット揃っている干場のみ信頼
+    }
+
+    # ── 0b. 沓形AMEDAS実測データ取得（ナウキャスト未取得の干場向けフォールバック）
     redis_key = f'amedas:obs:{station_id}:{date_str}'
     amedas = _obs_redis_get(redis_key)
     if amedas is None:
         amedas_path = os.path.join(AMEDAS_DATA_DIR, f'amedas_{station_id}_{date_str}.json')
-        if not os.path.exists(amedas_path):
-            app.logger.warning('[auto_compare] %s not in Redis or local, skip', date_str)
-            return 0
-        try:
-            with open(amedas_path, 'r', encoding='utf-8') as f:
-                amedas = json.load(f)
-        except Exception as e:
-            app.logger.error('[auto_compare] read error %s: %s', amedas_path, e)
-            return 0
+        if os.path.exists(amedas_path):
+            try:
+                with open(amedas_path, 'r', encoding='utf-8') as f:
+                    amedas = json.load(f)
+            except Exception as e:
+                app.logger.error('[auto_compare] amedas read error %s: %s', amedas_path, e)
+                amedas = None
 
-    # ── 1. 実測降水量を抽出（04:00-16:00 JST） ─────────────────────────────
+    fallback_precip_0416 = fallback_precip_total = fallback_rain_0416 = None
+    if amedas is not None:
+        hourly = amedas.get('hourly', [])
+        # "YYYY-MM-DDTHH:MM" 形式。04:00〜16:00 JST（時刻文字列のHH部分で判定）
+        precip_0416 = [
+            h.get('precipitation') or 0.0
+            for h in hourly
+            if h.get('time', '')[-5:] >= '04:00' and h.get('time', '')[-5:] <= '16:00'
+        ]
+        fallback_precip_0416 = round(sum(precip_0416), 2)
+        fallback_precip_total = amedas.get('daily_summary', {}).get('total_precipitation') or 0.0
+        fallback_rain_0416 = fallback_precip_0416 > 0.0
 
-    hourly = amedas.get('hourly', [])
-    # "YYYY-MM-DDTHH:MM" 形式。04:00〜16:00 JST（時刻文字列のHH部分で判定）
-    precip_0416 = [
-        h.get('precipitation') or 0.0
-        for h in hourly
-        if h.get('time', '')[-5:] >= '04:00' and h.get('time', '')[-5:] <= '16:00'
-    ]
-    actual_precip_0416 = round(sum(precip_0416), 2)
-    actual_precip_total = amedas.get('daily_summary', {}).get('total_precipitation') or 0.0
-    actual_rain_0416 = actual_precip_0416 > 0.0
+    if not nowcast_by_spot and amedas is None:
+        app.logger.warning('[auto_compare] %s: no nowcast and no AMEDAS data, skip', date_str)
+        return 0
 
     # ── 2. 予報履歴を収集（Redis 優先 → ローカルファイル fallback） ────────
     # Redis key pattern: forecast:hist:{spot_name}:{date_str}
@@ -7548,6 +7584,26 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
             fc_score  = fc.get('drying_score')
             fc_suit   = fc.get('suitability', '')
             fc_label  = _suitability_to_label(fc_suit)
+
+            # 実測値: 干場ごとのナウキャストを優先、揃っていなければAMEDAS局にフォールバック
+            nc = nowcast_by_spot.get(spot_name)
+            if nc is not None:
+                actual_precip_0416      = nc.get('observed_precip_sum_0416_mm')
+                actual_precip_total     = fallback_precip_total  # 24h合計はAMEDAS局のみ提供（あれば流用、無ければNone）
+                actual_rain_0416        = nc.get('observed_rain_0416')
+                actual_rain_first_time  = nc.get('first_rain_time')
+                actual_rain_last_time   = nc.get('last_rain_time')
+                actual_source           = 'jma_nowcast_per_spot'
+            elif fallback_rain_0416 is not None:
+                actual_precip_0416      = fallback_precip_0416
+                actual_precip_total     = fallback_precip_total
+                actual_rain_0416        = fallback_rain_0416
+                actual_rain_first_time  = None
+                actual_rain_last_time   = None
+                actual_source           = 'jma_amedas_station'
+            else:
+                continue  # この干場は実測なし（ナウキャスト欠測・AMEDASも無し）→ 照合不可
+
             precip_ok = (fc_rain == actual_rain_0416)
 
             # 干し記録があれば付加
@@ -7566,10 +7622,12 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                 fb_df.loc[mask, 'actual_precip_0416_mm']   = actual_precip_0416
                 fb_df.loc[mask, 'actual_precip_total_mm']  = actual_precip_total
                 fb_df.loc[mask, 'actual_rain_0416']        = actual_rain_0416
+                fb_df.loc[mask, 'actual_rain_first_time_0416'] = actual_rain_first_time
+                fb_df.loc[mask, 'actual_rain_last_time_0416']  = actual_rain_last_time
                 fb_df.loc[mask, 'forecast_precip_mm']      = fc_precip
                 fb_df.loc[mask, 'forecast_rain']           = fc_rain
                 fb_df.loc[mask, 'precip_forecast_correct'] = precip_ok
-                fb_df.loc[mask, 'data_source']             = 'openmeteo_archive'
+                fb_df.loc[mask, 'data_source']             = actual_source
                 fb_df.loc[mask, 'recorded_at']             = now_jst
                 for meta_col in ('town', 'district', 'buraku'):
                     if spot_meta.get(meta_col) is not None:
@@ -7591,6 +7649,8 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                     'actual_precip_0416_mm':  actual_precip_0416,
                     'actual_precip_total_mm': actual_precip_total,
                     'actual_rain_0416':       actual_rain_0416,
+                    'actual_rain_first_time_0416': actual_rain_first_time,
+                    'actual_rain_last_time_0416':  actual_rain_last_time,
                     'forecast_precip_mm':     fc_precip,
                     'forecast_rain':          fc_rain,
                     'precip_forecast_correct': precip_ok,
@@ -7601,7 +7661,7 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
                     'actual_label':           actual_label,
                     'judgment_correct':       judg_correct,
                     'has_drying_record':      has_record,
-                    'data_source':            'openmeteo_archive',
+                    'data_source':            actual_source,
                     'recorded_at':            now_jst,
                 })
 
@@ -7614,8 +7674,10 @@ def _auto_compare_precip_forecast(date_str: str, station_id: str = '11151') -> i
 
     fb_df.to_csv(FEEDBACK_FILE, index=False, encoding='utf-8')
     _feedback_log_redis_save(fb_df)  # Render デプロイ後も消えないよう Redis に永続化
-    app.logger.info('[auto_compare] %s: actual_precip_0416=%.2fmm rain=%s | %d rows written',
-                    date_str, actual_precip_0416, actual_rain_0416, updated)
+    app.logger.info(
+        '[auto_compare] %s: %d spot(s) via nowcast, AMEDAS fallback=%s | %d rows written',
+        date_str, len(nowcast_by_spot), fallback_rain_0416 is not None, updated,
+    )
     return updated
 
 
