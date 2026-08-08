@@ -39,6 +39,9 @@ SAMPLE_CSV = (
 def record_file(tmp_path, monkeypatch):
     path = tmp_path / "hoshiba_records.csv"
     monkeypatch.setattr(start, "RECORD_FILE", str(path))
+    # _records_restore_attempted is a per-process "already tried" latch (see
+    # 2026-08-08 fix below) -- reset it per test so each test gets a fresh restore attempt.
+    monkeypatch.setattr(start, "_records_restore_attempted", False)
     return path
 
 
@@ -74,15 +77,38 @@ def test_records_redis_save_returns_false_and_logs_on_redis_failure(monkeypatch)
     assert ok is False
 
 
-def test_records_redis_restore_noop_when_local_file_exists(record_file, monkeypatch):
-    record_file.write_text(SAMPLE_CSV, encoding="utf-8")
-    redis_get = MagicMock(return_value="should not be used")
-    monkeypatch.setattr(start, "_obs_redis_get", redis_get)
+def test_records_redis_restore_overwrites_stale_git_committed_file(record_file, monkeypatch):
+    """2026-08-08 regression: hoshiba_records.csv is checked into git, so a
+    freshly-deployed container always has *some* local file on disk (the
+    stale git snapshot) -- it is never actually "missing". The old
+    os.path.exists(RECORD_FILE) guard treated that as "already restored"
+    and silently skipped Redis forever, making every 2026 record invisible
+    on any new deploy even though Redis had the up-to-date data all along.
+    Restore must overwrite the local file with Redis's content regardless
+    of whether a (possibly stale, git-sourced) local file already exists."""
+    record_file.write_text("date,name,result\n2025-08-23,H_1631_1434,完全乾燥\n", encoding="utf-8")
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: SAMPLE_CSV)
 
     restored = start._records_redis_restore()
 
-    assert restored is False
-    redis_get.assert_not_called()
+    assert restored is True
+    assert record_file.read_text(encoding="utf-8") == SAMPLE_CSV
+
+
+def test_records_redis_restore_only_runs_once_per_process(record_file, monkeypatch):
+    """The restore should hit Redis at most once per process lifetime, not
+    on every _load_records() call -- otherwise every request pays a Redis
+    round trip. A module-level "already attempted" flag replaces the old
+    (broken) os.path.exists() check for this purpose."""
+    redis_get = MagicMock(return_value=SAMPLE_CSV)
+    monkeypatch.setattr(start, "_obs_redis_get", redis_get)
+
+    first = start._records_redis_restore()
+    second = start._records_redis_restore()
+
+    assert first is True
+    assert second is False
+    redis_get.assert_called_once()
 
 
 def test_records_redis_restore_writes_file_from_redis_when_local_missing(record_file, monkeypatch):

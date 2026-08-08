@@ -3127,15 +3127,27 @@ def _records_redis_save(df) -> bool:
     return False
 
 
+_records_restore_attempted = False
+
+
 def _records_redis_restore() -> bool:
     """Redis から hoshiba_records.csv をローカルに復元する。
 
-    Render デプロイ後などローカルファイルが消えている場合のみ実行。
+    2026-08-08修正: 以前は os.path.exists(RECORD_FILE) でスキップ判定していたが、
+    hoshiba_records.csv は git管理下のファイルであるため、デプロイ直後は
+    「ローカルファイルが消えている」のではなく「gitチェックアウト時点(2025年分)の
+    古い内容で常に存在する」状態になる。このため復元が永久にno-opになり、
+    Redisに保存された最新の記録（2026年分）が新しいコンテナから一切見えない
+    まま「レコードが消えた」ように見える事故が発生した。
+    プロセス単位の実行済みフラグに置き換え、Redisにデータがあれば
+    ローカルファイルの内容に関わらず必ず1回は上書き復元する。
     _load_records() の先頭で呼ぶことでデプロイ後の記録消失を防ぐ。
     Returns True if restored from Redis, False otherwise.
     """
-    if os.path.exists(RECORD_FILE):
+    global _records_restore_attempted
+    if _records_restore_attempted:
         return False
+    _records_restore_attempted = True
     csv_str = _obs_redis_get(_RECORDS_REDIS_KEY)
     if not csv_str or not isinstance(csv_str, str):
         return False

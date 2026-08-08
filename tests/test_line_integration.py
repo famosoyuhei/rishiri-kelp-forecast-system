@@ -29,6 +29,15 @@ os.environ.setdefault('LINE_ADMIN_NOTIFY_SECRET', 'admin_secret')
 import line_integration as li
 
 
+@pytest.fixture(autouse=True)
+def _reset_records_restore_latch():
+    """_records_redis_restore() only fires once per process (see 2026-08-08
+    fix); reset the latch before each test so tests that exercise the
+    restore path don't depend on execution order."""
+    li._records_restore_attempted = False
+    yield
+
+
 # ---------------------------------------------------------------------------
 # verify_line_signature
 # ---------------------------------------------------------------------------
@@ -2411,19 +2420,42 @@ def test_record_confirm_warns_user_when_redis_persistence_fails(tmp_sub_file, tm
     assert "もう一度" in r  # the added warning tells them to resend
 
 
-def test_records_redis_restore_noop_when_local_file_exists(tmp_path, monkeypatch):
+def test_records_redis_restore_overwrites_stale_git_committed_file(tmp_path, monkeypatch):
+    """2026-08-08 regression: hoshiba_records.csv is checked into git, so a
+    freshly-deployed container always has *some* local file (the stale git
+    snapshot), never a genuinely missing one. The old os.path.exists(RECORDS_CSV)
+    guard treated that as "already restored" and permanently skipped Redis,
+    hiding every record added since the file was last committed. Restore
+    must overwrite the local file with Redis's content regardless."""
     import start
 
     records_path = tmp_path / "records.csv"
-    records_path.write_text("date,name,result\n2026-07-01,H_1631_1434,完全乾燥\n", encoding="utf-8")
+    records_path.write_text("date,name,result\n2025-08-23,H_1631_1434,完全乾燥\n", encoding="utf-8")
     monkeypatch.setattr(li, "RECORDS_CSV", str(records_path))
-    redis_get = MagicMock(return_value="should not be used")
-    monkeypatch.setattr(start, "_obs_redis_get", redis_get)
+    csv_str = "date,name,result\n2026-07-01,H_1631_1434,完全乾燥\n"
+    monkeypatch.setattr(start, "_obs_redis_get", lambda key: csv_str)
 
     restored = li._records_redis_restore()
 
-    assert restored is False
-    redis_get.assert_not_called()
+    assert restored is True
+    assert records_path.read_text(encoding="utf-8") == csv_str
+
+
+def test_records_redis_restore_only_runs_once_per_process(tmp_path, monkeypatch):
+    import start
+
+    records_path = tmp_path / "records.csv"
+    monkeypatch.setattr(li, "RECORDS_CSV", str(records_path))
+    csv_str = "date,name,result\n2026-07-01,H_1631_1434,完全乾燥\n"
+    redis_get = MagicMock(return_value=csv_str)
+    monkeypatch.setattr(start, "_obs_redis_get", redis_get)
+
+    first = li._records_redis_restore()
+    second = li._records_redis_restore()
+
+    assert first is True
+    assert second is False
+    redis_get.assert_called_once()
 
 
 def test_records_redis_restore_writes_file_from_redis_when_local_missing(tmp_path, monkeypatch):

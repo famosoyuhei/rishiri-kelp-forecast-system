@@ -838,6 +838,9 @@ def _parse_date_for_record(arg: str) -> 'str | None | str':
     return date_str
 
 
+_records_restore_attempted = False
+
+
 def _records_redis_restore() -> bool:
     """Redis から hoshiba_records.csv をローカルに復元する（start.pyと同一キーを共有）。
 
@@ -850,9 +853,17 @@ def _records_redis_restore() -> bool:
     永続化データを読み書きするようにする（start.pyは重量級モジュールの
     ためモジュールレベルでは import せず、このファイル内の既存の
     get_enhanced_forecasts_for_line 呼び出しと同じ遅延import方式を踏襲）。
+
+    2026-08-08緊急修正: hoshiba_records.csv は git管理下のファイルのため
+    os.path.exists(RECORDS_CSV) は再デプロイ直後も常にTrueになり
+    （gitチェックアウト時点の古い内容で存在するだけ）、Redisの最新データが
+    永久に読み込まれない事故が発生した（start.py側と同じ根本原因）。
+    プロセス単位の実行済みフラグに置き換える。
     """
-    if os.path.exists(RECORDS_CSV):
+    global _records_restore_attempted
+    if _records_restore_attempted:
         return False
+    _records_restore_attempted = True
     try:
         from start import _obs_redis_get, _RECORDS_REDIS_KEY
     except ImportError:
