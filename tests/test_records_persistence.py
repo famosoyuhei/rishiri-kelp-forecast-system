@@ -329,9 +329,10 @@ def test_delete_record_returns_404_when_not_found(record_file, monkeypatch):
 
 def test_list_recent_records_filters_by_recorded_at(record_file, monkeypatch):
     monkeypatch.setenv("LINE_ADMIN_NOTIFY_SECRET", "s3cret")
+    recent_ts = start.pd.Timestamp.now(tz="UTC").tz_convert("Asia/Tokyo") - start.pd.Timedelta(hours=1)
     record_file.write_text(
         "date,name,result,stop_cause,did_dry,collection_time,recorded_at,correction_count,correction_reason\n"
-        "2026-08-08,H_1631_1434,完全乾燥,,True,,2026-08-08T16:00:00+09:00,0,\n"
+        f"2026-08-08,H_1631_1434,完全乾燥,,True,,{recent_ts.strftime('%Y-%m-%dT%H:%M:%S+09:00')},0,\n"
         "2025-06-20,H_2065_1375,中止,,False,,2025-06-20T09:00:00+09:00,0,\n",
         encoding="utf-8",
     )

@@ -13,6 +13,8 @@ import hashlib
 import base64
 import json
 import tempfile
+import threading
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -1322,6 +1324,79 @@ def test_notify_all_stops_remaining_spots_after_first_429(tmp_sub_file, monkeypa
     assert len(calls) == 1
     assert result["sent"] == 1
     assert "予報本文を取得できませんでした" in pushed[0]
+
+
+# ---------------------------------------------------------------------------
+# handle_notify() — the /api/line/notify HTTP route
+#
+# 2026-08-12: notify_all() can take 40-90+ seconds (it fetches the full
+# corrected forecast for every registered spot sequentially). handle_notify()
+# used to await notify_all() and return its result, which blocked the
+# production single worker (--workers 1) long enough to fail Render's
+# 5-second health check, confirmed live via repeated "Server failure
+# detected" emails whose logs showed "POST /api/line/notify" still in
+# flight right before each forced restart (2026-08-07/10/11). It now
+# validates synchronously (auth, kind) but runs the actual send in a
+# background thread and returns immediately.
+# ---------------------------------------------------------------------------
+
+def test_handle_notify_returns_immediately_without_waiting_for_notify_all(monkeypatch):
+    import start
+
+    release = threading.Event()
+    called_with = []
+
+    def slow_notify_all(kind, notice=""):
+        called_with.append((kind, notice))
+        release.wait(timeout=5)  # simulates notify_all() being slow
+        return {"sent": 1, "failed": 0, "skipped": 0, "kind": kind}
+
+    monkeypatch.setattr(li, "notify_all", slow_notify_all)
+
+    client = start.app.test_client()
+    started = time.time()
+    resp = client.post("/api/line/notify", json={"secret": "admin_secret", "kind": "evening"})
+    elapsed = time.time() - started
+
+    assert resp.status_code == 200
+    assert resp.get_json() == {"status": "accepted", "kind": "evening"}
+    assert elapsed < 2.0  # must not have waited for slow_notify_all's 5s wait
+
+    # the background thread should still actually run notify_all
+    for _ in range(50):
+        if called_with:
+            break
+        time.sleep(0.05)
+    assert called_with == [("evening", "")]
+    release.set()  # let the background thread's wait() return so it doesn't linger
+
+
+def test_handle_notify_rejects_bad_secret_without_spawning_notify_all(monkeypatch):
+    import start
+
+    calls = []
+    monkeypatch.setattr(li, "notify_all", lambda kind, notice="": calls.append(kind))
+
+    client = start.app.test_client()
+    resp = client.post("/api/line/notify", json={"secret": "wrong", "kind": "evening"})
+
+    assert resp.status_code == 403
+    time.sleep(0.1)
+    assert calls == []  # auth failure must not spawn the background send
+
+
+def test_handle_notify_rejects_invalid_kind_without_spawning_notify_all(monkeypatch):
+    import start
+
+    calls = []
+    monkeypatch.setattr(li, "notify_all", lambda kind, notice="": calls.append(kind))
+
+    client = start.app.test_client()
+    resp = client.post("/api/line/notify", json={"secret": "admin_secret", "kind": "lunch"})
+
+    assert resp.status_code == 400
+    time.sleep(0.1)
+    assert calls == []
 
 
 # ---------------------------------------------------------------------------

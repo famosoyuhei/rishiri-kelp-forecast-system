@@ -28,6 +28,7 @@ import logging
 import re
 import csv
 import time
+import threading
 from datetime import datetime, timezone, timedelta
 
 import requests as _requests
@@ -3242,7 +3243,19 @@ def get_debug():
 
 
 def handle_notify():
-    """Handle /api/line/notify POST from Render Cron or admin."""
+    """Handle /api/line/notify POST from Render Cron or admin.
+
+    2026-08-12修正: notify_all() は登録済みの全干場（Web版と同じフル補正
+    予報＝get_forecast()、Open-Meteoへの複数回呼び出しを含む）を直列に取得
+    するため、40〜90秒以上かかることがある。以前はこの関数がその完了を
+    そのまま待ってHTTPレスポンスを返していたため、その間 --workers 1 の
+    本番プロセスがRenderのヘルスチェック（5秒タイムアウト）に応答できず、
+    「サーバー障害検知」メールと強制再起動が繰り返し発生していた（GitHub
+    Actions予備通知/cron-job.orgからの呼び出しで実測、2026-08-07/10/11の
+    ログで確認）。認証・バリデーションはここで同期的に行い、実際の送信
+    （notify_all()）はバックグラウンドスレッドに切り離してHTTPレスポンスは
+    即座に返す。送信結果はログ（app.logger経由）でのみ確認できる。
+    """
     from flask import request, jsonify  # noqa: PLC0415
 
     cfg = _cfg()
@@ -3264,8 +3277,16 @@ def handle_notify():
         return jsonify({'status': 'kind must be evening or morning'}), 400
 
     notice = str(data.get('notice', '') or '')[:500]
-    result = notify_all(kind, notice=notice)
-    return jsonify({'status': 'ok', **result})
+
+    def _run():
+        try:
+            result = notify_all(kind, notice=notice)
+            logger.info('[line_notify_http] kind=%s result=%s', kind, result)
+        except Exception as exc:
+            logger.error('[line_notify_http] kind=%s failed: %s', kind, exc)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'accepted', 'kind': kind})
 
 
 # ---------------------------------------------------------------------------
