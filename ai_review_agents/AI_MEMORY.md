@@ -571,6 +571,69 @@ return max(0, min(100, score))
 
 ## 📝 追記ルール
 
+---
+
+### 2026-09-01（Render Starter + Open-Meteo API Standard 有料化、社員19新設・ベースライン記録）
+
+**背景**: 来年（2027年）の昆布本格運用シーズンに向けて、9月の1ヶ月間だけOpen-Meteo
+「API Standard」（€29/月、実測約¥5,500）を試験契約した（10/1に自動解約設定済み）。
+これが来年再契約する価値があるかを、実データで判断する。
+
+**実施内容**:
+1. Renderを無料枠→Starter（$7/月）へアップグレード（無料枠のスリープ・750時間枠問題を解消）
+2. Open-Meteoの全19呼び出し箇所を`OPEN_METEO_API_KEY`環境変数の有無で有料/無料
+   エンドポイントを切り替えられるよう改修（`om_host()`/`om_apikey_suffix()`,
+   `open_meteo_guard.py`）。ただし`archive-api`（Historical Weather API、AMEDAS実測
+   収集に使用）はStandardプラン対象外と判明したため、恒久的に無料エンドポイント固定
+3. `ai_review_agents/AGENT_open_meteo_roi.md` を新設（社員19、詳細は同ファイル参照）。
+   RenderとOpen-Meteoが同日に有料化されたため、改善要因の切り分けにはOpen-Meteo
+   固有シグナル（429/サーキットブレーカー）だけを見る必要がある点に注意
+
+**契約前（無料枠時代）のベースライン**（2026-09-01時点で記録、今後の比較用）:
+- `judgment_accuracy_overall`（has_record=true, 365日, 主にH_2480_2198等13件・77行、
+  すべて2026年7月・無料枠時代のデータ）: 正答率 **55.8%**
+- `precip_forecast_accuracy`（過去30日、334干場自動巡回）: **73.4%**
+- 「Server failure detected」メール（Render起因、`HTTP health check failed`）: 8月中
+  **14件**（8/1, 8/3, 8/4, 8/7, 8/8×3, 8/10, 8/11, 8/13, 8/20, 8/24, 8/26, 8/27）。
+  ただし全件Render無料枠のヘルスチェックタイムアウトが原因で、Open-Meteo 429固有の
+  障害メールは確認できていない（Open-Meteo 429はサーキットブレーカーで静かに処理され、
+  ユーザー向けアラートを発生させない設計のため）
+- **既知の限界**: Renderログの保持期間が過去に遡れず、8月中のOpen-Meteo 429発生回数
+  そのものを正確にカウントすることはできなかった。9月以降は同じ方法（
+  `render logs ... | grep -iE "429|circuit|OpenMeteoRateLimitError"`）で新規発生分を
+  追跡できるので、そちらを本比較の主データとする
+
+**次回やること**: 9月28〜29日頃、`AGENT_open_meteo_roi.md`の採点基準に沿って最終報告を
+作成し、2027年フルシーズンでの再契約可否をユーザーに提案する。中間チェックはユーザーが
+いつでも「社員19に採点報告を求める」形で依頼可能。
+
+---
+
+### 2026-07-26（Open-Meteo 429 P0ガード本番デプロイ済み・観測待ち）
+**実施内容**: Open-Meteo 429再発時に同一実行・他対象経路から叩き続ける問題を止めるP0最小修正を4コミットで実装し、Render本番へデプロイ。
+
+**対象経路**:
+- LINE通知
+- `/api/forecast`
+- `/api/analysis/field`
+- 16:20 JSTの予報履歴保存
+
+**本番反映**:
+- pushed commit: `392e86227b56ee4083be15967bd6fd568287ca05`
+- Render deploy: `dep-d9ijac7lk1mc739jb0c0`
+- status: `live`
+- `OPEN_METEO_CIRCUIT_BREAKER_ENABLED=true` をRender本番サービスへ明示設定済み
+- `FOEHN_DIAGNOSTICS_ENABLED=false` 維持
+
+**確認**:
+- `/health` を1回のみ確認し、HTTP 200 / `{"status":"healthy","version":"2.6.15"}` を確認
+- 起動直後ログで import error / 起動例外 / Redis接続例外なし
+- `/api/forecast`、`/api/analysis/field`、LINE通知、Open-Meteo直接疎通は手動実行していない
+- デプロイ直後ログでは429/circuitログなし。通常アクセスまたは定期処理で429が発生した場合、`om:circuit:v1` が開き後続Open-Meteoアクセスが止まるか既存ログで観測する
+
+**ロールバック条件**:
+起動障害、正常応答の誤遮断、Redis処理による500、サーキット期限後も閉じない問題が確認された場合のみ、`OPEN_METEO_CIRCUIT_BREAKER_ENABLED=false` に変更する。
+
 AI社員がこのファイルを更新するときは：
 1. 「現在の既知問題」テーブルに問題を追加する（解決したら「解決済み」に移動）
 2. 「レビュー実施履歴」に今日の結果を記録する
