@@ -9516,6 +9516,52 @@ def _check_redis_persistence(date_str: str) -> dict:
     return {'all_ok': all_ok, 'checks': checks}
 
 
+def _check_records_have_feedback(hours_back: int = 48) -> dict:
+    """記録が提出されたのに feedback_log.csv に一切反映されていないケースを検出する。
+
+    2026-08〜09: hoshiba_records.csv がデプロイのたびに消えていた不具合と、
+    _record_forecast_feedback() がローカルディスクの予報履歴しか見ておらず
+    判定精度が一度も記録されていなかった不具合、この2件の重大な既知不具合が
+    過去にあった（どちらも修正済み）。ユーザーから「記録を入力したのに精度改善に
+    使われていない」という指摘で発覚するまで誰も気づけなかったため、同種の不具合が
+    将来再発しても静かに見逃されないよう、「最近提出された記録には必ず対応する
+    feedback_log行（has_drying_record=True）があるはず」という前提を毎日検証する。
+    """
+    records_df = _load_records()
+    if records_df.empty or 'recorded_at' not in records_df.columns:
+        return {'ok': True, 'checked': 0, 'missing_count': 0, 'missing': [],
+                'note': '直近の記録なし'}
+
+    _feedback_log_redis_restore()
+    try:
+        fb_df = pd.read_csv(FEEDBACK_FILE)
+    except FileNotFoundError:
+        fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
+
+    has_feedback = set()
+    if not fb_df.empty and 'has_drying_record' in fb_df.columns:
+        matched = fb_df[fb_df['has_drying_record'] == True]
+        has_feedback = set(zip(matched.get('date', []), matched.get('spot_name', [])))
+
+    cutoff = pd.Timestamp.now(tz='UTC') - pd.Timedelta(hours=hours_back)
+    recorded_at = pd.to_datetime(records_df['recorded_at'], errors='coerce', utc=True)
+    recent = records_df[recorded_at >= cutoff]
+
+    missing = []
+    for _, row in recent.iterrows():
+        key = (row.get('date'), row.get('name'))
+        if key not in has_feedback:
+            missing.append({'date': row.get('date'), 'name': row.get('name'), 'result': row.get('result')})
+
+    return {
+        'ok':            len(missing) == 0,
+        'checked':       len(recent),
+        'missing_count': len(missing),
+        'missing':       missing[:20],  # レポート肥大化防止のため上限
+        'note':          f'直近{hours_back}時間に提出された記録のうちfeedback_log.csvに未反映のもの',
+    }
+
+
 def _daily_data_integrity_check(target_date: str | None = None) -> dict:
     """精度データの整合性を網羅的に検証し、結果を Redis に保存する。
 
@@ -9529,6 +9575,9 @@ def _daily_data_integrity_check(target_date: str | None = None) -> dict:
     4. nowcast snapshot が記録されているか
     5. feedback_log:csv が Redis に永続化されているか
     6. 乾燥記録がある場合の判定正誤（feedback_log から集計）
+    7. 直近48時間に提出された記録がfeedback_log.csvに反映されているか
+       （2026-09-01追加。「記録を入力したのに精度改善に一切使われていなかった」
+       という過去の重大事故の再発防止チェック — _check_records_have_feedback()参照）
     """
     from datetime import timedelta
     yesterday = target_date or (datetime.now(tz=JST) - timedelta(days=1)).strftime('%Y%m%d')
@@ -9576,12 +9625,20 @@ def _daily_data_integrity_check(target_date: str | None = None) -> dict:
     except Exception as e:
         app.logger.warning('[integrity] nowcast_vs_forecast error: %s', e)
 
-    # E. レポートをまとめて Redis に保存
+    # E. 直近48時間に提出された記録がfeedback_logに反映されているか
+    try:
+        records_feedback = _check_records_have_feedback()
+    except Exception as e:
+        app.logger.warning('[integrity] records_feedback error: %s', e)
+        records_feedback = {'ok': True, 'checked': 0, 'missing_count': 0, 'missing': [],
+                             'note': 'チェック自体が例外で失敗（要調査）'}
+
+    # F. レポートをまとめて Redis に保存
     fc_count = persistence['checks'].get(f'forecast_hist_{yesterday}', {}).get('spot_count', 0)
     report = {
         'date':                    yesterday,
         'checked_at':              datetime.now(tz=JST).isoformat(),
-        'overall_ok':              persistence['all_ok'] and fc_count >= 330,
+        'overall_ok':              persistence['all_ok'] and fc_count >= 330 and records_feedback['ok'],
         'forecast_history': {
             'spot_count':     fc_count,
             'complete':       fc_count >= 330,
@@ -9591,19 +9648,27 @@ def _daily_data_integrity_check(target_date: str | None = None) -> dict:
         'amedas_weather_comparison': amedas_cmp,
         'nowcast_vs_forecast':     nowcast_vs_forecast,
         'drying_record_accuracy':  drying_accuracy,
+        'records_without_feedback': records_feedback,
     }
 
     _obs_redis_set(f'integrity_check:{yesterday}', report)
 
-    # F. ログ出力（WARNING / INFO）
+    # G. ログ出力（WARNING / INFO）
     status = 'OK' if report['overall_ok'] else 'INCOMPLETE'
     log_fn = app.logger.info if report['overall_ok'] else app.logger.warning
     log_fn(
-        '[integrity] %s %s | fc_spots=%d/334 | redis_all_ok=%s | amedas=%s | drying=%s',
+        '[integrity] %s %s | fc_spots=%d/334 | redis_all_ok=%s | amedas=%s | drying=%s | records_missing_feedback=%d',
         yesterday, status, fc_count, persistence['all_ok'],
         {sid: r.get('status', r.get('metrics', {}).get('precip_correct')) for sid, r in amedas_cmp.items()},
-        drying_accuracy,
+        drying_accuracy, records_feedback['missing_count'],
     )
+    if records_feedback['missing_count'] > 0:
+        app.logger.error(
+            '[integrity] CRITICAL: %d record(s) submitted recently have NO matching '
+            'feedback_log row (has_drying_record=True) — accuracy pipeline may be broken '
+            'again, same class of bug as 2026-08. Details: %s',
+            records_feedback['missing_count'], records_feedback['missing'],
+        )
     return report
 
 
