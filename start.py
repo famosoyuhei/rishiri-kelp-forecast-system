@@ -7243,7 +7243,7 @@ def _collect_amedas_from_openmeteo(target_date_str):
             f'&start_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
             f'&end_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
             f'&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation'
-            f'&timezone=Asia%2FTokyo{om_apikey_suffix()}'
+            f"&timezone=Asia%2FTokyo{om_apikey_suffix('archive-api')}"
         )
         try:
             import urllib.request

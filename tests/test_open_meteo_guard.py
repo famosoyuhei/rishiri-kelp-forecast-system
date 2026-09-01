@@ -118,7 +118,6 @@ def test_om_apikey_suffix_empty_when_key_unset(monkeypatch):
 def test_om_host_switches_to_customer_prefix_when_key_set(monkeypatch):
     monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
     assert omg.om_host("api") == "https://customer-api.open-meteo.com"
-    assert omg.om_host("archive-api") == "https://customer-archive-api.open-meteo.com"
     assert omg.om_host("marine-api") == "https://customer-marine-api.open-meteo.com"
 
 
@@ -133,3 +132,27 @@ def test_om_host_treats_blank_key_as_unset(monkeypatch):
     monkeypatch.setenv("OPEN_METEO_API_KEY", "   ")
     assert omg.om_host("api") == "https://api.open-meteo.com"
     assert omg.om_apikey_suffix() == ""
+
+
+# ---------------------------------------------------------------------------
+# archive-api ("Historical Weather API") stays on the free endpoint even with
+# a key set -- the subscribed API Standard plan (2026-09-01, EUR29/month)
+# does not include it (Open-Meteo's own pricing page: "Historical, climate,
+# ensemble, and satellite radiation APIs require the Professional API Plan
+# or higher"). Used here for the AMEDAS Kutsugata/Motodomari backfill.
+# ---------------------------------------------------------------------------
+
+def test_archive_api_host_stays_free_even_with_key_set(monkeypatch):
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    assert omg.om_host("archive-api") == "https://archive-api.open-meteo.com"
+
+
+def test_archive_api_apikey_suffix_stays_empty_even_with_key_set(monkeypatch):
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    assert omg.om_apikey_suffix("archive-api") == ""
+
+
+def test_archive_api_unaffected_when_key_unset_either_way(monkeypatch):
+    monkeypatch.delenv("OPEN_METEO_API_KEY", raising=False)
+    assert omg.om_host("archive-api") == "https://archive-api.open-meteo.com"
+    assert omg.om_apikey_suffix("archive-api") == ""

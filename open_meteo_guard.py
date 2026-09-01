@@ -19,6 +19,20 @@ CIRCUIT_KEY = "om:circuit:v1"
 _MEM_CIRCUIT: dict | None = None
 
 
+# 2026-09-01: the API Standard plan (the one actually subscribed to) does
+# NOT include the Historical Weather API -- confirmed on Open-Meteo's own
+# pricing page ("Historical, climate, ensemble, and satellite radiation
+# APIs require the Professional API Plan or higher"). archive-api.open-
+# meteo.com IS that Historical Weather API (used here for the AMEDAS
+# Kutsugata/Motodomari actual-observation backfill). Routing it through
+# the customer- endpoint with a Standard-tier key would break it, so this
+# one family is permanently excluded from the paid switch regardless of
+# OPEN_METEO_API_KEY -- always the free public endpoint, no apikey. If a
+# future upgrade to Professional (or higher) adds Historical Weather API
+# access, remove 'archive-api' from this set to fold it into the switch.
+_STANDARD_TIER_EXCLUDED_FAMILIES = {"archive-api"}
+
+
 def om_host(family: str) -> str:
     """Base host for an Open-Meteo API family ('api', 'archive-api', 'marine-api').
 
@@ -29,17 +43,28 @@ def om_host(family: str) -> str:
     pure env-var toggle so a trial subscription (e.g. one calendar month) can
     be turned on/off by setting/unsetting the Render env var alone, with no
     code change or redeploy needed either way.
+
+    Exception: `family` in _STANDARD_TIER_EXCLUDED_FAMILIES always stays on
+    the free endpoint -- see that set's comment.
     """
+    if family in _STANDARD_TIER_EXCLUDED_FAMILIES:
+        return f"https://{family}.open-meteo.com"
     prefix = "customer-" if os.environ.get("OPEN_METEO_API_KEY", "").strip() else ""
     return f"https://{prefix}{family}.open-meteo.com"
 
 
-def om_apikey_suffix() -> str:
+def om_apikey_suffix(family: str | None = None) -> str:
     """`&apikey=...` suffix to append to the end of a built Open-Meteo URL.
 
     Empty string on the free tier (OPEN_METEO_API_KEY unset) -- append
     unconditionally at the end of every URL f-string built via om_host().
+    `family` is optional and only needs to be passed by call sites building a
+    _STANDARD_TIER_EXCLUDED_FAMILIES request (e.g. 'archive-api') -- passing
+    it there keeps the apikey off a call the subscribed plan can't serve, to
+    match that om_host() call's host choice. Every other call site can omit it.
     """
+    if family in _STANDARD_TIER_EXCLUDED_FAMILIES:
+        return ""
     key = os.environ.get("OPEN_METEO_API_KEY", "").strip()
     return f"&apikey={key}" if key else ""
 
