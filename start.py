@@ -25,6 +25,8 @@ from open_meteo_guard import (
     ensure_request_allowed,
     guarded_get,
     is_enabled as open_meteo_circuit_enabled,
+    om_apikey_suffix,
+    om_host,
 )
 from open_meteo_prefetch import (
     SUMMIT_LAT,
@@ -848,7 +850,7 @@ def get_weather():
         elevation = get_elevation(float(lat), float(lon))
 
         # Open-Meteo API for current weather with elevation parameter
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m"
+        url = f"{om_host('api')}/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&current_weather=true&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m{om_apikey_suffix()}"
 
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -1305,7 +1307,7 @@ def get_forecast():
         else:
             # Enhanced weather data with hourly details including moisture and boundary layer
             # Note: Use surface_pressure and dewpoint to calculate PWV, use mixing_height for PBLH
-            url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7"
+            url = f"{om_host('api')}/v1/forecast?latitude={lat}&longitude={lon}&elevation={elevation}&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,cloud_cover,shortwave_radiation,direct_radiation,pressure_msl,precipitation,precipitation_probability,cape,temperature_700hPa,relative_humidity_700hPa,wind_speed_700hPa,wind_direction_700hPa,temperature_850hPa,relative_humidity_850hPa,wind_speed_850hPa,wind_direction_850hPa,dewpoint_2m,surface_pressure&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max,relative_humidity_2m_mean,precipitation_sum,precipitation_probability_max&timezone=Asia/Tokyo&forecast_days=7{om_apikey_suffix()}"
 
             response = guarded_get(url, source='forecast', logger=app.logger, timeout=10)
             response.raise_for_status()
@@ -1882,7 +1884,7 @@ def get_elevation(lat, lon, source: str | None = None):
         return _elevation_cache[cache_key]
 
     try:
-        url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
+        url = f"{om_host('api')}/v1/elevation?latitude={lat}&longitude={lon}{om_apikey_suffix()}"
         if source:
             response = guarded_get(url, source=source, logger=app.logger, timeout=5)
         else:
@@ -4156,7 +4158,7 @@ def fetch_pressure_level_data(lat, lon, forecast_hours=384):
         forecast_days = min(16, (forecast_hours + 23) // 24)  # 時間を日数に変換（切り上げ）
 
         url = (
-            f"https://api.open-meteo.com/v1/forecast?"
+            f"{om_host('api')}/v1/forecast?"
             f"latitude={lat}&longitude={lon}&elevation={elevation}&"
             f"hourly=temperature_200hPa,geopotential_height_200hPa,wind_speed_200hPa,wind_direction_200hPa,"
             f"temperature_300hPa,geopotential_height_300hPa,wind_speed_300hPa,wind_direction_300hPa,"
@@ -4166,7 +4168,7 @@ def fetch_pressure_level_data(lat, lon, forecast_hours=384):
             f"wind_speed_700hPa,wind_direction_700hPa,"
             f"temperature_850hPa,geopotential_height_850hPa,relative_humidity_850hPa,"
             f"wind_speed_850hPa,wind_direction_850hPa&"
-            f"timezone=Asia/Tokyo&forecast_days={forecast_days}"
+            f"timezone=Asia/Tokyo&forecast_days={forecast_days}{om_apikey_suffix()}"
         )
 
         response = requests.get(url, timeout=15)
@@ -4195,10 +4197,10 @@ def fetch_marine_data(lat, lon, forecast_hours=168):
         forecast_days = min(7, (forecast_hours + 23) // 24)
 
         url = (
-            f"https://marine-api.open-meteo.com/v1/marine?"
+            f"{om_host('marine-api')}/v1/marine?"
             f"latitude={lat}&longitude={lon}&"
             f"hourly=wave_height,wave_direction,wave_period&"
-            f"timezone=Asia/Tokyo&forecast_days={forecast_days}"
+            f"timezone=Asia/Tokyo&forecast_days={forecast_days}{om_apikey_suffix()}"
         )
 
         response = requests.get(url, timeout=15)
@@ -4607,7 +4609,7 @@ def _fetch_elevations_batch(lats: list, lons: list, source: str | None = None) -
     try:
         lat_str = ','.join(f'{lat:.4f}' for lat in lats)
         lon_str = ','.join(f'{lon:.4f}' for lon in lons)
-        url = f'https://api.open-meteo.com/v1/elevation?latitude={lat_str}&longitude={lon_str}'
+        url = f"{om_host('api')}/v1/elevation?latitude={lat_str}&longitude={lon_str}{om_apikey_suffix()}"
         if source:
             resp = guarded_get(url, source=source, logger=app.logger, timeout=10)
         else:
@@ -4775,10 +4777,10 @@ def _fetch_open_meteo_multi(lats: list, lons: list, hourly_vars: list) -> list:
     lat_str = ','.join(f'{lat:.4f}' for lat in lats)
     lon_str = ','.join(f'{lon:.4f}' for lon in lons)
     url = (
-        f'https://api.open-meteo.com/v1/forecast'
+        f"{om_host('api')}/v1/forecast"
         f'?latitude={lat_str}&longitude={lon_str}'
         f'&hourly={vars_str}'
-        f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless'
+        f'&timezone=Asia%2FTokyo&forecast_days=8&models=jma_seamless{om_apikey_suffix()}'
     )
     try:
         r = guarded_get(url, source='field', logger=app.logger, timeout=30)
@@ -5152,9 +5154,9 @@ def _get_summit_hourly_temps(source: str | None = None) -> dict | None:
         )
     try:
         url = (
-            f'https://api.open-meteo.com/v1/forecast'
+            f"{om_host('api')}/v1/forecast"
             f'?latitude={SUMMIT_LAT}&longitude={SUMMIT_LON}'
-            f'&hourly=temperature_2m&timezone=Asia%2FTokyo&forecast_days=7'
+            f'&hourly=temperature_2m&timezone=Asia%2FTokyo&forecast_days=7{om_apikey_suffix()}'
         )
         if source:
             resp = guarded_get(url, source=source, logger=app.logger, timeout=10)
@@ -6728,7 +6730,7 @@ def get_emagram_data():
 
         # Open-Meteo Pressure Level APIから気温・露点温度・高度を取得
         url = (
-            f"https://api.open-meteo.com/v1/forecast?"
+            f"{om_host('api')}/v1/forecast?"
             f"latitude={lat}&longitude={lon}&elevation={elevation}&"
             f"hourly=temperature_1000hPa,dewpoint_1000hPa,geopotential_height_1000hPa,"
             f"temperature_975hPa,dewpoint_975hPa,geopotential_height_975hPa,"
@@ -6746,7 +6748,7 @@ def get_emagram_data():
             f"temperature_200hPa,dewpoint_200hPa,geopotential_height_200hPa,"
             f"temperature_150hPa,dewpoint_150hPa,geopotential_height_150hPa,"
             f"temperature_100hPa,dewpoint_100hPa,geopotential_height_100hPa&"
-            f"timezone=Asia/Tokyo&forecast_days=7"
+            f"timezone=Asia/Tokyo&forecast_days=7{om_apikey_suffix()}"
         )
 
         response = requests.get(url, timeout=15)
@@ -6795,25 +6797,25 @@ def get_emagram_data():
                 if windward_spot is not None:
                     # 風上地点のエマグラムデータを取得
                     windward_url = (
-                        f"https://api.open-meteo.com/v1/forecast?"
+                        f"{om_host('api')}/v1/forecast?"
                         f"latitude={windward_spot['lat']}&longitude={windward_spot['lon']}&"
                         f"hourly=temperature_1000hPa,dewpoint_1000hPa,"
                         f"temperature_850hPa,dewpoint_850hPa&"
-                        f"timezone=Asia/Tokyo&forecast_days=7"
+                        f"timezone=Asia/Tokyo&forecast_days=7{om_apikey_suffix()}"
                     )
                     windward_response = requests.get(windward_url, timeout=10)
                     windward_data = windward_response.json().get('hourly', {})
 
                     # 参照地点（鴛泊）のデータを取得（上層用）
                     ref_url = (
-                        f"https://api.open-meteo.com/v1/forecast?"
+                        f"{om_host('api')}/v1/forecast?"
                         f"latitude=45.242&longitude=141.242&"
                         f"hourly=temperature_500hPa,dewpoint_500hPa,"
                         f"temperature_400hPa,dewpoint_400hPa,"
                         f"temperature_300hPa,dewpoint_300hPa,"
                         f"temperature_250hPa,dewpoint_250hPa,"
                         f"temperature_200hPa,dewpoint_200hPa&"
-                        f"timezone=Asia/Tokyo&forecast_days=7"
+                        f"timezone=Asia/Tokyo&forecast_days=7{om_apikey_suffix()}"
                     )
                     ref_response = requests.get(ref_url, timeout=10)
                     ref_data = ref_response.json().get('hourly', {})
@@ -7236,12 +7238,12 @@ def _collect_amedas_from_openmeteo(target_date_str):
 
         # ── Open-Meteo Archive API から取得 ──────────────────────────────────
         url = (
-            f'https://archive-api.open-meteo.com/v1/archive'
+            f"{om_host('archive-api')}/v1/archive"
             f'?latitude={st["lat"]}&longitude={st["lon"]}'
             f'&start_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
             f'&end_date={target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}'
             f'&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation'
-            f'&timezone=Asia%2FTokyo'
+            f'&timezone=Asia%2FTokyo{om_apikey_suffix()}'
         )
         try:
             import urllib.request
@@ -9222,11 +9224,11 @@ def get_sea_surface_temperature(lat, lon, source: str | None = None):
     """
     try:
         url = (
-            f"https://marine-api.open-meteo.com/v1/marine"
+            f"{om_host('marine-api')}/v1/marine"
             f"?latitude={lat}&longitude={lon}"
             f"&hourly=sea_surface_temperature"
             f"&timezone=Asia/Tokyo"
-            f"&forecast_days=7"
+            f"&forecast_days=7{om_apikey_suffix()}"
         )
         if source:
             response = guarded_get(url, source=source, logger=app.logger, timeout=8)

@@ -15,6 +15,8 @@ from urllib.parse import urlencode
 
 import requests
 
+from open_meteo_guard import om_apikey_suffix, om_host
+
 
 SCHEMA_VERSION = 1
 SOURCE = "github_actions_prefetch"
@@ -200,7 +202,6 @@ def approximate_elevation_m(lat: float, lon: float) -> float:
 # never had usable marine prefetch data (its generic except-clause silently
 # degraded to [None]*7 on every call, so nothing ever surfaced the 400).
 MARINE_HOURLY_VARS = "sea_surface_temperature"
-MARINE_ENDPOINT_DEFAULT = "https://marine-api.open-meteo.com/v1/marine"
 # SST changes slowly day to day; a missed daily prefetch run shouldn't
 # immediately go stale the way a fast-moving hourly forecast would.
 MARINE_FRESH_MAX_AGE_MINUTES = 20 * 60   # 20h
@@ -245,7 +246,11 @@ class PrefetchRequest:
     redis_key: str
 
     def url(self) -> str:
-        return f"{self.endpoint}?{urlencode(self.params)}"
+        # apikey is appended here (not in `params`) so it never enters
+        # identity/fingerprint hashing -- a rotated key must not invalidate
+        # every cached prefetch entry, and the key should never end up
+        # embedded in a Redis key name or a fingerprint log line.
+        return f"{self.endpoint}?{urlencode(self.params)}{om_apikey_suffix()}"
 
 
 def utc_now() -> datetime:
@@ -304,7 +309,7 @@ def _identity_payload(api_type: str, lat: float, lon: float, params: dict) -> di
 
 
 def line_forecast_request(lat: float, lon: float, base_url: str | None = None) -> PrefetchRequest:
-    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or "https://api.open-meteo.com/v1/forecast").rstrip("/")
+    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or f"{om_host('api')}/v1/forecast").rstrip("/")
     params = {
         "latitude": f"{float(lat):.5f}",
         "longitude": f"{float(lon):.5f}",
@@ -341,7 +346,7 @@ def enhanced_forecast_request(lat: float, lon: float, elevation: float,
     that's fine because elevation is a fixed, spot-specific value, not
     something that varies request-to-request for the same coordinates.
     """
-    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or "https://api.open-meteo.com/v1/forecast").rstrip("/")
+    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or f"{om_host('api')}/v1/forecast").rstrip("/")
     params = {
         "latitude": f"{float(lat):.5f}",
         "longitude": f"{float(lon):.5f}",
@@ -374,7 +379,7 @@ def summit_forecast_request(lat: float, lon: float, base_url: str | None = None)
     lat/lon explicitly; this module stays independent of start.py and does
     not hardcode or import SUMMIT_LAT/SUMMIT_LON.
     """
-    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or "https://api.open-meteo.com/v1/forecast").rstrip("/")
+    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or f"{om_host('api')}/v1/forecast").rstrip("/")
     params = {
         "latitude": f"{float(lat):.5f}",
         "longitude": f"{float(lon):.5f}",
@@ -405,7 +410,7 @@ def marine_forecast_request(lat: float, lon: float, base_url: str | None = None)
     builders here) and has no `daily` section in its response at all --
     sea_surface_temperature is hourly-only (see MARINE_HOURLY_VARS comment).
     """
-    endpoint = (base_url or os.environ.get("OPEN_METEO_MARINE_BASE_URL") or MARINE_ENDPOINT_DEFAULT).rstrip("/")
+    endpoint = (base_url or os.environ.get("OPEN_METEO_MARINE_BASE_URL") or f"{om_host('marine-api')}/v1/marine").rstrip("/")
     params = {
         "latitude": f"{float(lat):.5f}",
         "longitude": f"{float(lon):.5f}",
@@ -440,7 +445,7 @@ def field_grid_request(base_url: str | None = None) -> PrefetchRequest:
     grid = build_rishiri_grid()
     lats = [g["lat"] for g in grid]
     lons = [g["lon"] for g in grid]
-    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or "https://api.open-meteo.com/v1/forecast").rstrip("/")
+    endpoint = (base_url or os.environ.get("OPEN_METEO_BASE_URL") or f"{om_host('api')}/v1/forecast").rstrip("/")
     params = {
         "latitude": ",".join(f"{lat:.4f}" for lat in lats),
         "longitude": ",".join(f"{lon:.4f}" for lon in lons),

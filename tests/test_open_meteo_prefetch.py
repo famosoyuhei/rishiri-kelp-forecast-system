@@ -940,3 +940,41 @@ def test_load_field_grid_prefetch_rejects_malformed_data(monkeypatch):
 
     assert loaded is None
     assert meta["reason"] == "not_json_array"
+
+
+# ---------------------------------------------------------------------------
+# Paid ("customer-") endpoint switch (2026-09-01, OPEN_METEO_API_KEY)
+# ---------------------------------------------------------------------------
+
+def test_request_builders_use_free_endpoint_when_key_unset(monkeypatch):
+    monkeypatch.delenv("OPEN_METEO_API_KEY", raising=False)
+    assert omp.line_forecast_request(45.0, 141.0).endpoint == "https://api.open-meteo.com/v1/forecast"
+    assert omp.marine_forecast_request(45.0, 141.0).endpoint == "https://marine-api.open-meteo.com/v1/marine"
+    assert omp.field_grid_request().url().split("?")[0] == "https://api.open-meteo.com/v1/forecast"
+
+
+def test_request_builders_use_customer_endpoint_when_key_set(monkeypatch):
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    assert omp.line_forecast_request(45.0, 141.0).endpoint == "https://customer-api.open-meteo.com/v1/forecast"
+    assert omp.marine_forecast_request(45.0, 141.0).endpoint == "https://customer-marine-api.open-meteo.com/v1/marine"
+
+
+def test_url_appends_apikey_but_identity_stays_key_free(monkeypatch):
+    """The apikey must only ever appear in the final .url() -- never in
+    `identity` (the Redis dedup key), or rotating the key would invalidate
+    every cached prefetch entry and the key could leak into a Redis key name.
+    `fingerprint` legitimately DOES differ (it hashes `endpoint` too, and the
+    host itself changes free vs. paid -- that's an intentional cache-shape
+    signal, not a leak)."""
+    monkeypatch.delenv("OPEN_METEO_API_KEY", raising=False)
+    req_no_key = omp.line_forecast_request(45.0, 141.0)
+    url_no_key = req_no_key.url()  # .url() reads the env var live, so capture before setenv below
+
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    req_with_key = omp.line_forecast_request(45.0, 141.0)
+
+    assert req_no_key.identity == req_with_key.identity
+    assert req_no_key.redis_key == req_with_key.redis_key
+    assert "apikey" not in req_with_key.url().split("?")[0]  # not in the endpoint
+    assert req_with_key.url().endswith("&apikey=sk_live_abc123")
+    assert "apikey" not in url_no_key

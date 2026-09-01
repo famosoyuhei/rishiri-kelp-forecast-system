@@ -95,3 +95,41 @@ def test_feature_flag_off_bypasses_circuit(monkeypatch):
     requests_module = MagicMock()
     requests_module.get.return_value = resp
     assert omg.guarded_get("https://example.invalid", source="forecast", requests_module=requests_module) is resp
+
+
+# ---------------------------------------------------------------------------
+# om_host / om_apikey_suffix — free vs. paid ("customer-") endpoint switch
+# (2026-09-01: OPEN_METEO_API_KEY toggles every Open-Meteo call site between
+# the free public endpoint and the paid dedicated one, https://open-meteo.com/en/docs)
+# ---------------------------------------------------------------------------
+
+def test_om_host_free_tier_when_key_unset(monkeypatch):
+    monkeypatch.delenv("OPEN_METEO_API_KEY", raising=False)
+    assert omg.om_host("api") == "https://api.open-meteo.com"
+    assert omg.om_host("archive-api") == "https://archive-api.open-meteo.com"
+    assert omg.om_host("marine-api") == "https://marine-api.open-meteo.com"
+
+
+def test_om_apikey_suffix_empty_when_key_unset(monkeypatch):
+    monkeypatch.delenv("OPEN_METEO_API_KEY", raising=False)
+    assert omg.om_apikey_suffix() == ""
+
+
+def test_om_host_switches_to_customer_prefix_when_key_set(monkeypatch):
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    assert omg.om_host("api") == "https://customer-api.open-meteo.com"
+    assert omg.om_host("archive-api") == "https://customer-archive-api.open-meteo.com"
+    assert omg.om_host("marine-api") == "https://customer-marine-api.open-meteo.com"
+
+
+def test_om_apikey_suffix_appends_key_when_set(monkeypatch):
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "sk_live_abc123")
+    assert omg.om_apikey_suffix() == "&apikey=sk_live_abc123"
+
+
+def test_om_host_treats_blank_key_as_unset(monkeypatch):
+    """A blank/whitespace-only env var (e.g. set but emptied in the Render
+    dashboard) must not accidentally switch to the paid endpoint with no key."""
+    monkeypatch.setenv("OPEN_METEO_API_KEY", "   ")
+    assert omg.om_host("api") == "https://api.open-meteo.com"
+    assert omg.om_apikey_suffix() == ""

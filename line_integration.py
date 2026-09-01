@@ -39,6 +39,8 @@ from open_meteo_guard import (
     get_circuit,
     guarded_get,
     is_circuit_open,
+    om_apikey_suffix,
+    om_host,
 )
 from open_meteo_prefetch import (
     LINE_DAILY_VARS,
@@ -650,10 +652,10 @@ def _fetch_simple_forecast_chunk(lat_lon_pairs: list, timeout: int, source: str)
     lon_str = ','.join(f'{lon:.5f}' for _lat, lon in lat_lon_pairs)
     tz = LINE_TIMEZONE.replace('/', '%2F')
     url = (
-        f'https://api.open-meteo.com/v1/forecast'
+        f"{om_host('api')}/v1/forecast"
         f'?latitude={lat_str}&longitude={lon_str}'
         f'&daily={LINE_DAILY_VARS}&hourly={LINE_HOURLY_VARS}'
-        f'&timezone={tz}&forecast_days={LINE_FORECAST_DAYS}'
+        f'&timezone={tz}&forecast_days={LINE_FORECAST_DAYS}{om_apikey_suffix()}'
     )
     try:
         resp = guarded_get(url, source=source, logger=logger, requests_module=_requests, timeout=timeout)

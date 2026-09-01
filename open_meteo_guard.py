@@ -19,6 +19,31 @@ CIRCUIT_KEY = "om:circuit:v1"
 _MEM_CIRCUIT: dict | None = None
 
 
+def om_host(family: str) -> str:
+    """Base host for an Open-Meteo API family ('api', 'archive-api', 'marine-api').
+
+    2026-09-01: switches to the paid "customer-" prefixed dedicated endpoint
+    (https://open-meteo.com/en/docs -- "Only required for commercial use to
+    access reserved API resources") whenever OPEN_METEO_API_KEY is set,
+    otherwise unchanged (free public endpoint, current behavior). This is a
+    pure env-var toggle so a trial subscription (e.g. one calendar month) can
+    be turned on/off by setting/unsetting the Render env var alone, with no
+    code change or redeploy needed either way.
+    """
+    prefix = "customer-" if os.environ.get("OPEN_METEO_API_KEY", "").strip() else ""
+    return f"https://{prefix}{family}.open-meteo.com"
+
+
+def om_apikey_suffix() -> str:
+    """`&apikey=...` suffix to append to the end of a built Open-Meteo URL.
+
+    Empty string on the free tier (OPEN_METEO_API_KEY unset) -- append
+    unconditionally at the end of every URL f-string built via om_host().
+    """
+    key = os.environ.get("OPEN_METEO_API_KEY", "").strip()
+    return f"&apikey={key}" if key else ""
+
+
 @dataclass
 class OpenMeteoRateLimitError(Exception):
     http_status: int
