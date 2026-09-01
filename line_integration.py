@@ -419,29 +419,29 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return value.strip().lower() in _TRUE_VALUES
 
 
-def _csv_env_set(name: str) -> set[str]:
-    value = os.environ.get(name, '')
-    return {item.strip() for item in value.split(',') if item.strip()}
-
-
 def _line_web_forecast_enabled(source: str, spot_id: str = '') -> bool:
     """
     Gate for the corrected (foehn/terrain) web forecast path on LINE.
 
-    Passes for: any spot when LINE_WEB_FORECAST_CANARY_SPOT_IDS is unset
-    (full rollout), any spot literally on that allowlist, or — so the
-    Open-Meteo-429 resilience work automatically covers whoever has actually
-    registered, without a manual env var update per registration — any spot
-    with an active LINE subscription (registered_spot_ids()).
+    2026-09-01: unconditional full rollout for every spot whenever
+    LINE_WEB_FORECAST_ENABLED=true. LINE_WEB_FORECAST_CANARY_SPOT_IDS/
+    registered_spot_ids() used to also narrow this to a subset of spots --
+    that scoping existed purely to limit blast radius while Open-Meteo's
+    free tier was 429-rate-limited (the enhanced path makes more Open-Meteo
+    calls per spot than the simple one). Now that Open-Meteo is on a paid
+    plan with rate limits removed across all timeframes, there is no longer
+    a reason any fisherman's spot should get the uncorrected simple
+    forecast via LINE while the web app gives everyone the full terrain/
+    foehn-corrected one -- that gap is exactly what this function existed
+    to close, and canary scoping was blocking it for anyone not already
+    registered or explicitly allowlisted.
+    LINE_WEB_FORECAST_CANARY_SPOT_IDS itself is untouched and still used
+    elsewhere (start.py's _enhanced_prefetch_enabled(), the GitHub Actions
+    prefetch job) to decide which spots get pre-cached resilience data --
+    that is a separate, still-reasonable scoping concern, not a correctness
+    gate like this one.
     """
-    if source != 'line' or not _bool_env('LINE_WEB_FORECAST_ENABLED', default=False):
-        return False
-    canary_spots = _csv_env_set('LINE_WEB_FORECAST_CANARY_SPOT_IDS')
-    if not canary_spots:
-        return True
-    if spot_id in canary_spots:
-        return True
-    return bool(spot_id) and spot_id in registered_spot_ids()
+    return source == 'line' and _bool_env('LINE_WEB_FORECAST_ENABLED', default=False)
 
 
 def _safe_num(value, default=None):

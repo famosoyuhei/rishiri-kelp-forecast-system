@@ -299,9 +299,13 @@ def test_get_forecast_for_spot_prefers_enhanced_when_enabled(monkeypatch):
     assert result[0]["forecast_source"] == "web_enhanced"
 
 
-def test_get_forecast_for_spot_honors_enhanced_canary_spot_ids(monkeypatch):
+def test_get_forecast_for_spot_uses_enhanced_for_every_spot_regardless_of_canary_list(monkeypatch):
+    """2026-09-01: LINE_WEB_FORECAST_CANARY_SPOT_IDS no longer narrows which
+    spots get the enhanced forecast -- full rollout to every spot once
+    LINE_WEB_FORECAST_ENABLED=true (Open-Meteo's paid plan removed the 429
+    risk that used to justify limiting the blast radius to a canary list)."""
     monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
-    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_CANARY")
+    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_CANARY")  # must no longer narrow
     monkeypatch.setattr(
         li,
         "_get_enhanced_forecast_for_spot",
@@ -315,11 +319,10 @@ def test_get_forecast_for_spot_honors_enhanced_canary_spot_ids(monkeypatch):
     )
 
     canary = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_CANARY")
-    non_canary = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_OTHER")
+    not_on_list = li.get_forecast_for_spot(45.1, 141.1, spot_id="H_NOT_ON_THE_LIST")
 
     assert canary[0]["forecast_source"] == "web_enhanced"
-    assert non_canary[0]["score"] == 82
-    assert non_canary[0].get("forecast_source") != "web_enhanced"
+    assert not_on_list[0]["forecast_source"] == "web_enhanced"
 
 
 def test_get_forecast_for_spot_falls_back_to_simple_when_enhanced_fails(monkeypatch):

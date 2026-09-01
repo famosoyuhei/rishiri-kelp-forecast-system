@@ -762,37 +762,38 @@ def test_registered_spot_ids_refetches_after_ttl_expires(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# line_integration._line_web_forecast_enabled(): registered-spot coverage
+# line_integration._line_web_forecast_enabled()
+#
+# 2026-09-01: LINE_WEB_FORECAST_CANARY_SPOT_IDS / registered_spot_ids() no
+# longer narrow this -- full rollout to every spot whenever
+# LINE_WEB_FORECAST_ENABLED=true. That scoping existed only to limit blast
+# radius during Open-Meteo's free-tier 429 era; now that Open-Meteo is on a
+# paid plan with rate limits removed, there is no reason a fisherman's spot
+# should get the uncorrected simple forecast via LINE while the web app
+# gives everyone the full terrain/foehn-corrected one.
 # ---------------------------------------------------------------------------
 
-def test_line_web_forecast_enabled_passes_static_canary_spot(monkeypatch):
+def test_line_web_forecast_enabled_passes_for_any_spot_regardless_of_canary_list(monkeypatch):
     monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
-    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_2088_1443")
-    monkeypatch.setattr(li, "registered_spot_ids", lambda: set())
+    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_2088_1443")  # must no longer narrow
+    monkeypatch.setattr(li, "registered_spot_ids", lambda: set())  # must no longer be consulted
     assert li._line_web_forecast_enabled("line", spot_id="H_2088_1443") is True
-    assert li._line_web_forecast_enabled("line", spot_id="H_NOT_LISTED") is False
+    assert li._line_web_forecast_enabled("line", spot_id="H_ANY_UNREGISTERED_SPOT") is True
 
 
-def test_line_web_forecast_enabled_also_passes_registered_spots(monkeypatch):
-    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
-    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_2088_1443")
-    monkeypatch.setattr(li, "registered_spot_ids", lambda: {"H_1631_1434"})
-
-    assert li._line_web_forecast_enabled("line", spot_id="H_1631_1434") is True
-    assert li._line_web_forecast_enabled("line", spot_id="H_NOT_REGISTERED") is False
-
-
-def test_line_web_forecast_enabled_empty_canary_list_means_full_rollout(monkeypatch):
+def test_line_web_forecast_enabled_true_even_with_no_spot_id(monkeypatch):
     monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
     monkeypatch.delenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", raising=False)
-    monkeypatch.setattr(li, "registered_spot_ids", lambda: set())
-    assert li._line_web_forecast_enabled("line", spot_id="H_ANY_SPOT") is True
+    assert li._line_web_forecast_enabled("line") is True
+
+
+def test_line_web_forecast_enabled_false_when_master_switch_off(monkeypatch):
+    monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "false")
+    assert li._line_web_forecast_enabled("line", spot_id="H_1631_1434") is False
 
 
 def test_line_web_forecast_enabled_false_for_non_line_source(monkeypatch):
     monkeypatch.setenv("LINE_WEB_FORECAST_ENABLED", "true")
-    monkeypatch.setenv("LINE_WEB_FORECAST_CANARY_SPOT_IDS", "H_2088_1443")
-    monkeypatch.setattr(li, "registered_spot_ids", lambda: {"H_1631_1434"})
     assert li._line_web_forecast_enabled("web", spot_id="H_1631_1434") is False
 
 
