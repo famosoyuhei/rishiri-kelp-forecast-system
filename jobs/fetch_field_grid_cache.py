@@ -108,7 +108,15 @@ def main(argv=None) -> int:
         data = resp.json()
     except Exception:
         log_event(event="invalid_json", api_type=req.api_type, elapsed_ms=elapsed_ms)
-        return 1
+        # 2026-09-02: confirmed live (2 of 100 runs that day) -- a 2xx response
+        # whose body doesn't parse as JSON is a transport-layer hiccup
+        # (truncated/malformed body for this particular large 49-point
+        # multi-location payload), not a real API or logic error, and both
+        # observed occurrences self-healed on the very next run (this job
+        # re-runs every ~15-45 min via cron-job.org/schedule). Same rationale
+        # as the network_error case above: not worth a "Run failed" email --
+        # the previous prefetch entry just stays valid until its own TTL.
+        return 0
 
     ok, reason = validate_field_grid_response(data, expected_points=expected_points)
     if not ok:
