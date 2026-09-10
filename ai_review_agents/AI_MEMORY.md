@@ -622,6 +622,25 @@ Redis SET失敗（10MB上限超過によるもの）が一度も回復してお�
 上限に達した場合等）を9日間気づかないまま放置しないよう、失敗が続いた場合に
 `_daily_data_integrity_check()`側で検知する仕組みの追加を検討する余地がある（未実装）。
 
+**追記（同日）: 恒久対応①「古い行のアーカイブ」を実装**——ユーザーから「使用済みで
+今後必要にならないデータを定期的に削除するタスクを作れるか」と依頼を受け、上記の
+恒久対応候補①を実装した。`/api/validation/accuracy`系エンドポイントは
+`days_back = min(max(int(request.args.get('days', 90)), 1), 365)` と3箇所とも
+**max 365日にクランプ**されており、365日より古い行は現行のどのAPIからも二度と
+参照されないことを確認済み。`_archive_and_prune_old_feedback_rows()`
+（`start.py`）を新設し、365日超の行を `feedback_log:archive:csv`（10年TTL＝実質恒久、
+圧縮方式は本体と同じ）へ追記マージ（date+spot_name+days_ahead でdedupe）してから
+本体`feedback_log.csv`を削る。アーカイブ書き込みが失敗した場合は削除自体を見送り、
+データ消失より現状維持を優先する設計。日付が壊れている(NaT)行は誤って消さないよう
+保持側に残す。ユーザーの希望により**新規スレッドは立てず**、既存の05:00 JST
+`_scheduled_integrity_check()`（`_daily_data_integrity_check()`の直前）に相乗りして
+毎日実行される。テスト: `tests/test_feedback_log_redis_persistence.py`に6件追加
+（archive無し/既存archiveとのマージ/NaT行保護/archive書き込み失敗時の削除見送り 等）、
+既存448件（日付ドリフト起因10件を除く）全パス。**注意**: これはあくまで延命策——
+アーカイブキー自体も理論上はいつか無期限に増え続けるが、圧縮後サイズと年間データ量の
+概算からみて向こう数年〜十年単位の余裕はあると判断し、今回はそれ以上の設計（例:
+アーカイブの多段化）は行っていない。
+
 ---
 
 ### 2026-09-01（Render Starter + Open-Meteo API Standard 有料化、社員19新設・ベースライン記録）

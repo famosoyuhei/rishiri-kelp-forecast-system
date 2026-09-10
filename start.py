@@ -5,6 +5,7 @@ Version: 2.6.0
 """
 import os
 import sys
+import io
 import math
 import gzip
 import base64
@@ -3308,6 +3309,78 @@ def _feedback_log_redis_restore() -> bool:
     except Exception as e:
         app.logger.error('[feedback_redis] restore error: %s', e)
         return False
+
+
+# 2026-09-10: feedback_log.csv が無期限に増え続ける設計そのものが、Upstash無料
+# プランの10MBリクエストサイズ上限（feedback_log_redis_save/restore の圧縮とは
+# 別件）を再び圧迫する根本原因になり得るため、実際に使われなくなった行を
+# 定期的に取り除く。/api/validation/accuracy 系のエンドポイントは
+# `days_back = min(max(int(request.args.get('days', 90)), 1), 365)` と
+# 3箇所ともmax 365日にクランプしており、365日より古い行は現行のどのAPIから
+# も二度と参照されない。ただしデータそのものを失いたくないため、削除前に
+# 別Redisキー（10年TTL＝実質恒久）へアーカイブしてから本体を削る。
+_FEEDBACK_RETENTION_DAYS = 365
+_FEEDBACK_ARCHIVE_REDIS_KEY = 'feedback_log:archive:csv'
+_FEEDBACK_ARCHIVE_REDIS_TTL = 10 * 365 * 24 * 3600
+
+
+def _archive_and_prune_old_feedback_rows() -> dict:
+    """feedback_log.csv のうち365日より古い（＝どのAPIからも二度と参照されない）
+    行を feedback_log:archive:csv （長期TTL）へ退避してから本体から取り除く。
+
+    毎日05:00 JSTの _scheduled_integrity_check() に相乗りして実行される
+    （新規スレッドは立てない）。アーカイブへの書き込みが失敗した場合は、
+    データ消失を避けるため本体の削除自体を見送る。
+    """
+    if not os.path.exists(FEEDBACK_FILE):
+        return {'ok': True, 'archived': 0, 'note': 'feedback_log.csv なし'}
+    try:
+        fb_df = pd.read_csv(FEEDBACK_FILE)
+    except Exception as e:
+        return {'ok': False, 'archived': 0, 'note': f'feedback_log.csv 読み込み失敗: {e}'}
+
+    if fb_df.empty or 'date' not in fb_df.columns:
+        return {'ok': True, 'archived': 0, 'note': '対象データなし'}
+
+    dates = pd.to_datetime(fb_df['date'], errors='coerce')
+    cutoff = pd.Timestamp.now(tz=JST).normalize() - pd.Timedelta(days=_FEEDBACK_RETENTION_DAYS)
+    # 日付が壊れている(NaT)行は誤って消さないよう保持側に残す
+    is_old = dates.notna() & (dates.dt.tz_localize(JST) < cutoff)
+
+    if not is_old.any():
+        return {'ok': True, 'archived': 0, 'note': f'{_FEEDBACK_RETENTION_DAYS}日超の行なし'}
+
+    old_rows = fb_df[is_old]
+    keep_rows = fb_df[~is_old]
+
+    existing_raw = _obs_redis_get(_FEEDBACK_ARCHIVE_REDIS_KEY)
+    combined = old_rows
+    if isinstance(existing_raw, str):
+        try:
+            archive_df = pd.read_csv(io.StringIO(_redis_blob_decode(existing_raw)))
+            combined = pd.concat([archive_df, old_rows], ignore_index=True)
+            dedupe_cols = [c for c in ('date', 'spot_name', 'days_ahead') if c in combined.columns]
+            if dedupe_cols:
+                combined = combined.drop_duplicates(subset=dedupe_cols, keep='last')
+        except Exception as e:
+            app.logger.warning('[feedback_prune] existing archive unreadable, starting fresh: %s', e)
+
+    archive_ok = _obs_redis_set(
+        _FEEDBACK_ARCHIVE_REDIS_KEY,
+        _redis_blob_encode(combined.to_csv(index=False)),
+        ttl=_FEEDBACK_ARCHIVE_REDIS_TTL,
+    )
+    if not archive_ok:
+        app.logger.error('[feedback_prune] archive write failed — keeping old rows in place, skipping deletion')
+        return {'ok': False, 'archived': 0, 'note': 'アーカイブ書き込み失敗のため削除は見送り'}
+
+    keep_rows.to_csv(FEEDBACK_FILE, index=False)
+    _feedback_log_redis_save(keep_rows)
+    app.logger.info(
+        '[feedback_prune] archived %d row(s) older than %d days, %d remain in feedback_log.csv',
+        len(old_rows), _FEEDBACK_RETENTION_DAYS, len(keep_rows),
+    )
+    return {'ok': True, 'archived': len(old_rows), 'remaining': len(keep_rows)}
 
 
 def _load_spot_metadata_map() -> dict:
@@ -9728,6 +9801,17 @@ def _scheduled_integrity_check():
         date_str = datetime.now(tz=JST).strftime('%Y%m%d')
         lock_key = f'integrity_check_lock:{date_str}'
         if _try_acquire_notify_lock(lock_key):
+            # 2026-09-10: 365日超のfeedback_log.csv行を整合性チェック本体の前に
+            # アーカイブ→削除しておく（新規スレッドは立てず既存の日次ジョブに相乗り）。
+            # 失敗してもチェック本体の実行は妨げない。
+            try:
+                prune_result = _archive_and_prune_old_feedback_rows()
+                if not prune_result.get('ok'):
+                    app.logger.warning('[feedback_prune] skipped: %s', prune_result.get('note'))
+                elif prune_result.get('archived'):
+                    app.logger.info('[feedback_prune] %s', prune_result)
+            except Exception as exc:
+                app.logger.error('[feedback_prune] error: %s', exc)
             try:
                 _daily_data_integrity_check()
             except Exception as exc:
