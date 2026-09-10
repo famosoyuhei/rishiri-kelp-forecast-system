@@ -6,6 +6,8 @@ Version: 2.6.0
 import os
 import sys
 import math
+import gzip
+import base64
 import hmac
 import logging
 import threading
@@ -3097,6 +3099,36 @@ _RECORDS_REDIS_KEY = 'hoshiba_records:csv'
 _RECORDS_REDIS_TTL = 365 * 24 * 3600  # 1年（デプロイをまたいで恒久保持、feedback_logと同方式）
 
 
+def _redis_blob_encode(csv_str: str) -> str:
+    """CSV文字列を gzip+base64 で圧縮し、Redis SET に渡せる文字列にする。
+
+    2026-09-10緊急修正: feedback_log.csv が生CSV文字列のまま毎回Redisに
+    保存されており、季節が進むにつれ肥大化（本修正時点で8,829,889文字
+    ≒8.8MB）してUpstash無料プランの「Max Request Size 10MB」上限に抵触。
+    2026-09-01のSET失敗以降、その日の8.8MB版が凍結されたまま二度と更新
+    できなくなり、以後のRenderデプロイのたびに直近の精度統計がすべて
+    その古いスナップショットに巻き戻されて消えるという、記録が精度改善に
+    使われない過去の重大不具合と同種のサイレント障害を引き起こしていた
+    （Upstashから9/1・9/3・9/6・9/9に "Max Request Size Limit" 警告メール）。
+    CSVはテキストの反復性が高くgzipで数分の一に縮むため、圧縮だけで
+    当面の再発を防げる。records.csv は現状まだ小さいが将来同じ問題を
+    起こさないよう同じ方式を先行適用する。
+    """
+    return base64.b64encode(gzip.compress(csv_str.encode('utf-8'))).decode('ascii')
+
+
+def _redis_blob_decode(raw: str) -> str:
+    """_redis_blob_encode() の逆変換。
+
+    2026-09-10以前に保存された旧形式（無圧縮の生CSV文字列）との後方互換のため、
+    gzip+base64として解釈できない場合はそのまま返す（＝旧データとして扱う）。
+    """
+    try:
+        return gzip.decompress(base64.b64decode(raw)).decode('utf-8')
+    except Exception:
+        return raw
+
+
 def _records_redis_save(df) -> bool:
     """hoshiba_records DataFrame を CSV 文字列として Redis に永続保存する。
 
@@ -3113,10 +3145,11 @@ def _records_redis_save(df) -> bool:
     含めるようにする。
     """
     csv_str = df.to_csv(index=False)
+    blob = _redis_blob_encode(csv_str)
     last_error = None
     for attempt in range(2):
         try:
-            ok = _obs_redis_set(_RECORDS_REDIS_KEY, csv_str, ttl=_RECORDS_REDIS_TTL)
+            ok = _obs_redis_set(_RECORDS_REDIS_KEY, blob, ttl=_RECORDS_REDIS_TTL)
             if ok:
                 return True
             last_error = 'Redis SET returned False'
@@ -3150,9 +3183,10 @@ def _records_redis_restore() -> bool:
     if _records_restore_attempted:
         return False
     _records_restore_attempted = True
-    csv_str = _obs_redis_get(_RECORDS_REDIS_KEY)
-    if not csv_str or not isinstance(csv_str, str):
+    raw = _obs_redis_get(_RECORDS_REDIS_KEY)
+    if not raw or not isinstance(raw, str):
         return False
+    csv_str = _redis_blob_decode(raw)
     try:
         with open(RECORD_FILE, 'w', encoding='utf-8') as f:
             f.write(csv_str)
@@ -3243,7 +3277,8 @@ def _feedback_log_redis_save(df) -> bool:
     """
     try:
         csv_str = df.to_csv(index=False)
-        ok = _obs_redis_set(_FEEDBACK_REDIS_KEY, csv_str, ttl=_FEEDBACK_REDIS_TTL)
+        blob = _redis_blob_encode(csv_str)
+        ok = _obs_redis_set(_FEEDBACK_REDIS_KEY, blob, ttl=_FEEDBACK_REDIS_TTL)
         if not ok:
             app.logger.warning('[feedback_redis] Redis save returned False')
         return ok
@@ -3261,9 +3296,10 @@ def _feedback_log_redis_restore() -> bool:
     """
     if os.path.exists(FEEDBACK_FILE):
         return False
-    csv_str = _obs_redis_get(_FEEDBACK_REDIS_KEY)
-    if not csv_str or not isinstance(csv_str, str):
+    raw = _obs_redis_get(_FEEDBACK_REDIS_KEY)
+    if not raw or not isinstance(raw, str):
         return False
+    csv_str = _redis_blob_decode(raw)
     try:
         with open(FEEDBACK_FILE, 'w', encoding='utf-8') as f:
             f.write(csv_str)
@@ -9482,7 +9518,10 @@ def _check_redis_persistence(date_str: str) -> dict:
     checks = {}
 
     # 1. feedback_log:csv（精度蓄積）
-    fb = _obs_redis_get(_FEEDBACK_REDIS_KEY)
+    # 2026-09-10: Redisには圧縮済み(gzip+base64)で入っているため、サイズは
+    # 解凍後の文字数で測る（過去の基準値と同じ意味を保つため）。
+    fb_raw = _obs_redis_get(_FEEDBACK_REDIS_KEY)
+    fb = _redis_blob_decode(fb_raw) if isinstance(fb_raw, str) else None
     checks['feedback_log_csv'] = {
         'ok':         fb is not None and isinstance(fb, str) and len(fb) > 50,
         'size_chars': len(fb) if isinstance(fb, str) else 0,

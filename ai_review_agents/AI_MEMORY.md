@@ -573,6 +573,57 @@ return max(0, min(100, score))
 
 ---
 
+### 2026-09-10（🔴 CRITICAL: feedback_log.csv のRedis永続化が9/1から9日間サイレント失敗・修正済み）
+
+**発見の経緯**: ユーザーから「Upstashがいっぱいになったというメールが来た」と報告を受け調査。
+Gmail検索で `support@upstash.com` から **2026-09-01・09-03・09-06・09-09** の4回、
+「Your Max Request Size Limit is Reached」（データベース"rishiri-line"、無料プランの
+リクエストサイズ上限10MBに到達）を確認。
+
+**根本原因**: `_feedback_log_redis_save()` が `feedback_log.csv` 全体を無圧縮の生CSV
+文字列としてRedis SETコマンド1回で送信する設計だった。本番の`/api/integrity_check`を
+叩いて確認したところ、`feedback_log_csv.size_chars` が **8,829,889（2026-09-01のベース
+ライン記録と完全一致）のまま9日間まったく変化していなかった** ——つまり9/1以降に発生した
+Redis SET失敗（10MB上限超過によるもの）が一度も回復しておらず、Redis側は9/1時点の
+スナップショットのまま凍結されていたことが判明。
+
+**実害（重大）**: `_feedback_log_redis_restore()` はローカルファイルが存在しない場合
+（＝Renderの再デプロイ直後）にRedisから復元する設計のため、9/1以降のRenderへの
+再デプロイのたびに、その日ローカルに蓄積されていた最新の精度統計（judgment_correct等）
+が凍結された9/1のスナップショットで上書きされ、消失していた。これは過去に発覚した
+「LINE記録が精度改善に使われない」系の重大不具合（2026-08）と**同一の症状パターン**
+（このセッション冒頭でユーザーが再発防止策の有無を尋ねていた、まさにその種類の不具合）。
+既存の安全策 `_check_records_have_feedback()`（2026-09-01新設）はローカルファイルの
+整合性のみ検証しており、Redis保存が実際に成功しているかまでは検知できていなかった
+——今回の根本原因はこの安全策の対象外だった。
+
+**修正内容**（`start.py`）:
+- `_redis_blob_encode()`/`_redis_blob_decode()` を新設（gzip+base64）。CSVはテキストの
+  反復性が高く大幅に圧縮できるため、これだけで当面の再発を防げる想定
+  （`tests/test_records_persistence.py`で886,000文字超のCSVが1MB未満に圧縮されることを確認）
+- `_feedback_log_redis_save/_restore`・`_records_redis_save/_restore`（records.csvは
+  現状小さいが将来の同種再発を予防するため先行対応）を圧縮方式に変更
+- 2026-09-10より前の無圧縮データとの後方互換のため、`_redis_blob_decode()`は
+  gzip+base64として解釈できない場合は入力をそのまま返す（旧データも正しく復元できる）
+- `_check_redis_persistence()`の`feedback_log_csv.size_chars`は解凍後の文字数を測るよう
+  修正（圧縮後サイズを出すと、今後のROI比較で誤って「データが減った」ように見えるため）
+
+**テスト**: `tests/test_feedback_log_redis_persistence.py`（新規5件）、
+`tests/test_records_persistence.py`（新規3件追加）、既存442件（線引き済みの日付ドリフト
+起因10件を除く）全パス。`check_consistency.py`全通過。
+
+**未対応・今後のリスク**: gzip圧縮は延命措置であり、feedback_log.csvは今後も無期限に
+増え続ける設計のため、いずれ圧縮後サイズでも10MB上限に近づく可能性がある。現状は
+「1レコードあたりのサイズ×蓄積期間」から見て数年単位の余裕があると推定しているが、
+正確な監視はしていない。恒久対応としては①古い行を別キーにアーカイブしてRedisキー
+自体を小さく保つ、②Upstashの有料プランへの切替、のいずれかが候補。加えて、
+`_feedback_log_redis_save()`のRedis書き込み失敗は現状 `app.logger.warning()`止まりで
+日次整合性チェックのCRITICALアラートには昇格していない——次回同種の不具合（圧縮後も
+上限に達した場合等）を9日間気づかないまま放置しないよう、失敗が続いた場合に
+`_daily_data_integrity_check()`側で検知する仕組みの追加を検討する余地がある（未実装）。
+
+---
+
 ### 2026-09-01（Render Starter + Open-Meteo API Standard 有料化、社員19新設・ベースライン記録）
 
 **背景**: 来年（2027年）の昆布本格運用シーズンに向けて、9月の1ヶ月間だけOpen-Meteo

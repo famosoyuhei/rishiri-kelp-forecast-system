@@ -15,6 +15,14 @@ Covers:
   - add_record(): writes through to Redis on every save, not just the local file
   - delete_spot(): the "has drying records" block-reason check goes through
     _load_records() (Redis-aware), not a direct file read
+  - _redis_blob_encode()/_redis_blob_decode() (2026-09-10 fix): the CSV blob
+    is now gzip+base64 compressed before being sent to Redis, because
+    feedback_log.csv grew past Upstash's free-tier 10MB "Max Request Size"
+    limit and every save had been silently failing since 2026-09-01 (see
+    test_records_feedback_integrity_check.py and the Upstash warning
+    emails). Decode falls back to returning the input unchanged when it
+    isn't valid gzip+base64, so pre-2026-09-10 uncompressed Redis values
+    restore correctly too.
 
 Run from project root:
     python -m pytest tests/test_records_persistence.py -v
@@ -46,6 +54,36 @@ def record_file(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _redis_blob_encode / _redis_blob_decode (2026-09-10 fix)
+# ---------------------------------------------------------------------------
+
+def test_redis_blob_round_trips():
+    assert start._redis_blob_decode(start._redis_blob_encode(SAMPLE_CSV)) == SAMPLE_CSV
+
+
+def test_redis_blob_encode_shrinks_repetitive_csv_well_below_10mb():
+    """The exact regression: feedback_log.csv had grown to 8,829,889 chars
+    (8.8MB) -- close enough to Upstash's free-tier 10MB request-size cap
+    that every SET since 2026-09-01 was silently failing. CSV text is highly
+    repetitive (dates, True/False, spot IDs), so gzip should compress it
+    to a small fraction of the original, restoring plenty of headroom."""
+    big_csv = SAMPLE_CSV.split("\n")[0] + "\n" + "2026-07-01,H_1631_1434,完全乾燥,,True,15:00,2026-07-01T16:00:00+09:00,0,\n" * 200_000
+    assert len(big_csv) > 8_000_000
+
+    blob = start._redis_blob_encode(big_csv)
+
+    assert len(blob) < 1_000_000  # compressed well under the 10MB limit
+    assert start._redis_blob_decode(blob) == big_csv
+
+
+def test_redis_blob_decode_falls_back_to_input_for_legacy_uncompressed_values():
+    """Values saved before 2026-09-10 are plain uncompressed CSV strings,
+    not valid gzip+base64 -- decode must return them unchanged rather than
+    raising, so restore doesn't break on data written by the old code."""
+    assert start._redis_blob_decode(SAMPLE_CSV) == SAMPLE_CSV
+
+
+# ---------------------------------------------------------------------------
 # _records_redis_save / _records_redis_restore
 # ---------------------------------------------------------------------------
 
@@ -63,7 +101,8 @@ def test_records_redis_save_writes_csv_string_with_long_ttl(monkeypatch):
     assert len(calls) == 1
     key, data, ttl = calls[0]
     assert key == start._RECORDS_REDIS_KEY
-    assert "H_1631_1434" in data
+    # 2026-09-10: gzip+base64で圧縮して送るため、生データではなくデコードして確認する
+    assert "H_1631_1434" in start._redis_blob_decode(data)
     assert ttl == start._RECORDS_REDIS_TTL
     assert ttl >= 365 * 24 * 3600  # must survive at least a year, not the 90-day obs TTL
 
