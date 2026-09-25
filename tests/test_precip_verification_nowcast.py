@@ -177,6 +177,63 @@ def test_two_spots_get_independently_correct_precip_forecast_correct(precip_env,
     assert wet["actual_rain_last_time_0416"] == "11:40"
 
 
+def test_rerun_updates_existing_row_instead_of_creating_a_duplicate(precip_env, monkeypatch):
+    """2026-09-26 refactor: the (date, spot_name, days_ahead) upsert lookup
+    was rewritten from a per-spot full-DataFrame boolean mask (O(spots x
+    existing rows), which OOM'd the Render Starter instance once
+    feedback_log.csv grew into the hundreds of thousands of rows -- see
+    ai_review_agents/AI_MEMORY.md 2026-09-24/25) to a dict built once. This
+    must still upsert (update in place), not duplicate, on a re-run for the
+    same date/spot/days_ahead -- days_ahead=1 here since FC_ENTRY's
+    forecast_date (20260713) is one day before the target date (20260714)."""
+    precip_env.write_text(
+        "date,spot_name,days_ahead,has_drying_record,judgment_correct,actual_rain_0416\n"
+        "2026-07-14,H_2480_2198,1,False,,True\n",
+        encoding="utf-8",
+    )
+    nowcast_row = {
+        "spot_name": "H_2480_2198", "coverage_pct": 100.0,
+        "observed_rain_0416": False, "observed_precip_sum_0416_mm": 0.0,
+        "first_rain_time": None, "last_rain_time": None,
+    }
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([nowcast_row], {}))
+    _mock_redis(monkeypatch, {"H_2480_2198": [FC_ENTRY]}, amedas=None)
+
+    n = start._auto_compare_precip_forecast("20260714")
+
+    assert n == 1
+    df = start.pd.read_csv(precip_env)
+    assert len(df) == 1  # updated in place, not appended as a second row
+    assert df.iloc[0]["actual_rain_0416"] == False  # noqa: E712  overwritten by this run's nowcast data
+
+
+def test_lookup_finds_correct_row_among_many_unrelated_existing_rows(precip_env, monkeypatch):
+    """The dict-index rewrite must still find the one row that actually
+    matches (date, spot_name, days_ahead) even with plenty of other rows
+    (different spots/dates/days_ahead) already in the file."""
+    header = "date,spot_name,days_ahead,has_drying_record,judgment_correct,actual_rain_0416\n"
+    decoys = "".join(f"2026-07-14,H_DECOY_{i},1,False,,True\n" for i in range(50))
+    target_row = "2026-07-14,H_2480_2198,1,False,,True\n"
+    precip_env.write_text(header + decoys + target_row, encoding="utf-8")
+    nowcast_row = {
+        "spot_name": "H_2480_2198", "coverage_pct": 100.0,
+        "observed_rain_0416": False, "observed_precip_sum_0416_mm": 0.0,
+        "first_rain_time": None, "last_rain_time": None,
+    }
+    monkeypatch.setattr(start, "_load_nowcast_daily_summary_rows", lambda date_str, spot_name=None: ([nowcast_row], {}))
+    _mock_redis(monkeypatch, {"H_2480_2198": [FC_ENTRY]}, amedas=None)
+
+    n = start._auto_compare_precip_forecast("20260714")
+
+    assert n == 1
+    df = start.pd.read_csv(precip_env)
+    assert len(df) == 51  # no new row added, decoys untouched
+    target = df[df["spot_name"] == "H_2480_2198"].iloc[0]
+    assert target["data_source"] == "jma_nowcast_per_spot"
+    decoy = df[df["spot_name"] == "H_DECOY_0"].iloc[0]
+    assert decoy["actual_rain_0416"] == True  # noqa: E712  untouched
+
+
 def test_amedas_fallback_picks_nearest_station_not_always_kutsugata(precip_env, monkeypatch):
     """The actual point of this fix: a spot far from Kutsugata (11151) but
     close to Motodomari (11311) must use Motodomari's reading when nowcast

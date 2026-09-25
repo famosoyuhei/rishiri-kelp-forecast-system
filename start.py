@@ -7751,6 +7751,18 @@ def _auto_compare_precip_forecast(date_str: str, spot_name: str | None = None) -
     else:
         fb_df = pd.DataFrame(columns=FEEDBACK_COLUMNS)
 
+    # 2026-09-26緊急修正: (date, spot_name, days_ahead) → 行indexの辞書を1回だけ
+    # 構築し、干場ごとに fb_df 全体を3列ブール比較でスキャンするO(干場数×既存件数)
+    # だった実装をO(既存件数+干場数)に改善する。
+    # 背景: シーズン終盤でfeedback_log.csvが数十万行規模まで増えており、干場
+    # (最大334件)ごとに全行を毎回スキャンする従来実装がRender Starterプラン
+    # (512MBメモリ上限)を超えてワーカーがOOM再起動する事故が2026-09-24・09-25と
+    # 連日発生（詳細: ai_review_agents/AI_MEMORY.md）。件数列の型混在による
+    # DtypeWarningもobject dtype比較を通じてさらに重くしていた一因。
+    _fb_index: dict[tuple, list[int]] = {}
+    for idx, key in enumerate(zip(fb_df['date'], fb_df['spot_name'], fb_df['days_ahead'])):
+        _fb_index.setdefault(key, []).append(idx)
+
     # ── 5. 予報エントリごとに照合 ─────────────────────────────────────────
     now_jst = datetime.now(tz=JST).strftime('%Y-%m-%dT%H:%M:%S+09:00')
     updated = 0
@@ -7813,30 +7825,28 @@ def _auto_compare_precip_forecast(date_str: str, spot_name: str | None = None) -
             has_record   = rec_result is not None
 
             # upsert: (date, spot_name, days_ahead) が一致する行を更新
-            mask = (
-                (fb_df['date']       == target_date_fmt) &
-                (fb_df['spot_name']  == spot_name)       &
-                (fb_df['days_ahead'] == days_ahead)
-            )
-            if mask.any():
-                fb_df.loc[mask, 'actual_precip_0416_mm']   = actual_precip_0416
-                fb_df.loc[mask, 'actual_precip_total_mm']  = actual_precip_total
-                fb_df.loc[mask, 'actual_rain_0416']        = actual_rain_0416
-                fb_df.loc[mask, 'actual_rain_first_time_0416'] = actual_rain_first_time
-                fb_df.loc[mask, 'actual_rain_last_time_0416']  = actual_rain_last_time
-                fb_df.loc[mask, 'forecast_precip_mm']      = fc_precip
-                fb_df.loc[mask, 'forecast_rain']           = fc_rain
-                fb_df.loc[mask, 'precip_forecast_correct'] = precip_ok
-                fb_df.loc[mask, 'data_source']             = actual_source
-                fb_df.loc[mask, 'recorded_at']             = now_jst
+            # （2026-09-26: 事前構築した辞書でO(1)検索。旧実装はここで毎回
+            # fb_df全体を3列ブール比較していた — 上のコメント参照）
+            match_idx = _fb_index.get((target_date_fmt, spot_name, days_ahead))
+            if match_idx:
+                fb_df.loc[match_idx, 'actual_precip_0416_mm']   = actual_precip_0416
+                fb_df.loc[match_idx, 'actual_precip_total_mm']  = actual_precip_total
+                fb_df.loc[match_idx, 'actual_rain_0416']        = actual_rain_0416
+                fb_df.loc[match_idx, 'actual_rain_first_time_0416'] = actual_rain_first_time
+                fb_df.loc[match_idx, 'actual_rain_last_time_0416']  = actual_rain_last_time
+                fb_df.loc[match_idx, 'forecast_precip_mm']      = fc_precip
+                fb_df.loc[match_idx, 'forecast_rain']           = fc_rain
+                fb_df.loc[match_idx, 'precip_forecast_correct'] = precip_ok
+                fb_df.loc[match_idx, 'data_source']             = actual_source
+                fb_df.loc[match_idx, 'recorded_at']             = now_jst
                 for meta_col in ('town', 'district', 'buraku'):
                     if spot_meta.get(meta_col) is not None:
-                        fb_df.loc[mask, meta_col] = spot_meta[meta_col]
+                        fb_df.loc[match_idx, meta_col] = spot_meta[meta_col]
                 if has_record:
-                    fb_df.loc[mask, 'actual_result']      = rec_result
-                    fb_df.loc[mask, 'actual_label']       = actual_label
-                    fb_df.loc[mask, 'judgment_correct']   = judg_correct
-                    fb_df.loc[mask, 'has_drying_record']  = True
+                    fb_df.loc[match_idx, 'actual_result']      = rec_result
+                    fb_df.loc[match_idx, 'actual_label']       = actual_label
+                    fb_df.loc[match_idx, 'judgment_correct']   = judg_correct
+                    fb_df.loc[match_idx, 'has_drying_record']  = True
                 updated += 1
             else:
                 new_rows.append({
