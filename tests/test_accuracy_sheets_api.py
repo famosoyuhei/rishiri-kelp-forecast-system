@@ -668,3 +668,45 @@ def test_forecast_precip_accuracy_by_horizon_compares_forecast_and_nowcast(monke
     assert rows[1]["fn_count"] == 1
     assert rows[1]["tn_count"] == 1
     assert rows[1]["hit_rate_pct"] == 50.0
+
+
+def test_load_feedback_sheet_rows_filters_correctly_across_chunk_boundaries(monkeypatch):
+    """2026-09-27 fix: _load_feedback_sheet_rows() used to pd.read_csv() the
+    WHOLE feedback_log.csv before filtering to `days_back` -- fine when the
+    file was small, but by late season it had grown past 13MB / hundreds of
+    thousands of rows, and an n8n Sheets-sync call loading all of it caused
+    a Render "exceeded its memory limit" OOM restart at 2026-09-27 03:35 JST
+    (see ai_review_agents/AI_MEMORY.md). The fix reads in chunksize=20000
+    chunks and filters each chunk immediately. This test writes >20000 rows
+    (forcing at least 2 chunks) with only two rows recent enough to survive
+    the days_back window -- one near the start of the file, one near the
+    end -- to prove filtering is correct regardless of which chunk a
+    matching row lands in."""
+    import start
+
+    feedback_file = TMP_DIR / "feedback_log_chunked.csv"
+    old_date = (start.datetime.now(tz=start.JST) - start.timedelta(days=500)).strftime("%Y-%m-%d")
+    recent_date = (start.datetime.now(tz=start.JST) - start.timedelta(days=5)).strftime("%Y-%m-%d")
+
+    n_filler = 25000
+    rows = []
+    for i in range(n_filler):
+        if i == 10:
+            rows.append({"date": recent_date, "spot_name": "H_RECENT_EARLY", "days_ahead": 0,
+                         "has_drying_record": False})
+        elif i == n_filler - 10:
+            rows.append({"date": recent_date, "spot_name": "H_RECENT_LATE", "days_ahead": 0,
+                         "has_drying_record": False})
+        else:
+            rows.append({"date": old_date, "spot_name": f"H_OLD_{i}", "days_ahead": 0,
+                         "has_drying_record": False})
+    pd.DataFrame(rows).to_csv(feedback_file, index=False)
+
+    monkeypatch.setattr(start, "FEEDBACK_FILE", str(feedback_file))
+    monkeypatch.setattr(start, "CSV_FILE", str(TMP_DIR / "no_such_spots_file.csv"))
+    monkeypatch.setattr(start, "_feedback_log_redis_restore", lambda: False)
+
+    result_rows, summary = start._load_feedback_sheet_rows(days_back=90)
+
+    spot_names = {row["spot_name"] for row in result_rows}
+    assert spot_names == {"H_RECENT_EARLY", "H_RECENT_LATE"}

@@ -3436,10 +3436,28 @@ def _load_feedback_sheet_rows(days_back: int = 90, spot_name: str | None = None,
             'note': 'feedback_log.csv not found yet',
         }
 
-    fb_df = pd.read_csv(FEEDBACK_FILE)
-    for col in FEEDBACK_COLUMNS:
-        if col not in fb_df.columns:
-            fb_df[col] = None
+    cutoff = datetime.now(tz=JST).date() - timedelta(days=days_back)
+
+    # 2026-09-27緊急修正: 全行読み込み→あとでdays_back分だけ絞り込む従来実装は、
+    # シーズン終盤でfeedback_log.csvが数十万行規模(13.6MB超)に達した現在、
+    # n8n連携（Google Sheets同期）のたびにファイル全体をメモリに載せてしまい、
+    # Render Starterプラン(512MBメモリ上限)を超えてOOM再起動する事故につながった
+    # （2026-09-27 03:35 JST。詳細: ai_review_agents/AI_MEMORY.md）。chunksize指定
+    # で分割読み込みし、その場でdays_back/spot_nameに該当する行だけを残すことで、
+    # ピークメモリを「全行数」ではなく「チャンクサイズ＋該当行数」に抑える。
+    kept_chunks = []
+    for chunk in pd.read_csv(FEEDBACK_FILE, chunksize=20000):
+        for col in FEEDBACK_COLUMNS:
+            if col not in chunk.columns:
+                chunk[col] = None
+        chunk_date = pd.to_datetime(chunk['date'], errors='coerce')
+        keep = chunk_date.notna() & (chunk_date.dt.date >= cutoff)
+        if spot_name:
+            keep &= (chunk['spot_name'] == spot_name)
+        if keep.any():
+            kept_chunks.append(chunk[keep].copy())
+
+    fb_df = pd.concat(kept_chunks, ignore_index=True) if kept_chunks else pd.DataFrame(columns=FEEDBACK_COLUMNS)
 
     bool_columns = [
         'actual_rain_0416', 'forecast_rain', 'precip_forecast_correct',
@@ -3455,11 +3473,6 @@ def _load_feedback_sheet_rows(days_back: int = 90, spot_name: str | None = None,
         })
 
     fb_df['date'] = pd.to_datetime(fb_df['date'], errors='coerce')
-    cutoff = datetime.now(tz=JST).date() - timedelta(days=days_back)
-    fb_df = fb_df[fb_df['date'].dt.date >= cutoff].copy()
-
-    if spot_name:
-        fb_df = fb_df[fb_df['spot_name'] == spot_name].copy()
 
     if has_record in ('true', '1', 'yes'):
         fb_df = fb_df[fb_df['has_drying_record'] == True].copy()
