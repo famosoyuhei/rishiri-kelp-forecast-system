@@ -717,8 +717,8 @@
         // 最終更新時刻更新
         function updateLastUpdateTime() {
             const now = new Date();
-            document.getElementById('lastUpdate').textContent = 
-                `最終更新: ${now.toLocaleString('ja-JP')}`;
+            document.getElementById('lastUpdate').textContent =
+                `最終更新: ${now.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })} JST`;
         }
 
         // 自動更新開始

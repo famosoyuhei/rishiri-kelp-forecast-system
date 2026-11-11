@@ -2654,7 +2654,7 @@
             const cacheStr = (() => {
                 try {
                     const c = JSON.parse(localStorage.getItem('islandRankingCache'));
-                    return c ? new Date(c.timestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '';
+                    return c ? new Date(c.timestamp).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }) : '';
                 } catch(e) { return ''; }
             })();
 
@@ -3869,7 +3869,7 @@
                 statusText.textContent = '自動更新: 有効';
                 if (lastUpdateTime) {
                     const nextUpdate = new Date(lastUpdateTime.getTime() + UPDATE_INTERVAL);
-                    nextUpdateTime.textContent = `次回更新: ${nextUpdate.toLocaleTimeString()}`;
+                    nextUpdateTime.textContent = `次回更新: ${nextUpdate.toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo' })}`;
                     nextUpdateTime.style.display = 'block';
                 } else {
                     nextUpdateTime.style.display = 'none';
