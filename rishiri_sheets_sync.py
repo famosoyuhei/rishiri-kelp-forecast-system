@@ -366,6 +366,9 @@ def main() -> int:
     report_grid_sizes(token)
     all_tabs = [s[0] for s in SECTIONS] + list(SUMMARY_TABS.values())
     ensure_tabs(token, all_tabs)
+    # Free reserved-but-empty grid cells before syncing, so appends in
+    # this run have headroom under the workbook cell limit.
+    trim_synced_tabs(token, all_tabs)
 
     failures = 0
     for tab, mode, key_col, path in SECTIONS:
