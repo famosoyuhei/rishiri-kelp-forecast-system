@@ -124,9 +124,13 @@ def api(token: str, method: str, url: str, body: dict | None = None) -> dict:
             'Content-Type': 'application/json',
         },
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        raw = resp.read().decode('utf-8')
-        return json.loads(raw) if raw else {}
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            raw = resp.read().decode('utf-8')
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode('utf-8', errors='replace')[:500]
+        raise RuntimeError(f'HTTP {e.code} for {method} {url}: {detail}') from e
 
 
 def cell(value) -> str:
@@ -145,16 +149,23 @@ def get_values(token: str, tab: str) -> list[list[str]]:
 
 
 def ensure_tabs(token: str, tabs: list[str]) -> None:
+    """Create any missing tabs, one at a time.
+
+    A failure here must not abort the whole run: tabs that already exist
+    (e.g. created by the Apps Script dashboard setup) still sync fine, and
+    a genuinely missing tab fails only its own section with a clear log.
+    """
     meta = api(token, 'GET', f'{SHEETS_API}/{SPREADSHEET_ID}')
     existing = {s['properties']['title'] for s in meta.get('sheets', [])}
-    requests = [
-        {'addSheet': {'properties': {'title': tab}}}
-        for tab in tabs
-        if tab not in existing
-    ]
-    if requests:
-        api(token, 'POST', f'{SHEETS_API}/{SPREADSHEET_ID}:batchUpdate',
-            {'requests': requests})
+    for tab in tabs:
+        if tab in existing:
+            continue
+        try:
+            api(token, 'POST', f'{SHEETS_API}/{SPREADSHEET_ID}:batchUpdate',
+                {'requests': [{'addSheet': {'properties': {'title': tab}}}]})
+            print(json.dumps({'tab': tab, 'created': True}))
+        except Exception as e:
+            print(f'TAB CREATE FAILED {tab}: {e}', file=sys.stderr)
 
 
 def append_rows(token: str, tab: str, values: list[list[str]]) -> None:
