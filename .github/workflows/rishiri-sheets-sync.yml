@@ -1,0 +1,32 @@
+name: Rishiri Sheets Sync
+
+on:
+  schedule:
+    # 16:40 JST (after the app saves forecast snapshots at 16:05 JST and
+    # n8n used to copy them from 16:20 JST). Replaces the n8n sync.
+    - cron: '40 7 * * *'
+    # 03:35 JST (the n8n accuracy/summary sync slot).
+    - cron: '35 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-sheets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install "google-auth[requests]"
+
+      - name: Sync accuracy data to Google Sheets
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          RISHIRI_SPREADSHEET_ID: ${{ secrets.RISHIRI_SPREADSHEET_ID }}
+        run: python rishiri_sheets_sync.py
