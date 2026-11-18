@@ -66,13 +66,27 @@ def api(token: str, method: str, url: str, body: dict | None = None) -> dict:
         headers={'Authorization': f'Bearer {token}',
                  'Content-Type': 'application/json'},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            raw = resp.read().decode('utf-8')
-            return json.loads(raw) if raw else {}
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode('utf-8', errors='replace')[:500]
-        raise RuntimeError(f'HTTP {e.code} for {method} {url}: {detail}') from e
+    # The Sheets read quota is per-minute: streaming ~610k rows in 5k-row
+    # chunks hit HTTP 429 halfway through the first run (2026-11-18).
+    # Retry with backoff instead of dying.
+    delay = 10
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                raw = resp.read().decode('utf-8')
+                return json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode('utf-8', errors='replace')[:500]
+            if e.code == 429 and attempt < 5:
+                print(json.dumps({'retry_429': attempt + 1,
+                                  'sleep_s': delay}))
+                import time
+                time.sleep(delay)
+                delay = min(delay * 2, 90)
+                continue
+            raise RuntimeError(
+                f'HTTP {e.code} for {method} {url}: {detail}') from e
+    raise RuntimeError('unreachable')
 
 
 def get_range(token: str, a1_range: str) -> list[list[str]]:
@@ -133,6 +147,8 @@ def main() -> int:
                 written += 1
             print(json.dumps({'chunk': f'{start}-{end}', 'written': written}))
             start = end + 1
+            import time
+            time.sleep(1)  # pace reads under the per-minute quota
         text.flush()
         text.detach()
 
