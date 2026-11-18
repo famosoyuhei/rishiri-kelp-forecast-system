@@ -1,48 +1,966 @@
-# Codex Scope: Accuracy Analysis
+# Codex プロジェクトガイド
 
-このworktreeは、利尻島昆布干場予報システムの「精度分析・検証・Google Sheets/n8n同期」だけを扱う。
+> **AI社員への指示**: 作業開始前に必ず `ai_review_agents/AI_MEMORY.md` を読み、
+> 前回セッションの既知問題・設計判断を確認してから作業してください。
+> 作業終了後は発見した問題・決定事項を同ファイルに追記してください。
 
-## 対象
+## プロジェクト概要
 
-- 予報精度API、フィードバックログ、Google Sheets/n8n同期
-- `forecast_history`、`amedas_data`、`feedback_log.csv`、`hoshiba_records.csv` を使う分析
-- 閾値検証、降水有無の的中率、乾燥可否判定、日別/地区別/何日前予報別の集計
-- 関連する自動収集、データ整合性、テスト
+**利尻島昆布干場予報システム** - 北海道利尻島の331箇所の昆布干場と3箇所の気象観測/基準点（計334地点）に対して、7日間の乾燥適性を科学的に予報するFlask製Webアプリケーション。
 
-## 主要ファイル
+- **バージョン**: v2.6.8 (2026年5月29日)
+- **実装率**: 99%
+- **主要言語**: Python (Flask), JavaScript, HTML/CSS
+- **メインファイル**: [start.py](start.py) (4,363行)
 
-- `start.py`
-  - `/api/validation/accuracy`
-  - `/api/validation/accuracy/sheets`
-  - `/api/validation/accuracy/sheets/summary`
-  - `_save_forecast_history`
-  - `_record_forecast_feedback`
-  - `_collect_amedas_from_openmeteo`
-  - `_auto_compare_forecast_vs_actual`
-- `forecast_accuracy/`
-- `forecast_accuracy_db.py`
-- `accuracy_analyzer.py`
-- `accuracy_reporter.py`
-- `validate_thresholds.py`
-- `check_data_integrity.py`
-- `tests/test_accuracy_sheets_api.py`
-- `docs/GOOGLE_SHEETS_FREE_SETUP.md`
-- `docs/N8N_GOOGLE_SHEETS_ACCURACY.md`
-- `docs/N8N_GOOGLE_SHEETS_SETUP_CHECKLIST.md`
-- `docs/google_sheets_accuracy_dashboard_apps_script.gs`
-- `docs/n8n_accuracy_google_sheets_workflow_blueprint.json`
+## 重要な全体ルール
 
-## 必ず守ること
+### 時刻表記の統一
+**すべての時刻は日本標準時（JST, UTC+9）で統一されています。**
+開発者が海外にいる場合でも、利尻島の現地時刻で運用してください。
 
-- すべての時刻はJSTで扱う。
-- Open-Meteoや本番APIなど現在値に依存する分析は、必要に応じて確認してから結論を出す。
-- 乾燥判定の基準は、原則として `THRESHOLD_UPDATE_SUMMARY.md` と実装中の閾値に合わせる。
-- 精度分析の作業では、LP、SNS、広告、販売資料、画像生成、マーケティング文章には触れない。
-- フロントエンド全体やPWAなど、精度分析に直接関係しない巨大ファイルは必要になるまで読まない。
+### 作業ワークツリー選択ルール（使用量節約・スコープ最小化）
 
-## 省トークン運用
+作業内容に応じて **対応する sparse ワークツリー** を使用してください。
+デスクトップの完全ワークツリーは「複数領域にまたがる場合のみ」使用します。
 
-- まず `rg` で対象関数や列名を絞る。
-- `start.py` は該当関数周辺だけ読む。
-- Google Sheetsを扱う場合は、最初に対象スプレッドシートのメタデータと必要なタブ/範囲だけ読む。
-- 大きなCSV/JSONは全読みせず、日付・列・件数を絞って集計する。
+| 作業内容 | 使用するワークツリー | パス |
+|---|---|---|
+| `start.py`・Flask API・デプロイ設定 | `app-core` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\app-core` |
+| `kelp_drying_map.html`・PWA・UI | `frontend-map` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\frontend-map` |
+| `line_integration.py`・LINE 通知・Webhook | `line-ops` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\line-ops` |
+| 予報精度検証・AMeDAS 分析 | `research-archive` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\research-archive` |
+| Google Sheets 連携・n8n | `accuracy-analysis` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\accuracy-analysis` |
+| LP・チラシ・QR コード・ユーザー案内 | `marketing` | `C:\Users\ichry\.codex-worktrees\rishiri_konbu_weather_tool\marketing` |
+| 上記を横断する変更 | デスクトップ完全 WT | `C:\Users\ichry\Desktop\rishiri_konbu_weather_tool` |
+
+各ワークツリーの詳細ルール・チェックリストは **`README_WORKTREE.md`**（各ワークツリー直下）を参照してください。
+
+**sparse ワークツリーはそれぞれ独立ブランチ（`codex/*`）です。**
+変更後は `main` へ PR を作成して squash merge してください。
+ブランチ一覧・更新コマンドは [`CODEX_WORKTREES.md`](CODEX_WORKTREES.md) を参照してください。
+
+## 主要ドキュメント
+
+プロジェクトの詳細は以下の仕様書を参照してください。
+
+### 必読ドキュメント
+
+1. **[README.md](README.md)** - プロジェクト概要とクイックスタート
+   - システム機能概要
+   - API一覧（13エンドポイント）
+   - インストール手順
+
+2. **[system_specification.md](system_specification.md)** - 詳細仕様書（2,000行超）
+   - 全機能の詳細仕様
+   - データ構造定義
+   - API仕様
+   - エラーハンドリング
+
+3. **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** - プロジェクト構成
+   - ファイル構成とディレクトリ構造
+   - デプロイ構成
+   - 各ファイルの役割
+
+### 重要な実装ドキュメント
+
+4. **[THRESHOLD_UPDATE_SUMMARY.md](THRESHOLD_UPDATE_SUMMARY.md)** - 実測閾値の詳細
+   - H_1631_1434地点の21件実測記録に基づく検証済み閾値
+   - 降水量0mm、最低湿度≤94%、風速≥2.0m/sの科学的根拠
+
+5. **[FOUR_FILE_SYNC_IMPLEMENTATION.md](FOUR_FILE_SYNC_IMPLEMENTATION.md)** - 4ファイル同期システム
+   - CSV/KML/JS/Recordsの自動同期メカニズム
+
+6. **[EMAGRAM_DOCUMENTATION.md](EMAGRAM_DOCUMENTATION.md)** - エマグラム機能仕様
+
+7. **[PWA_IMPLEMENTATION_COMPLETE.md](PWA_IMPLEMENTATION_COMPLETE.md)** - PWA/オフライン機能
+
+## アーキテクチャ概要
+
+### コアシステム
+
+```
+start.py (4,363行)
+├── Flask アプリケーション (13 API エンドポイント)
+├── 4ファイル同期システム (CSV/KML/JS/Records)
+├── 実測データ基準予報アルゴリズム
+└── 地形補正システム
+```
+
+### フロントエンド
+
+```
+kelp_drying_map.html (約7,100行)
+├── 統合版メインUI (地図 + エマグラム + 等値線)
+├── 334地点マーカー表示（331干場 + 3観測点）
+├── 階層的フィルタリング (町→地区→部落)
+├── LINE通知登録フロー（ポップアップ→サイドパネル→LINE）
+├── チャットボット（ルールベース・干場アシスタント）
+├── 昆布シーズン長期予報タブ
+└── PWA/オフライン機能
+```
+
+### データ構造（4ファイル自動同期）
+
+1. **hoshiba_spots.csv** - メインデータベース（334地点）
+   - 331干場（H_XXXX_XXXX形式）
+   - 3特別地点（A_XXXX_XXXX: アメダス、R_XXXX_XXXX: 基準点）
+2. **hoshiba_spots_named.kml** - Google Earth用KMLファイル
+3. **all_spots_array.js** - 地図表示用JavaScript配列
+4. **hoshiba_records.csv** - 乾燥記録データベース（干場のみ、特別地点除外）
+
+## 重要な制約事項
+
+### 整合性の3大予防ルール（破ると乖離バグ・キャッシュバグが再発する）
+
+> **背景**: フルレビュー2回で最多検出パターンは「値が複数ファイルに散在して乖離」「SW古いキャッシュ配信」「新機能追加後の関連ファイル更新漏れ」。
+> 以下のルールはこれらを予防するためのもの。`python check_consistency.py` で機械的に検出可能。
+
+### ミニルール集（MINOR問題の再発防止）
+
+> **背景**: フルレビューで繰り返し検出された「小さいが確実に発生する」パターンを予防する。
+> 大きな設計判断ではなく、**「次に○○したとき、これも一緒にやる」** という習慣ルール。
+
+#### A. 廃止機能の完全除去ルール
+
+**APIを廃止したとき**（例: matplotlib → field API 移行）は以下をすべて確認する：
+1. フロントエンドの呼び出し箇所を `grep` して **残存がゼロ** になるまで修正する
+2. UIボタン・セレクト・表示エリアの **HTML要素**も一緒に削除する
+3. 関連する **チャットボットの説明文** も更新する
+
+```bash
+# 廃止確認コマンド
+grep -n "api/analysis/contours\|廃止予定の関数名" kelp_drying_map.html start.py dashboard.html
+```
+
+#### B. UIラベルの数値は直書きしないルール
+
+グリッド数・地点数・閾値などをUIテキストに **直書きした場合** は、コメントで定義元を明記する：
+
+```html
+<!-- 49 = 利尻山頂1点 + 内リング24点 + 外リング24点。変更時は _build_rishiri_grid() も更新 -->
+🟢 乾燥スコア分布（49点・山頂含む）
+```
+
+実装が変わったとき UIテキストも必ず一緒に更新する（検索: `grep -n "48グリッド\|49点\|334地点"` で確認）。
+
+#### C. 入力フィールド追加時の必須属性チェックリスト
+
+新しい `<input type="text">` を追加するたびに以下を確認する：
+
+| 属性 | 理由 |
+|------|------|
+| `maxlength="N"` | 長文ペーストによる意図しない処理を防ぐ |
+| `aria-label="説明"` | アクセシビリティ（スクリーンリーダー） |
+| `autocomplete="off"` | 干場名・気象値などへの誤オートコンプリートを防ぐ |
+
+#### D. manifest.json の宣言と実装の同期ルール
+
+`manifest.json` に新しいエントリを追加するときは **必ず実装もセットで行う**：
+
+- `shortcuts[].url` → Flask ルートが存在するか確認
+- `file_handlers[].action` → Flask ルートが存在するか確認
+- `icons[].src` → 実ファイルが存在するか確認
+- `version` → アプリバージョン（CLAUDE.md の「バージョン」欄）と一致させる
+
+**実装のないエントリは manifest.json に書かない**（ブラウザがPWA機能を呼んで404になる）。
+
+#### E. 定数は定数として定義するルール
+
+同じ文字列が **2箇所以上** に現れたら、即座に定数に切り出す：
+
+```javascript
+// ❌ 悪い例: 同じ免責文が sendForecastNotifications と sendTestNotification の2箇所
+const disclaimer = '\n\n※この予報は干場の乾燥条件...';  // ← 2ファイルに同じ文
+
+// ✅ 良い例: 通知セクションの冒頭に1つだけ定義
+const NOTIFICATION_DISCLAIMER = '\n\n※この予報は干場の乾燥条件...';
+// 各関数では: const disclaimer = NOTIFICATION_DISCLAIMER;
+```
+
+対象: 免責文・エラーメッセージ・閾値数値・URLパスなど
+
+#### F. 外部APIデータの innerHTML 注入禁止ルール
+
+Open-Meteo・JMA・外部APIのレスポンスデータを直接 `innerHTML` に入れない：
+
+```javascript
+// ❌ 危険: 外部データをそのまま注入
+div.innerHTML = `<p>${data.message}</p>`;
+div.innerHTML = data.warnings.map(w => `<span>${w.name}</span>`).join('');
+
+// ✅ 安全: textContent または エスケープ関数を使う
+const p = document.createElement('p');
+p.textContent = data.message;          // テキストのみ安全
+div.appendChild(p);
+
+// テンプレートリテラルで構造が必要な場合: エスケープ関数を使う
+const _esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+div.innerHTML = `<span>${_esc(data.name)}</span>`;
+```
+
+例外: 自アプリのサーバーコードが生成する静的文字列（`'<div>固定テキスト</div>'` 等）は許容。
+
+#### G. サーバー側の保護はフロントでも二重防衛するルール
+
+サーバー側で保護している制約（削除不可・編集不可・登録不可）は、**フロントでも同じ条件でUIを制御** する：
+
+```javascript
+// ❌ 危険: 特別地点でも削除ボタンを表示してサーバーに弾かせる
+async function deleteSpot(index) { ... }
+
+// ✅ 安全: フロントでも早期リターン（サーバーエラーをユーザーに見せない）
+async function deleteSpot(index) {
+    if (!spot.name.startsWith('H_')) {
+        alert('この地点は削除できません');
+        return;  // サーバーに送信しない
+    }
+    ...
+}
+```
+
+対象: 特別地点（A_/R_）の削除、記録不可地点への記録、ロック中の編集など。
+
+#### H. 気象値は必ず範囲クランプするルール
+
+気温・湿度・風速・スコアなど気象値を補正した直後は `min/max` でクランプする：
+
+```python
+# 湿度 0〜100% を保証
+humidity = max(0.0, min(100.0, humidity + correction))
+
+# 風速 0以上を保証（マイナス風速は物理的に無意味）
+wind_speed = max(0.0, wind_speed - forest_reduction)
+
+# スコア 0〜100を保証
+score = max(0, min(100, score))
+```
+
+**calculate_enhanced_drying_score() の冒頭にはすでに防衛的クランプが実装済み** — 追加の補正を加えるときも同様に行うこと。
+
+---
+
+### LINE操作ルール集（line_integration.py を変更するとき必ず守ること）
+
+> **背景**: 漁師さんは干場IDを覚えられない。LINEの会話フローで一度でも「H_XXXX_XXXX を入力してください」と言ってしまうと信頼を失う。以下のルールはその再発を防ぐ。
+
+#### L1. 干場IDをユーザーに入力・コピーさせない絶対ルール
+
+ユーザーが **覚える・コピペする** 必要のある形でIDを提示してはいけない。
+
+```python
+# ❌ 禁止: IDをユーザーに打ち込ませる
+return '通知登録 H_1631_1434 のように入力してください'
+
+# ✅ 正しい: WebアプリのURLだけ案内する
+return f'Webアプリの地図から干場を選び、「LINEで通知登録」をタップしてください。\n{_APP_URL}'
+```
+
+確認コマンド:
+```bash
+grep -n "H_.*入力\|IDを入力\|IDをコピー\|干場IDを" line_integration.py kelp_drying_map.html
+```
+→ 0件でなければバグ。
+
+#### L2. 呼び名は必須・任意にしてはいけないルール
+
+Webアプリの「LINEで通知登録」ボタンは、**呼び名入力欄が空白のときは押せない**状態を維持すること。
+
+```javascript
+// ✅ 呼び名なし → ボタン無効（pointer-events:none）
+lineBtn.style.pointerEvents = nick ? 'auto' : 'none';
+lineBtn.style.opacity = nick ? '1' : '0.5';
+```
+
+変更時の確認:
+```bash
+grep -n "pointer-events.*none\|lineRegisterNickHint\|lineNicknameHint" kelp_drying_map.html
+# → 両ボタン（サイドパネル・★モーダル）の両方で none が設定されていること
+```
+
+#### L3. 沖止めは日付なしで即登録しないルール
+
+「沖止め」とだけ入力されたとき（日付なし）は **即登録せずに日付を確認する**。  
+ペンディングアクション `{'type': 'nogo_date'}` を設定し、「何日を沖止めにしますか？」と返す。
+
+```python
+# ❌ 禁止: 翌日を即登録
+target = (now_jst + timedelta(days=1)).strftime('%Y-%m-%d')
+
+# ✅ 正しい: ペンディングで確認
+set_pending_action(source_type, source_id, {'type': 'nogo_date'})
+return '何日を沖止めにしますか？\n例: 「6/25」「6月25日」\n「キャンセル」で中止。'
+```
+
+#### L4. 漁期設定は6〜9月・未来日付のみ許可するルール
+
+`handle_set_season_start()` / `handle_set_season_end()` は必ず `_validate_season_date()` を通すこと。  
+直接 `_parse_date_arg()` だけを呼んで検証を省略してはいけない。
+
+バリデーション内容:
+- 月が 6〜9 月の範囲内か
+- 日付（今年）が今日以降か（過去日付は拒否）
+- 漢字形式（`6月25日`）も受け付けるか（`replace('月','/')` 処理）
+
+#### L5. ペンディングアクションには必ずキャンセル対応するルール
+
+新しいペンディング型（`type`）を追加するときは以下を必ずセットで実装する：
+
+1. フロー関数内でキャンセルワード `('キャンセル', 'cancel', 'Cancel', 'やめる', '中止')` を先頭でチェック
+2. キャンセル時は `clear_pending_action()` を呼んでから確認メッセージを返す
+3. `process_event()` の pending routing ブロックに `elif pa.get('type') == '{新型}':` 分岐を追加
+4. `handle_help()` 呼び出し時のキャンセルヒント文言は既存の「キャンセルで中止できます」に統合されるので追加不要
+
+#### L6. 沖止め・漁期登録完了メッセージに通知スキップ日時を明記するルール
+
+登録完了メッセージには必ず **具体的な通知時刻** を記載する：
+
+| 機能 | 記載すべき内容 |
+|------|---------------|
+| 沖止め登録 | 前日 `M/D` 16:00 の翌日予報と、当日 `M/D` 01:30 の早朝予報がスキップされること |
+| 漁期開始設定 | 前日（`M/D`）16:00 の翌日予報から通知が始まること |
+| 漁期終了設定 | 終了日（`M/D`）01:30 の早朝予報が最後になること |
+
+#### L7. QRボタンに誤操作リスクのあるコマンドを含めないルール
+
+Quick Reply ボタンに登録する内容は「タップしただけで副作用が起きないもの」のみ。  
+状態を変更するコマンド（沖止め登録・漁期設定・通知解除等）は QR ボタンに入れてはいけない。
+
+```python
+# ❌ 禁止: タップするだけで翌日が沖止めになる
+_HELP_QR = [{'label': '沖止め', 'text': '沖止め'}]
+
+# ✅ 正しい: 予報確認など副作用なしのコマンドのみ
+_HELP_QR = [
+    {'label': '今日の予報', 'text': '今日'},
+    {'label': '記録する',   'text': '記録'},
+]
+```
+
+#### L8. フォローイベントはQR付きヘルプで迎えるルール
+
+`event_type == 'follow'` および `event_type == 'join'` の応答は  
+`reply_text()` ではなく `reply_with_quick_reply(token, _HELP_TEXT, _HELP_QR)` を使うこと。
+
+#### L9. LINE操作のレビューは社員14・15が担当するルール
+
+`line_integration.py` または `kelp_drying_map.html` のLINE登録ボタン周辺を変更したら、  
+フルレビュー時に必ず以下の2名を起動すること：
+
+- **社員14（📲 LINE通知配信・コマンド担当）**: `ai_review_agents/AGENT_line_operation.md`
+- **社員15（🌊 LINE登録UXフロー担当）**: `ai_review_agents/AGENT_line_ux_flow.md`
+
+クイックモード用コマンド（最低限これだけは常に実行）:
+```bash
+# L1: ID入力要求がないか
+grep -n "H_.*入力\|IDを入力" line_integration.py kelp_drying_map.html
+
+# L2: 呼び名必須ボタン制御
+grep -n "pointer-events.*none" kelp_drying_map.html | grep -i "register"
+
+# L3: 沖止め即登録がないか
+grep -n "date_arg is None" line_integration.py | head -5
+
+# L7: _HELP_QRに沖止めがないか
+grep -n "_HELP_QR\s*=" line_integration.py
+```
+→ L1: 0件 / L2: 2件以上 / L3: pending設定あり / L7: 沖止め0件 が正常。
+
+---
+
+#### ルール1: 正規定義元（Single Source of Truth）
+
+以下の値は **Pythonの関数が正規定義元** であり、JSはその値に必ず合わせること。
+
+| 値 | Python正規定義元 | JS参照箇所 | 現在値 |
+|----|----------------|-----------|--------|
+| スコア色閾値 | `start.py: _score_color()` L2425 | `kelp_drying_map.html` scoreColor(2箇所) | 80/50点 |
+| アイコンパス | `service-worker.js` L312-313 | `kelp_drying_map.html` 通知3箇所 | `/static/icons/icon-192x192.png` |
+| valid_types | `start.py: get_analysis_field()` | `kelp_drying_map.html` toggleFieldLayer() | score/wind/humidity/temperature/solar/precipitation |
+
+**守るべきルール:**
+- JS の色閾値を変えるときは `_score_color()` と `_score_category()` を先に変え、JS はそれに合わせる
+- アイコンファイルを追加/移動したら `service-worker.js` と `kelp_drying_map.html` を同時更新
+- `valid_types` に型を追加したら `toggleFieldLayer()` / `_clearFieldLayers()` / `_fieldLayers` / chatbotPATTERNSを必ずセットで更新
+
+#### ルール2: Service Worker キャッシュバージョン更新
+
+**`kelp_drying_map.html` または `start.py` を変更したら、必ず `service-worker.js` の冒頭3行を上げること。**
+
+```javascript
+// service-worker.js 冒頭（現在値）
+const CACHE_NAME        = 'rishiri-kelp-v2-6-1';      // ← HTMLまたはPY変更時に上げる
+const STATIC_CACHE_NAME = 'rishiri-kelp-static-v2-6-1';
+const WEATHER_CACHE_NAME = 'rishiri-kelp-weather-v2-6-1';
+```
+
+バージョン命名規則: `v{メジャー}-{マイナー}-{パッチ}` （例: `v2-6-1` → `v2-6-2`）
+
+> **なぜ重要**: SW が古い HTML をキャッシュし続けると、コードを直してもユーザーの画面に反映されない。
+> Render デプロイ後にブラウザリロードしても古い画面が出る場合は、まずバージョンを確認すること。
+
+#### ルール3: 新レイヤー追加チェックリスト
+
+島内分布タブに新レイヤー（例: `fog`, `cape`）を追加するときは以下を全部チェックする：
+
+**バックエンド（start.py）**
+- [ ] `_compute_{type}_field()` 関数を追加
+- [ ] `get_analysis_field()` の `valid_types` タプルに追加
+- [ ] `elif field_type == '{type}':` ブランチを追加
+
+**フロントエンド（kelp_drying_map.html）**
+- [ ] `_fieldLayers` オブジェクトにキーを追加（`{type}: null`）
+- [ ] `_clearFieldLayers()` に `_removeLayer('{type}')` を追加
+- [ ] `toggleFieldLayer()` の `ALL_TYPES` 配列に追加
+- [ ] `toggleFieldLayer()` に `if (type === '{type}') load...` ブランチを追加
+- [ ] `selectFieldDay()` / `selectFieldHour()` に `load...` 呼び出しを追加
+- [ ] `_buildStatusLine()` にラベルを追加
+- [ ] ラジオボタンを UI に追加（`id="fieldLayer{Type}"`）
+- [ ] 凡例を UI に追加
+- [ ] `loadField{Type}()` 関数を実装し `window.loadField{Type}` に登録
+- [ ] チャットボット `PATTERNS` の `contour` キーワードに関連語を追加
+- [ ] `respondContour()` の説明文を更新
+
+---
+
+### スコア統一ルール（破ると乖離バグが再発する）
+
+乾燥スコアの補正は **`_apply_local_risk_adjustments()` 一か所のみ** で行う。
+
+```
+/api/forecast          ─┐
+                         ├→ _apply_local_risk_adjustments()  ← ここだけが補正を適用
+_compute_score_field   ─┘
+```
+
+**守るべきルール:**
+1. **新しい補正（例: フロード数、ENSO、潮汐）を追加するときは `_apply_local_risk_adjustments()` のシグネチャと本体だけを変更する**
+2. `/api/forecast` または `_compute_score_field` の一方だけに補正を書いてはいけない
+3. 補正の入力値を計算するヘルパー（例: `_compute_foehn_hours()`）は追加してよいが、スコアへの適用は必ず共通関数経由にする
+
+**補正の現行係数（`_apply_local_risk_adjustments()` 内）:**
+- 霧: medium -5点 / high -10点（stage_analysis より控えめ）
+- CAPE: `assess_cape_risk()` のペナルティをそのまま使用
+- フェーン: +2点/時、最大+8点
+- SST: high/very_high で -5点
+
+**実装:** `start.py` の `_apply_local_risk_adjustments()` 関数（`_safe_sum()` の直後、`_compute_score_field()` の直前）
+
+---
+
+### 干場削除の条件制限（現行3条件）
+
+干場削除はすべての条件をクリアする必要があります。**複数該当する場合はまとめて理由を表示する**（早期リターンではなく全収集）：
+
+1. **記録データが存在しない**（`hoshiba_records.csv`）
+2. **LINE通知に登録中のユーザーがいない**（Upstash Redis の `line_subscriptions`）
+3. **同時編集ロックがかかっていない**（5分間、`edit_locks/` ディレクトリ）
+
+廃止済み条件（コード上も削除済み）:
+- 旧2: お気に入り登録 → v2.6.5でお気に入り機能廃止
+- 旧3: Web Push通知設定 → v2.6.5でWeb通知廃止
+- 旧5: 機械学習訓練データ → 実質的に条件1と同一のため統合
+
+エラーメッセージ形式（複数理由の例）:
+```
+この干場は削除できません。
+
+理由：
+・乾燥記録がある
+・LINE通知に登録しているユーザーがいる
+```
+
+実装: [start.py](start.py) の `delete_spot()` 関数（`block_reasons` リストで収集後に一括返却）
+
+### 地点命名規則
+
+**干場（Hoshiba）**:
+- 形式: `H_(北緯の小数部分4桁)_(東経の小数部分4桁)`
+- 例: `H_1631_1434` = 北緯45.1631°、東経141.1434°
+
+**特別地点**:
+- **アメダス観測点**: `A_XXXX_XXXX`
+  - `A_1783_1383`: アメダス沓形（利尻町沓形泉町）
+  - `A_2417_1867`: アメダス本泊（利尻富士町鴛泊本泊）
+- **基準点**: `R_XXXX_XXXX`
+  - `R_1800_2392`: 利尻山頂（標高1,721m、町・地区・部落=―）
+
+**特別地点の制限**:
+- 削除不可（システム保護）
+- 乾燥記録の登録不可（干場ではないため）
+- 予報データは通常通り取得可能
+
+## API エンドポイント（13個）
+
+| カテゴリ | エンドポイント | 説明 |
+|---------|--------------|------|
+| 情報 | `GET /` | システム情報・API一覧 |
+| 情報 | `GET /health` | ヘルスチェック |
+| 天気 | `GET /api/weather` | 現在天気取得 |
+| 予報 | `GET /api/forecast` | 7日間乾燥予報 |
+| 干場 | `GET /api/spots` | 地点リスト（334地点: 331干場+3観測点） |
+| 干場 | `POST /add` | 干場追加 |
+| 干場 | `POST /delete` | 干場削除（3条件制限付き: 記録・LINE登録・ロック） |
+| 記録 | `POST /record` | 乾燥記録追加・更新 |
+| 記録 | `GET /record/<name>/<date>` | 記録取得 |
+| 地形 | `GET /api/terrain/<spot_name>` | 地形情報・補正値 |
+| 分析 | `GET /api/analysis/contours` | 等値線解析（旧・非推奨。新UIからは呼ばない） |
+| 分析 | `GET /api/analysis/field` | 島内分布図（新・計画中: score/wind/humidity/temperature/solar） |
+| 分析 | `GET /api/analysis/spot-differences` | 干場間気象差異 |
+| 検証 | `GET /api/validation/accuracy` | 予報精度検証 |
+
+詳細は [README.md](README.md) を参照してください。
+
+> **等値線解析タブ刷新計画**: [CONTOUR_REDESIGN_PROPOSAL.md](CONTOUR_REDESIGN_PROPOSAL.md) 参照。
+> matplotlibサーバーレンダリングからLeaflet/Canvasフロント描画へ移行予定。
+> タブ名「等値線解析」→「島内分布」に変更。削除対象: 500hPa渦度・700hPa鉛直流等の専門気象図。
+
+## 主要機能
+
+### 1. 実測データ基準予報アルゴリズム
+
+- **降水量**: 0mm（絶対条件）
+- **最低湿度**: ≤94%
+- **平均風速**: ≥2.0m/s
+- **データソース**: 沓形アメダス H_1631_1434地点（21件、2025年6-8月）
+
+### 2. 地形補正システム（Open-Meteo補完型）
+
+本システムの地形補正は、Open-Meteo APIの5kmメッシュデータを干場スケール（数百m）にダウンスケールする役割を果たします。
+
+| 補正項目 | 実装状況 | 理由 |
+|---------|---------|------|
+| **気温補正** | ❌ 削除 | Open-Meteoが既に0.7°C/100mで標高補正済み |
+| **風速補正** | ✅ 実装（加算型・簡易版） | 森林減衰・海岸増強（Open-Meteoは未実施） |
+| **湿度補正** | ✅ 実装（固定値・簡易版） | 森林保水・海岸潮湿効果 |
+| **onshore wind判定** | ✅ 実装（補正適用済み） | `wind_mountain_angle_diff < 90°`時のみ海岸湿度/風速補正を適用（`get_forecast()` L1269-1280） |
+| **霧リスクスコア** | ✅ 実装 | 露点降下量<2°Cで`_apply_local_risk_adjustments()`にスコア減算（G4） |
+| **フロード数診断** | 🔲 未実装（要対応） | 流れ体制（越山/回り込み）の切り替え |
+| **山背風フェーン検知**（v2.6.30〜、MeteoSwiss式） | ✅ 実装 | 06時の角度ゲート（>90°）＋利尻山頂(R_1800_2392)との温位差で強度を連続的に判定（`_compute_foehn_intensity_hours()`）。MeteoSwissの客観的フェーン指数（Dürr, 2008）を参考にした設計。`_apply_local_risk_adjustments()`に最大+15点、詳細は`FOEHN_PARAMETERIZATION_RESEARCH_20260722.md` |
+| **風下側「山陰晴れ」日射補正**（v2.6.30〜） | ✅ 実装 | 同フェーン強度に応じ、スコア入力用`avg_solar_radiation`のみ最大+50%補正（`_apply_leeward_solar_boost()`）。表示天気は不変 |
+
+#### 現行の補正値（start.py `get_forecast()` 内、約L847-L863）
+
+```python
+# 風速補正（加算型）
+if is_forest:  wind_speed -= 2.5          # 森林：風速減少
+if is_coastal: wind_speed += 1.0          # 海岸：常時増加（⚠️ onshore限定が望ましい）
+
+# 湿度補正（固定値）
+if is_forest:  humidity += 10.0           # 森林：常時+10%
+if is_coastal: humidity += 5.0            # 海岸：常時+5%（⚠️ onshore限定が望ましい）
+if elevation > 10: humidity -= elevation / 100 * 1.0  # 標高効果
+```
+
+> **注意**: CLAUDE.md旧版に「乗算型（×0.4, ×1.25）」「水蒸気圧ベース」と記載があったが、
+> 実際のコードは加算型・固定値の簡易実装。[ISLAND_METEOROLOGY_RESEARCH.md](ISLAND_METEOROLOGY_RESEARCH.md) §12に
+> 詳細なギャップ分析と改善提案あり。
+
+#### 改善ロードマップ
+
+**気象地形補正（[ISLAND_METEOROLOGY_RESEARCH.md §11](ISLAND_METEOROLOGY_RESEARCH.md)より）**
+
+1. ~~**霧リスクスコア**~~ — ✅実装済み（`_apply_local_risk_adjustments()`）
+2. ~~**onshore限定補正**~~ — ✅実装済み（`get_forecast()` L1269-1280）
+3. ~~**山背風（フェーン）ボーナス**~~ — ✅実装済み（`_apply_local_risk_adjustments()`、最大+8点）
+3-b. ~~**風下側「山陰晴れ」日射補正**~~ — ✅実装済み（v2.6.29、`_apply_leeward_solar_boost()`。フェーン時間比率で`avg_solar_radiation`を最大+30%補正しK1スコアに反映。ユーザー実地フィードバック「風下側は曇り予報でも実際は晴れて乾く」への対応）
+4. **フロード数 Fr = U/(Nh)** — 850/700 hPaデータは既取得済み。Fr < 0.4 → 回り込みモード、Fr > 1 → 越山モードで補正切替（未実装）
+5. **カタバ風スコア** — 早朝01:30通知用：雲量<20% + 地上風速<3 m/s → 夜間カタバ風（乾燥）を加点（未実装）
+
+**昆布乾燥スコア改善（[KOMBU_DRYING_RESEARCH.md §10](KOMBU_DRYING_RESEARCH.md)より）**
+
+6. **日射スコア追加（K1・最優先）** — `calculate_enhanced_drying_score()` に `avg_solar_radiation` を引数追加。日射≥400 W/m²で+15、<50 W/m²で-15
+7. **降水0mm絶対条件（K8）** — `precipitation < 1` を `precipitation == 0` に変更。0.5mm雨でも昆布干し不可
+8. **曇天時 solar_score 下限修正（K4）** — 日射<50 W/m² の solar_score を 20→0 に変更
+9. **再吸湿リスク算出（K6）** — 10〜16時の湿度上昇率(>3%/時)を算出し取り込み推奨時刻を自動調整
+
+**Windyアプリ比較からの導入候補（[WINDY_RESEARCH.md §6](WINDY_RESEARCH.md)より）**
+
+10. **CAPE指数（W10・最優先）** — Open-Meteo URL に `cape` 追加のみ（極小コスト）。突発積乱雲リスクをスコアに反映
+11. **降水確率・PoP（W11）** — `precipitation_probability` を API に追加。「確率35%」表示でユーザーの計画判断を支援
+12. **海水温・SST（W6）** — Open-Meteo Marine API から SST 取得。SST<15°C → 霧リスクフラグ追加
+13. **潮汐予報（W5）** — JMA 潮位 API 統合。干場カードに満潮/干潮時刻を表示
+14. **ソルナー指数（W9）** — 外部 API 不要（月齢計算のみ）。月相と漁業活性の参考情報を表示
+
+**等値線解析タブ刷新（[CONTOUR_REDESIGN_PROPOSAL.md](CONTOUR_REDESIGN_PROPOSAL.md) より）**
+
+- `shortwave_radiation` を `/api/forecast` に追加（`direct_radiation` の上位互換）
+- 新API `GET /api/analysis/field?type=score|wind|humidity|temperature|solar&day=0&hour=10` を実装
+- フロントは Leaflet CircleMarker / Polyline矢印 / 半透明円で描画（matplotlibを廃止）
+- タブ名「等値線解析」→「島内分布」に変更
+- 旧 `/api/analysis/contours` は互換用に残すがUIからは外す
+- MVP: `score` + `wind` の2図を先行実装（3〜5日）、`temperature` + `solar` は第2PR
+
+- **onshore wind判定（現行）**:
+  - 利尻山頂を極とした放射方向で海の方向を計算
+  - 気象学的方位角（北=0°、東=90°、南=180°、西=270°）
+  - 風向と山頂方位角の角度差（`wind_mountain_angle_diff`）を計算し、海岸湿度/風速補正に反映
+  - フェーン検知・風下側日射補正（v2.6.30〜）は`_compute_foehn_intensity_hours()`（MeteoSwiss式、山頂との温位差ベース）に統合済み。詳細は本節末尾の改善ロードマップ参照
+
+**標高データの統合**:
+- Open-Meteo Elevation API（Copernicus GLO-90 DEM）を使用
+- 全API呼び出しに`elevation`パラメータを追加
+- 各地点の正確な標高を取得（例: 沓形14m、山頂1,721m）
+- Open-MeteoのDEM補正を最大限活用
+
+### 3. 特別地点システム（v2.5.0新機能）
+
+**334地点体制**:
+- **331干場**: 従来の昆布干場（記録・削除可能）
+- **3観測/基準点**: 予報精度向上と気象理解のための特別地点
+
+**3つの特別地点**:
+
+1. **A_1783_1383（アメダス沓形）**
+   - 座標: 北緯45.1783°、東経141.1383°、標高14m
+   - 分類: 利尻町 > 沓形 > 泉町
+   - 役割: 公式観測データで予報精度を検証
+
+2. **A_2417_1867（アメダス本泊）**
+   - 座標: 北緯45.2417°、東経141.1867°、標高39m
+   - 分類: 利尻富士町 > 鴛泊 > 本泊
+   - 役割: 利尻島北部の公式データ、沓形との気象差異把握
+
+3. **R_1800_2392（利尻山頂）**
+   - 座標: 北緯45.1800°、東経141.2392°、標高1,721m（登録地点としての座標。地点命名規則により緯度経度小数部をそのまま丸めたもの）
+   - 分類: ― > ― > ―（分類なし）
+   - 役割: 島全体の気象を支配、風上/風下効果の判定、フェーン現象の検出
+   - **注意（v2.6.30〜）**: `start.py`内のフェーン計算用の内部定数`SUMMIT_LAT/SUMMIT_LON`は、JMA公式の真の山頂座標（45.1786, 141.2419＝45°10'43"N 141°14'31"E、南峰1,721m）を使用している。登録地点R_1800_2392自体の座標（上記、GSI標高で1551m相当＝真の山頂から水平約260mズレ）は4ファイル同期の対象なので変更していない。両者が一致していない点に注意（詳細: `FOEHN_PARAMETERIZATION_RESEARCH_20260722.md`）。
+
+**特別地点の活用**:
+- 山頂風向から各干場のonshore/offshore判定
+- アメダス2地点で公式データとの比較
+- 3地点トライアングル観測による立体的気象把握
+
+### 4. 風向表示システム（v2.6.15〜）
+
+**矢印 + 16方位英略語** 形式で表示（例: `↙ NE`、`→ W`）。
+
+- 表示関数: `windDisplay(deg)` — `kelp_drying_map.html` 先頭インラインスクリプト内
+- 伝統風名（アイ/シモ/クダリ等）は参考文献によって方位が異なる問題があり **v2.6.15 で廃止**
+- `rishiri_wind_names.js` ファイルは廃止済み（どのHTMLからも読み込まれていない）
+
+### 5. PWA/オフライン機能
+
+- Service Workerによるキャッシュ管理
+- オフライン時の仮保存と自動同期
+- 接続状態のリアルタイム表示
+
+### 6. 通知システム（v2.6.8 時点: LINEに統一）
+
+> ⚠️ v2.6.5 でWeb Notifications API（アプリ内通知）は**完全廃止**。
+> 通知はすべてLINE公式アカウント経由に統一されました。
+
+| 通知種別 | 時刻 | 配信手段 |
+|---------|------|----------|
+| 夕方通知 | 毎日16:00 JST | LINE Push（`line_integration.py`） |
+| 早朝通知 | 毎日01:30 JST | LINE Push（`line_integration.py`） |
+| 緊急アラート | 随時 | LINE Push（スコア急変時） |
+
+**ユーザーフロー：**
+1. アプリ地図で干場を選択 → ポップアップ「📲 LINE通知登録」ボタン
+2. サイドパネルへ自動スクロール → 呼び名を入力
+3. 「LINEで通知登録」ボタン → LINE OAへメッセージ送信 → 登録完了
+
+**LINE OA情報：**
+- ベーシックID: `@766cfpki`
+- 友達追加URL: `https://line.me/R/ti/p/%40766cfpki`
+- 登録データ永続化: Upstash Redis（`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` 環境変数）
+
+実装: [line_integration.py](line_integration.py)（通知配信）、[kelp_drying_map.html](kelp_drying_map.html)（LINE登録UI）
+
+### 7. ルールベースチャットボット「干場アシスタント」（v2.6.0）
+
+AIなし・無料のパターンマッチング型チャットボット。右下フローティングボタン（💬）から起動。
+
+**対応質問カテゴリ：**
+- アプリの使い方・各機能の操作説明
+- 今日・明日・今週の乾燥予報（APIから動的取得）
+- 部落名を含む質問 → その部落の7日間乾燥適日数を自動計算
+- 複数エリア比較（「○○と△△を比べて」）
+- 方角比較（「東側と西側どちらが干せる？」）
+- 気象学初心者向け解説（詳細モード付き）
+
+**方角判定の仕組み：**
+利尻山頂（R_1800_2392: 45.1800N, 141.2392E）を原点として各干場の方位角を計算。
+ハードコード不使用。実測座標による動的判定。
+
+**方角別の部落分布（参考）：**
+- 北（315〜45°）: 野塚・本泊・富士岬・栄町・港町（鴛泊）
+- 東（45〜135°）: 旭浜・石崎・二石・鬼脇・金崎（鬼脇）、雄忠志内（鴛泊）
+- 南（135〜225°）: 南浜・野中・沼浦（鬼脇）、仙法志各部落、湾内（鴛泊）
+- 西（225〜315°）: 沓形各部落、長浜・久連（仙法志）、大磯（鴛泊）
+
+**気象解説（詳細モード）：**
+「初心者向けに」「詳しく」「わかりやすく」等のキーワードで詳細解説に切替。
+対応トピック：エマグラム・等値線・湿度・風と乾燥・オホーツク高気圧・エルニーニョ/ラニーニャ・逆転層・海風/陸風・霧
+
+実装: [kelp_drying_map.html](kelp_drying_map.html) （`CHAT_PATTERNS` 配列〜`processMessage` 関数周辺）
+
+### 8. 干場ニックネーム機能（v2.6.8）
+
+LINE通知登録時に各ユーザーが干場に呼び名をつけられる。
+
+**設計方針：**
+- **LINE通知登録時**: 呼び名（ニックネーム）を入力必須。LINEメッセージで `通知登録 {spotId} {nickname}` を送信
+- **呼び名保存先**: `line_subscriptions` の `spot_nicknames` フィールド（Upstash Redis）
+- **アプリ側ニックネーム**: localStorage保存 → その端末のみに表示（LINE登録とは独立）
+- **呼び名なしでは登録ボタンは無効**（`pointer-events:none`）← 必ず維持すること（CLAUDE.md L2ルール参照）
+
+### 9. 昆布シーズン長期予報タブ（v2.6.0）
+
+6〜9月の昆布漁期に向けた季節見通しを表示する専用タブ。
+
+**表示内容：**
+- 現在月以降の残りシーズン月別見通し（干せる日が増えるか減るか）
+- ENSO状況（エルニーニョ/ラニーニャ/中立）
+- 大気循環パターン（オホーツク高気圧・太平洋高気圧・チベット高気圧）
+- 専門家コメント欄
+- JMA等外部リンク（詳細は各自で確認）
+
+**更新方式：** 管理者が月1回 `/api/seasonal_outlook` 経由で手動更新。
+表示月は現在月（JST）から自動算出（例：5月末 → 6〜9月表示、7月末 → 8〜9月表示）。
+
+## 開発ガイドライン
+
+### コーディング規約
+
+- start.pyが4,500行を超えたらモジュール分割を検討（現在4,363行）
+- kelp_drying_map.htmlが7,000行を超えたらJS分離を検討（現在約7,100行 — **要注意: すでに超過。次回大型機能追加時にJS分離を実施すること**）
+- 新規APIエンドポイントは必ずREADME.mdとsystem_specification.mdを更新
+- すべての時刻はJST（日本標準時）で統一
+
+### データバックアップ
+
+- `hoshiba_records.csv` - 毎日バックアップ
+- `hoshiba_spots.csv` - 変更時バックアップ
+- 4ファイル同期により自動整合性維持
+
+### デプロイ
+
+- **本番環境: Render**（`https://rishiri-kelp-forecast-system.onrender.com`）
+- GitHubリポジトリ: `famosoyuhei/rishiri-kelp-forecast-system`（mainブランチ自動デプロイ）
+- 設定ファイル: [Procfile](Procfile)
+- デプロイ手順: [DEPLOYMENT.md](DEPLOYMENT.md)
+- **注意**: `rishiri-kelp-forecast`（旧v2.0.0サービス）は2026年4月5日に削除済み
+
+## アーカイブ構成
+
+`archive/` フォルダには約60個の検証・分析用スクリプトが保管されています：
+
+- 気象データ解析（ERA5、ラジオゾンデ、アメダス）
+- 相関分析スクリプト
+- 機械学習モデル実験
+- 精度検証ツール
+
+これらは本番環境では不要ですが、研究・改良時に参照してください。
+
+## よくある作業
+
+### 新しい干場を追加する
+
+1. ユーザーがUI上で地図をクリック
+2. 座標から自動命名（`H_XXXX_XXXX`）
+3. 4ファイル自動同期（CSV/KML/JS/Records）
+
+### 予報アルゴリズムを修正する
+
+1. [THRESHOLD_UPDATE_SUMMARY.md](THRESHOLD_UPDATE_SUMMARY.md) で現在の閾値を確認
+2. [start.py](start.py) の予報ロジックを修正
+3. 実測データで検証
+
+### UIを修正する
+
+- メインUI: [kelp_drying_map.html](kelp_drying_map.html)
+- ダッシュボード: [dashboard.html](dashboard.html)
+- モバイル版: [mobile_forecast_interface.html](mobile_forecast_interface.html)
+
+## トラブルシューティング
+
+### 4ファイルの同期が失敗する
+
+[FOUR_FILE_SYNC_IMPLEMENTATION.md](FOUR_FILE_SYNC_IMPLEMENTATION.md) を参照
+
+### 干場削除ができない
+
+5条件制限を確認:
+- [system_specification.md](system_specification.md) の「干場削除の制限事項」セクション
+- [start.py:985-996](start.py#L985-L996) の実装コード
+
+### オフライン機能が動作しない
+
+[PWA_IMPLEMENTATION_COMPLETE.md](PWA_IMPLEMENTATION_COMPLETE.md) を参照
+
+## 気象データソース技術仕様
+
+### Open-Meteo API 仕様
+
+本システムは **Open-Meteo API** を使用しており、以下の技術仕様を理解することが重要です。
+
+#### 使用モデル
+
+- **JMA MSM（メソモデル）**: 5km解像度、日本周辺の高解像度モデル
+- **JMA GSM（全球モデル）**: 13km解像度、バックアップ用
+- **更新頻度**: 1時間間隔（一部6時間データから補間）
+
+#### 空間解像度と利尻島
+
+- **利尻島（直径約20km）**: MSMで約4×4=16グリッド
+- **地形効果**: 5kmメッシュで山岳・海陸風を数値計算済み
+- **限界**: 干場レベル（数百m）の微気象は捉えられない
+
+#### Open-Meteoの標高補正
+
+重要：**Open-Meteoは以下の補正を自動実施します**
+
+1. **Copernicus GLO-90 DEM使用**（90m解像度、±4m精度）
+2. **気温補正**: 0.7°C/100m の標準減率で自動補正
+3. **標高考慮型グリッド選択**: 最も標高が近いグリッドセルを選択
+4. **風速・湿度**: 標高補正なし（高解像度モデルの地形効果のみ）
+
+**結論**:
+- ✅ 気温は二重補正を避けるため、独自補正を削除
+- ✅ 風速・湿度は独自補正が有効（Open-Meteoは未実施）
+
+### 島嶼部気象予測の最新技術（2026年1月時点）
+
+#### 高解像度数値予報
+
+- **対流解像モデル**: 1-4kmメッシュが主流
+- **利尻島スケール**: 1-2kmメッシュで海陸風循環・山岳波を明示的に計算可能
+- **ダウンスケーリング**: 高解像度DEM（5-10m級）を使用し、100mオーダーまで推定
+
+#### 観測同化と AI
+
+- **マルチソース観測**: レーダー・衛星・ブイ・地上観測の統合
+- **ナウキャスト**: 10-60分先の雷・強雨予測にディープラーニング（LightningCast等）
+- **バイアス補正**: 機械学習でモデルの系統誤差を学習・補正
+
+#### 島嶼部特有の考え方
+
+- **海が支配的**: 海面水温・海流・海陸風周期を重視
+- **観測網が粗い**: 確率予報・アンサンブル予測が重要
+- **風上/風下効果**: 単独峰の利尻島では風向で降水・雲が顕著に分かれる
+
+**本システムの位置づけ**:
+- Open-Meteo（5km）から干場スケール（数百m）へのダウンスケーリング
+- 島嶼部気象予測の最新トレンド（高解像度DEM活用）に準拠
+- 海風・陸風判定による物理的妥当性の向上
+
+## 連絡先・リソース
+
+- **GitHub**: (リポジトリURL)
+- **気象データ**: Open-Meteo API（JMA MSM 5km + GSM 13km）
+- **地図データ**: OpenStreetMap
+- **DEM**: Copernicus GLO-90（Open-Meteo経由）
+- **実測データ提供**: H_1631_1434地点記録者
+
+---
+
+**最終更新**: 2026年5月29日
+**ドキュメントバージョン**: 2.3
+
+---
+
+## 更新履歴
+
+### v2.6.30 (2026年7月22日)
+- **フェーン検知をMeteoSwiss式（山頂温位差ベース）に刷新** (`start.py`)
+  - **背景**: v2.6.29の角度×風速ランプ方式を50日間実測バックテストしたところ、「弱い風下日（実測気温差+0.13℃）でも強い風下日（+0.68℃）とほぼ同水準の補正がかかる」過大補正パターンを発見（`ai_review_agents/FOEHN_PHYSICS_AUDIT_20260721.md`）。世界の運用気象機関の手法を調査（`ai_review_agents/FOEHN_PARAMETERIZATION_RESEARCH_20260722.md`）した結果、MeteoSwissの客観的フェーン指数（Dürr, 2008、2008年から17年運用中）が幾何学的角度ではなく**主稜線の実測点との温位差**でフェーン強度を判定していることが判明。本システムには既に山頂特別地点`R_1800_2392`の予報インフラがあり、新規外部依存なしで再現可能と判断し実装。
+  - `_compute_foehn_intensity_hours()`を新規追加（旧`_leeward_intensity()`/`_compute_foehn_hours()`を置き換え）。06時の風向角度差>90°（風下側）をゲート条件とし、山頂(`SUMMIT_LAT/LON`)との温位差（乾燥断熱減率0.0098°C/mで正規化）を較正済みしきい値で0〜1にスケーリングして強度を決定。
+  - `_get_summit_hourly_temps()`を新規追加。山頂の気温予報を`_field_cache_get/set()`（既存のRedis+インメモリキャッシュ）で30分キャッシュし、`/api/forecast`のどのリクエストでも共有（新規APIコールは実質1回/30分）。`_compute_score_field()`は49点グリッドに山頂が既に含まれるため追加コールなし。
+  - **山頂座標の修正**: `SUMMIT_LAT/SUMMIT_LON`をJMA公式座標（45.1786, 141.2419＝45°10'43"N 141°14'31"E、南峰1,721m）に統一。旧来`get_forecast()`は45.1821/141.2421（島中心）、`_compute_score_field()`は45.1800/141.2392（丸め座標、GSI標高で1551m相当）と2箇所で異なる値を使っており、かつ真の山頂から最大約260m水平にズレていた不整合を解消。
+  - `_apply_leeward_solar_boost()`の上限を30%→50%、`_apply_local_risk_adjustments()`のフェーンボーナス上限を8点(2点/h)→15点(3点/h)に引き上げ（stage_analysis側の既存式と統一）。
+  - 較正定数（`_FOEHN_SIGNAL_LOW`/`_FOEHN_SIGNAL_HIGH`）は2026-06-01〜07-20の50日間実測アーカイブデータ（49点グリッド×2400地点日）の温位差分布p50/p99。今回の設計で風上の予報は完全不変（差分0.0）、実測気温差との相関r=0.765、弱い日/強い日の補正比例性0.76→0.518に改善したことを検証済み。
+  - テスト: `tests/test_leeward_solar_boost.py`
+- Service Worker バージョン: `v2-6-30`
+
+### v2.6.29 (2026年7月21日)
+- **風下側「山陰晴れ」日射補正を追加** (`start.py`)
+  - **背景**: 漁業者からの実地フィードバック「南西風のとき曇り予報でも風下の鴛泊は実際は晴れて乾く。北東風なら逆に沓形が晴れる」（利尻山が風下側の雲を遮る効果）。既存の山背風フェーンボーナス（G6）はスコアに最大+8点の後付け補正のみで、K1日射スコア（最大±35点）が使う`avg_solar_radiation`自体はOpen-Meteoの生値のままだったため、風下でも「曇り扱い」のまま乾燥判定されるギャップがあった。
+  - `_apply_leeward_solar_boost(avg_solar, foehn_hours, total_hours)` を新規追加（`_compute_foehn_hours()` の直後）。フェーン判定時間の日中時間帯に占める比率に応じて、**スコア計算専用**の日射量を最大+30%補正（900W/m² ceiling）。
+  - 表示用の `hour_data['solar_radiation']` / `daily_summary['avg_solar_radiation']` は一切変更しない — Open-Meteoの天気表示と、風下効果を織り込んだスコア判定を分離。
+  - `/api/forecast`（`get_forecast()`）と `_compute_score_field()`（島内分布49点）の両方から呼び出し、スコア統一ルールに準拠。
+  - 定数（+30%上限・900W/m² ceiling）は実測検証データがまだ無いための保守的な初期値。`/api/validation/accuracy` での検証後にチューニング予定。
+  - テスト: `tests/test_leeward_solar_boost.py`
+- Service Worker バージョン: `v2-6-29`
+
+### v2.6.16〜v2.6.19 (2026年6月14日)
+- **降水量判定を 04:00-16:00 積算に統一** (`start.py`)
+  - `/api/forecast` の各日スコア計算で `daily['precipitation_sum']`（24h合計）→ 時間別データ `[start_hour:end_hour]`（04:00-16:00積算）に変更
+  - **設計根拠**: 干場は砂利。前夜どんなに雨が降っても04:00-16:00が0mmなら「干せる」と判定すべき
+  - `_compute_score_field()` はすでに `_extract_day_window()` で同窓を使用 → 全APIパスで統一完了
+- **AMeDAS・ナウキャスト降水量のRedis永続化** (`start.py`)
+  - `_obs_redis_get()` / `_obs_redis_set()`: TTL=90日の汎用ヘルパーを追加
+  - `_collect_amedas_from_openmeteo()`: Redis優先 → ローカルmigration → API取得 の順に変更
+  - `_record_nowcast_snapshot()`: 全334干場のナウキャスト降水量を `nowcast:daily:{YYYYMMDD}` に保存（NX dedup付き）
+  - **背景**: Renderのエフェメラルファイルシステムはデプロイ毎にリセットされるため Redis に永続化
+- **forecast_history の Redis 永続化** (`start.py`)
+  - `_obs_redis_scan_keys()`: SCAN ページング対応ヘルパーを追加
+  - `_save_forecast_history()`: `forecast:hist:{spot_name}:{YYYYMMDD}` キーへ保存（ローカルファイルは副）
+    - `precipitation_0416`（04:00-16:00積算）フィールドを追加
+    - 同一 `forecast_date` の重複登録を dedup チェックで防止
+  - `_auto_compare_precip_forecast()`: Redis SCAN 優先 → ローカルファイル fallback に変更
+    - `fc_precip` は `precipitation_0416` 優先（旧データは `precipitation` で代替）
+- Service Worker バージョン: `v2-6-22`
+
+### v2.6.9〜v2.6.11 (2026年5月29日)
+- **`登録解除 呼び名` コマンド追加** (`line_integration.py`)
+  - LINE上で登録干場を個別に解除できるように（`通知解除`は全解除のまま）
+  - 「干場削除」は Webアプリの物理削除と混同するため採用せず「登録解除」に命名
+  - `干場一覧` 表示末尾に「個別解除: 登録解除 呼び名」を追記
+  - `ヘルプ` に「干場一覧」「登録解除 呼び名」を追記
+  - 登録完了メッセージに「解除するときは登録解除 ○○と送ってください」を追記
+- **干場削除にLINE通知登録チェック追加** (`start.py`)
+  - 1人以上のLINEユーザーが登録中の干場は Webアプリから削除不可（`restriction_type: line_subscribed`）
+  - 記録あり・LINE登録ありが**両方**該当する場合、理由をまとめて一括表示
+  - 旧2（お気に入り）・旧3（Web Push通知）の死んだチェックを整理
+- **UptimeRobot設定** (monitor #803177862)
+  - `/health` を5分おきにping → Renderのスリープを防止
+  - LINEリッチメニューのreplyToken失効問題（冷起動30秒超）を解消
+
+### v2.6.8 (2026年5月29日)
+- **大規模リファクタ**: お気に入り機能・Web Push通知システムを完全削除（LINE通知に一本化）
+  - `favorites` 変数・favoritesPanel・favoritesButton・WebPush 関連コード一式を kelp_drying_map.html から除去
+  - 干場削除の5条件から「お気に入り登録」「通知設定」の2条件を削除（実質3条件に簡略化）
+- **LINEリッチメニュー文字化け修正**: フォントに NotoSansJP Black weight + stroke を適用
+- **モバイルスクロール修正**: 干場タップ後に `selectSpot()` が自動スクロールしなかった問題を修正
+  - `panel.scrollIntoView({ behavior: 'smooth', block: 'start' })` を 768px 以下で適用
+  - `openLineRegistration()` も同様のスクロール処理を追加
+- **LINE予報への追加干場ヒント（Q1）**: `handle_today/tomorrow/weekly()` 応答末尾に `_ADD_SPOT_HINT` を追加
+- **一般タブ降水量行（Q2）**: `generateHourlyDetails()` の一般向けカテゴリに1時間刻み降水量行を追加（0mm=グレー/微量=水色/1mm以上=濃青/5mm以上=赤）
+- **友達追加誘導（Q3）**: lineRegisterBtnWrap 先頭に「まず友達追加が必要」ボックス＋直接リンクを追加
+  - LINE OA: `@766cfpki` / URL: `https://line.me/R/ti/p/%40766cfpki`
+- **Upstash Redis確認**: Render環境変数（`UPSTASH_REDIS_REST_URL`・`UPSTASH_REDIS_REST_TOKEN`）が設定済みであることを確認。`line_subscriptions` データはRedisに永続化されデプロイをまたいで保持される
+- Service Worker バージョン: `v2-6-8`
+
+### v2.6.2〜v2.6.7 (2026年5月25日〜28日)
+- **全CLIフルレビュー×2**: 13エージェントによる自動検出 → CRITICAL 5件・MAJOR 33件を修正
+- matplotlib完全削除・datetime JST統一・CORS本番制限・APIレート制限・CSV Injection対策
+- 島内分布タブ実装（5レイヤー: score/wind/humidity/temperature/precipitation）
+- 二重リング49点グリッド（山頂1点+内リング24点+外リング24点）
+- ローカルリスク補正の完全統一（CAPE/霧/フェーン/SST を2APIパスで同一計算）
+- 自然言語サマリーカード・全島部落ランキング・島内分布タブUI完成（グローバルベンチマーク対応）
+
+### v2.6.0 (2026年4月5日)
+- アプリロゴ（app_icon.png）を全UIページ（メイン・ダッシュボード・モバイル）に統一追加
+- 通知システム全機能実装（夕方16:00・早朝01:30・緊急アラート・免責同意・音・バイブ・履歴・干場別ON/OFF）
+- ルールベースチャットボット「干場アシスタント」実装（無料・AI不使用）
+  - 部落別予報・複数エリア比較・方位比較（山頂座標ベース動的判定）
+  - 気象学初心者向け詳細解説8トピック（エマグラム・逆転層・霧・エルニーニョ等）
+- 干場ニックネーム機能（localStorage・端末個別）
+- 昆布シーズン長期予報タブ（月別見通し・ENSO・高気圧情報・手動更新方式）
+- Renderデプロイ環境整理（旧v2.0.0サービス `rishiri-kelp-forecast` を削除）
+
+### v2.5.0 (2026年1月8日)
+- 特別地点システムの追加（3地点: アメダス沓形・本泊、利尻山頂）
+- Open-Meteo Elevation API統合（Copernicus GLO-90 DEM）
+- 標高パラメータを全API呼び出しに追加
+- 気温補正の削除（Open-Meteo自動補正により二重補正回避）
+- onshore wind判定システムの実装（気象学的方位角への統一）
+- 334地点体制への拡大（331干場 + 3観測/基準点）
+
+### v2.4.1 (2025年12月14日)
+- エマグラム機能の完成
+- 実測データ基準予報アルゴリズムの確立
+- 4ファイル同期システムの実装
