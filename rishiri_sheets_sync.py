@@ -292,6 +292,72 @@ def report_grid_sizes(token: str) -> None:
         print(f'GRID REPORT FAILED: {e}', file=sys.stderr)
 
 
+def trim_tab(token: str, sheet_id: int, tab: str,
+             keep_rows: int, keep_cols: int,
+             cur_rows: int, cur_cols: int) -> dict:
+    """Shrink a tab's grid to its data extent plus a small margin.
+
+    Append-driven growth leaves grids far larger than the data (the
+    values API reports only data rows), and every reserved cell counts
+    against the workbook limit. Only ever shrinks; rows/columns beyond
+    the kept extent hold no values by construction.
+    """
+    new_rows = min(cur_rows, keep_rows)
+    new_cols = min(cur_cols, keep_cols)
+    if new_rows == cur_rows and new_cols == cur_cols:
+        return {'tab': tab, 'trimmed': False}
+    api(token, 'POST', f'{SHEETS_API}/{SPREADSHEET_ID}:batchUpdate', {
+        'requests': [{
+            'updateSheetProperties': {
+                'properties': {
+                    'sheetId': sheet_id,
+                    'gridProperties': {
+                        'rowCount': new_rows,
+                        'columnCount': new_cols,
+                    },
+                },
+                'fields': 'gridProperties',
+            },
+        }],
+    })
+    return {'tab': tab, 'trimmed': True,
+            'rows': [cur_rows, new_rows], 'cols': [cur_cols, new_cols]}
+
+
+def trim_synced_tabs(token: str, tabs: list[str]) -> None:
+    """Trim each synced tab's grid to its current data extent + margin."""
+    try:
+        meta = api(token, 'GET', f'{SHEETS_API}/{SPREADSHEET_ID}')
+    except Exception as e:
+        print(f'TRIM FAILED (metadata): {e}', file=sys.stderr)
+        return
+    by_title = {
+        s['properties']['title']: s['properties']
+        for s in meta.get('sheets', [])
+    }
+    for tab in tabs:
+        props = by_title.get(tab)
+        if not props:
+            continue
+        try:
+            values = get_values(token, tab)
+            data_rows = len(values)
+            data_cols = max((len(r) for r in values), default=0)
+            if data_rows == 0:
+                continue
+            grid = props.get('gridProperties', {})
+            result = trim_tab(
+                token, props['sheetId'], tab,
+                keep_rows=data_rows + 50, keep_cols=data_cols + 2,
+                cur_rows=grid.get('rowCount', 0),
+                cur_cols=grid.get('columnCount', 0),
+            )
+            if result.get('trimmed'):
+                print(json.dumps(result))
+        except Exception as e:
+            print(f'TRIM FAILED {tab}: {e}', file=sys.stderr)
+
+
 def main() -> int:
     if not SPREADSHEET_ID:
         print('RISHIRI_SPREADSHEET_ID is not set', file=sys.stderr)
@@ -331,6 +397,8 @@ def main() -> int:
     except Exception as e:
         failures += 1
         print(f'SECTION FAILED summary: {e}', file=sys.stderr)
+
+    trim_synced_tabs(token, all_tabs)
 
     return 1 if failures else 0
 
