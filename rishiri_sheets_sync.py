@@ -67,16 +67,15 @@ if SYNC_NOWCAST_RAW:
 
 # summary endpoint: tables key -> sheet tab (all rewritten).
 # The endpoint returns bare row lists (no columns wrapper), so columns are
-# derived from the row keys. The first five match the API's own
-# recommended_sheet_tabs; the rest are extra tables the API also returns.
+# derived from the row keys. Only the API's own recommended_sheet_tabs are
+# synced: extra tables (by_day_days_ahead, coverage_*, reliability_*) are
+# intentionally excluded — each new tab costs ~26k cells of grid and the
+# workbook is at the Sheets 2,000,000-cell limit (seen 2026-11-18).
 SUMMARY_TABS = {
     'by_day': 'summary_by_day',
     'by_days_ahead': 'summary_by_days_ahead',
     'by_area': 'summary_by_area',
     'by_buraku': 'summary_by_buraku',
-    'by_day_days_ahead': 'summary_by_day_days_ahead',
-    'coverage_by_day_days_ahead': 'summary_coverage_by_day_days_ahead',
-    'reliability_by_days_ahead': 'summary_reliability_by_days_ahead',
 }
 SUMMARY_PATH = '/api/validation/accuracy/sheets/summary?days={days}'
 
@@ -234,13 +233,30 @@ def upsert(token: str, tab: str, key_col: str,
 
 def rewrite(token: str, tab: str, columns: list[str],
             rows: list[dict]) -> dict:
+    """Replace a tab's contents in place.
+
+    Never clear-then-append: if the append is rejected (e.g. the workbook
+    cell limit), a cleared tab would be left empty. Instead overwrite from
+    A1 with values.update (no grid growth for same-size content), then
+    clear only the tail rows the new content no longer covers.
+    """
     values = [list(columns)] + [
         [cell(row.get(col)) for col in columns] for row in rows
     ]
-    url = (f"{SHEETS_API}/{SPREADSHEET_ID}/values/"
-           f"{quote(tab, safe='')}:clear")
-    api(token, 'POST', url)
-    append_rows(token, tab, values)
+    existing = get_values(token, tab)
+    old_rows = len(existing)
+    quoted = f"'{tab}'"
+    for i in range(0, len(values), 500):
+        chunk = values[i:i + 500]
+        url = (f"{SHEETS_API}/{SPREADSHEET_ID}/values/"
+               f"{quote(f'{tab}!A{i + 1}', safe='')}"
+               '?valueInputOption=RAW')
+        api(token, 'PUT', url, {'majorDimension': 'ROWS', 'values': chunk})
+    if old_rows > len(values):
+        tail = f'{tab}!A{len(values) + 1}:ZZ{old_rows}'
+        url = (f"{SHEETS_API}/{SPREADSHEET_ID}/values/"
+               f"{quote(tail, safe='')}:clear")
+        api(token, 'POST', url)
     return {'tab': tab, 'rows': len(rows), 'rewritten': True}
 
 
@@ -257,11 +273,31 @@ def run_section(token: str, tab: str, mode: str, key_col: str | None,
     return rewrite(token, tab, columns, rows)
 
 
+def report_grid_sizes(token: str) -> None:
+    """Print each tab's grid size so cell-limit problems are diagnosable."""
+    try:
+        meta = api(token, 'GET', f'{SHEETS_API}/{SPREADSHEET_ID}')
+        total = 0
+        for s in meta.get('sheets', []):
+            props = s.get('properties', {})
+            grid = props.get('gridProperties', {})
+            cells = grid.get('rowCount', 0) * grid.get('columnCount', 0)
+            total += cells
+            print(json.dumps({'grid': props.get('title'),
+                              'rows': grid.get('rowCount'),
+                              'cols': grid.get('columnCount'),
+                              'cells': cells}))
+        print(json.dumps({'grid_total_cells': total}))
+    except Exception as e:
+        print(f'GRID REPORT FAILED: {e}', file=sys.stderr)
+
+
 def main() -> int:
     if not SPREADSHEET_ID:
         print('RISHIRI_SPREADSHEET_ID is not set', file=sys.stderr)
         return 2
     token = access_token()
+    report_grid_sizes(token)
     all_tabs = [s[0] for s in SECTIONS] + list(SUMMARY_TABS.values())
     ensure_tabs(token, all_tabs)
 
