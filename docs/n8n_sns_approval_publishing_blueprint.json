@@ -7,7 +7,7 @@
     "approval_rule": "status=approved AND fact_check_status=ok AND scheduled_at_jst<=now_jst AND published_at_jst is blank AND NOT(island campaign scheduled after September 30)"
   },
   "safety": {
-    "dry_run_first": true,
+    "dry_run_first": false,
     "never_publish_statuses": ["draft", "needs_review", "scheduled", "published", "error", "hold"],
     "required_status": "approved",
     "required_fact_check_status": "ok",
@@ -118,7 +118,7 @@
     }
   ],
   "implementation_notes": [
-    "Start with dry_run mode and write would-be publish logs to review_notes.",
+    "Dry-run validation is complete; the dedicated \"Rishiri SNS Approval Publisher - Dry Run\" n8n workflow has been deactivated.",
     "Enable one platform at a time, starting with Facebook or Instagram if Meta credentials are ready.",
     "Do not enable X until API plan/cost is confirmed.",
     "Treat note and LINE as semi-automatic unless a reliable official posting path is available.",
