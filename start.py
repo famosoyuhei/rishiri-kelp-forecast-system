@@ -7375,7 +7375,9 @@ def _collect_amedas_from_openmeteo(target_date_str):
             times   = hourly.get('time', [])
             temps   = hourly.get('temperature_2m', [])
             humids  = hourly.get('relative_humidity_2m', [])
-            winds   = hourly.get('wind_speed_10m', [])
+            # Open-Meteo Archive は風速を km/h で返す。実測レコードの単位は m/s に統一する
+            # （予報側・Sheets 実測タブ・精度検証が m/s 前提のため、2026-11-19 修正）
+            winds   = [w / 3.6 if w is not None else None for w in hourly.get('wind_speed_10m', [])]
             precips = hourly.get('precipitation', [])
             valid_h = [h for h in humids  if h is not None]
             valid_w = [w for w in winds   if w is not None]
@@ -7384,6 +7386,7 @@ def _collect_amedas_from_openmeteo(target_date_str):
                 'date':         f'{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}',
                 'station_id':   st['id'],
                 'station_name': st['name'],
+                'wind_unit':    'ms',
                 'hourly': [
                     {'time': t, 'temperature': te, 'humidity': hu,
                      'wind_speed': wi, 'precipitation': pr}
