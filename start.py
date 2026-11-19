@@ -7411,6 +7411,118 @@ def _collect_amedas_from_openmeteo(target_date_str):
     return success
 
 
+# ── 実測レコード風速単位の過去分補正（2026-11-19 追加） ─────────────────────
+# _collect_amedas_from_openmeteo の単位修正（km/h → m/s）より前に保存された
+# amedas:obs:* レコードを一括補正する。wind_unit == 'ms' のレコードは対象外
+# （冪等）。デフォルトは dry-run で、?apply=1 のときだけ書き込む。
+def _convert_amedas_wind_record(record):
+    """km/h で保存された実測レコードを m/s に変換した新しい dict を返す。"""
+    converted = dict(record)
+    hourly = []
+    for h in record.get('hourly', []):
+        entry = dict(h)
+        w = entry.get('wind_speed')
+        entry['wind_speed'] = round(w / 3.6, 2) if isinstance(w, (int, float)) else w
+        hourly.append(entry)
+    converted['hourly'] = hourly
+    valid_w = [h['wind_speed'] for h in hourly if isinstance(h.get('wind_speed'), (int, float))]
+    summary = dict(record.get('daily_summary') or {})
+    if valid_w:
+        summary['avg_wind'] = round(sum(valid_w) / len(valid_w), 2)
+    converted['daily_summary'] = summary
+    converted['wind_unit'] = 'ms'
+    return converted
+
+
+def _scan_amedas_obs_keys():
+    """Upstash を SCAN して amedas:obs:* のキー一覧を返す。"""
+    rest_url = os.environ.get('UPSTASH_REDIS_REST_URL', '').strip().rstrip('/')
+    token    = os.environ.get('UPSTASH_REDIS_REST_TOKEN', '')
+    if not rest_url or not token:
+        return []
+    keys = []
+    cursor = '0'
+    while True:
+        resp = requests.post(
+            rest_url,
+            headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
+            json=['SCAN', cursor, 'MATCH', 'amedas:obs:*', 'COUNT', '200'],
+            timeout=10,
+        )
+        result = resp.json().get('result') or []
+        if len(result) != 2:
+            break
+        cursor, batch = result
+        keys.extend(batch)
+        if cursor == '0' or len(keys) > 1000:
+            break
+    return keys
+
+
+@app.route('/api/fix-amedas-wind-units')
+def fix_amedas_wind_units():
+    """過去の実測レコードの風速（km/h）を m/s に補正する管理エンドポイント。
+
+    デフォルトは dry-run（件数とサンプルを返すだけ）。?apply=1 で書き込む。
+    補正済みレコードは Redis の主データを書き換え、ローカルファイルが
+    存在すれば同じ内容で揃える。Sheets 側は次回の精度データ書き出し・
+    同期の upsert で追随する。
+    """
+    apply_changes = request.args.get('apply') == '1'
+    try:
+        keys = _scan_amedas_obs_keys()
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': f'SCAN failed: {e}'}), 500
+
+    fixed = 0
+    already_ms = 0
+    errors = 0
+    samples = []
+    for key in keys:
+        record = _obs_redis_get(key)
+        if not isinstance(record, dict):
+            errors += 1
+            continue
+        if record.get('wind_unit') == 'ms':
+            already_ms += 1
+            continue
+        before_avg = (record.get('daily_summary') or {}).get('avg_wind')
+        converted = _convert_amedas_wind_record(record)
+        after_avg = (converted.get('daily_summary') or {}).get('avg_wind')
+        if len(samples) < 10:
+            samples.append({'key': key, 'avg_wind_before': before_avg, 'avg_wind_after': after_avg})
+        if apply_changes:
+            if _obs_redis_set(key, converted):
+                fixed += 1
+            else:
+                errors += 1
+                continue
+            # ローカルファイル（副）も同じ内容で揃える
+            parts = key.split(':')
+            if len(parts) == 4:
+                filepath = os.path.join(AMEDAS_DATA_DIR, f'amedas_{parts[2]}_{parts[3]}.json')
+                if os.path.exists(filepath):
+                    try:
+                        with open(filepath, 'w', encoding='utf-8') as f:
+                            json.dump(converted, f, ensure_ascii=False)
+                    except Exception:
+                        pass
+        else:
+            fixed += 1  # dry-run では補正対象件数として数える
+
+    count_key = 'records_fixed' if apply_changes else 'records_to_fix'
+    return jsonify({
+        'status': 'success',
+        'mode': 'apply' if apply_changes else 'dry_run',
+        'keys_scanned': len(keys),
+        count_key: fixed,
+        'already_ms': already_ms,
+        'errors': errors,
+        'samples': samples,
+        'timestamp': datetime.now(tz=JST).isoformat(),
+    })
+
+
 @app.route('/api/collect_amedas')
 def collect_amedas():
     """Manually trigger amedas data collection for one or more past days.
